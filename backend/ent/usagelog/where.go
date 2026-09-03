@@ -125,6 +125,16 @@ func GroupID(v int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldGroupID, v))
 }
 
+// CacheStrategyID applies equality check predicate on the "cache_strategy_id" field. It's identical to CacheStrategyIDEQ.
+func CacheStrategyID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheStrategyID, v))
+}
+
+// CacheStrategyName applies equality check predicate on the "cache_strategy_name" field. It's identical to CacheStrategyNameEQ.
+func CacheStrategyName(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheStrategyName, v))
+}
+
 // SubscriptionID applies equality check predicate on the "subscription_id" field. It's identical to SubscriptionIDEQ.
 func SubscriptionID(v int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldSubscriptionID, v))
@@ -1023,6 +1033,131 @@ func GroupIDIsNil() predicate.UsageLog {
 // GroupIDNotNil applies the NotNil predicate on the "group_id" field.
 func GroupIDNotNil() predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotNull(FieldGroupID))
+}
+
+// CacheStrategyIDEQ applies the EQ predicate on the "cache_strategy_id" field.
+func CacheStrategyIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheStrategyID, v))
+}
+
+// CacheStrategyIDNEQ applies the NEQ predicate on the "cache_strategy_id" field.
+func CacheStrategyIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheStrategyID, v))
+}
+
+// CacheStrategyIDIn applies the In predicate on the "cache_strategy_id" field.
+func CacheStrategyIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheStrategyID, vs...))
+}
+
+// CacheStrategyIDNotIn applies the NotIn predicate on the "cache_strategy_id" field.
+func CacheStrategyIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheStrategyID, vs...))
+}
+
+// CacheStrategyIDGT applies the GT predicate on the "cache_strategy_id" field.
+func CacheStrategyIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheStrategyID, v))
+}
+
+// CacheStrategyIDGTE applies the GTE predicate on the "cache_strategy_id" field.
+func CacheStrategyIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheStrategyID, v))
+}
+
+// CacheStrategyIDLT applies the LT predicate on the "cache_strategy_id" field.
+func CacheStrategyIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheStrategyID, v))
+}
+
+// CacheStrategyIDLTE applies the LTE predicate on the "cache_strategy_id" field.
+func CacheStrategyIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheStrategyID, v))
+}
+
+// CacheStrategyIDIsNil applies the IsNil predicate on the "cache_strategy_id" field.
+func CacheStrategyIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldCacheStrategyID))
+}
+
+// CacheStrategyIDNotNil applies the NotNil predicate on the "cache_strategy_id" field.
+func CacheStrategyIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldCacheStrategyID))
+}
+
+// CacheStrategyNameEQ applies the EQ predicate on the "cache_strategy_name" field.
+func CacheStrategyNameEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheStrategyName, v))
+}
+
+// CacheStrategyNameNEQ applies the NEQ predicate on the "cache_strategy_name" field.
+func CacheStrategyNameNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheStrategyName, v))
+}
+
+// CacheStrategyNameIn applies the In predicate on the "cache_strategy_name" field.
+func CacheStrategyNameIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheStrategyName, vs...))
+}
+
+// CacheStrategyNameNotIn applies the NotIn predicate on the "cache_strategy_name" field.
+func CacheStrategyNameNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheStrategyName, vs...))
+}
+
+// CacheStrategyNameGT applies the GT predicate on the "cache_strategy_name" field.
+func CacheStrategyNameGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheStrategyName, v))
+}
+
+// CacheStrategyNameGTE applies the GTE predicate on the "cache_strategy_name" field.
+func CacheStrategyNameGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheStrategyName, v))
+}
+
+// CacheStrategyNameLT applies the LT predicate on the "cache_strategy_name" field.
+func CacheStrategyNameLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheStrategyName, v))
+}
+
+// CacheStrategyNameLTE applies the LTE predicate on the "cache_strategy_name" field.
+func CacheStrategyNameLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheStrategyName, v))
+}
+
+// CacheStrategyNameContains applies the Contains predicate on the "cache_strategy_name" field.
+func CacheStrategyNameContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldCacheStrategyName, v))
+}
+
+// CacheStrategyNameHasPrefix applies the HasPrefix predicate on the "cache_strategy_name" field.
+func CacheStrategyNameHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldCacheStrategyName, v))
+}
+
+// CacheStrategyNameHasSuffix applies the HasSuffix predicate on the "cache_strategy_name" field.
+func CacheStrategyNameHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldCacheStrategyName, v))
+}
+
+// CacheStrategyNameIsNil applies the IsNil predicate on the "cache_strategy_name" field.
+func CacheStrategyNameIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldCacheStrategyName))
+}
+
+// CacheStrategyNameNotNil applies the NotNil predicate on the "cache_strategy_name" field.
+func CacheStrategyNameNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldCacheStrategyName))
+}
+
+// CacheStrategyNameEqualFold applies the EqualFold predicate on the "cache_strategy_name" field.
+func CacheStrategyNameEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldCacheStrategyName, v))
+}
+
+// CacheStrategyNameContainsFold applies the ContainsFold predicate on the "cache_strategy_name" field.
+func CacheStrategyNameContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldCacheStrategyName, v))
 }
 
 // SubscriptionIDEQ applies the EQ predicate on the "subscription_id" field.

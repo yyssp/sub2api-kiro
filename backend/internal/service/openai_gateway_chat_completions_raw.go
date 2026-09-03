@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -68,6 +69,10 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		return nil, fmt.Errorf("missing model in request")
 	}
 	clientStream := gjson.GetBytes(body, "stream").Bool()
+	prepareCachePlanForContext(
+		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
+		"openai_chat_completions", estimateOpenAIChatCompletionsInputTokens(ctx, body),
+	)
 
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
@@ -283,6 +288,8 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	var firstTokenMs *int
 	clientDisconnected := false
 	clientOutputStarted := false
+	sawDone := false
+	sawUsage := false
 	pendingLines := make([]string, 0, 8)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 
@@ -328,10 +335,35 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
 				if u := extractCCStreamUsage(payload); u != nil {
 					usage = *u
+					sawUsage = true
 				}
 				if firstTokenMs == nil && !usageOnlyChunk {
 					elapsed := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &elapsed
+				}
+			}
+			if trimmedPayload == "[DONE]" {
+				sawDone = true
+				mergeAndCommitOpenAICachePlan(c, &usage, false)
+				if !sawUsage && (usage.CacheReadInputTokens > 0 || usage.CacheCreationInputTokens > 0) {
+					usagePayload, err := json.Marshal(map[string]any{
+						"id":      requestID,
+						"object":  "chat.completion.chunk",
+						"model":   originalModel,
+						"choices": []any{},
+						"usage": map[string]any{
+							"prompt_tokens":     usage.InputTokens,
+							"completion_tokens": usage.OutputTokens,
+							"total_tokens":      usage.InputTokens + usage.OutputTokens,
+							"prompt_tokens_details": map[string]any{
+								"cached_tokens":         usage.CacheReadInputTokens,
+								"cache_creation_tokens": usage.CacheCreationInputTokens,
+							},
+						},
+					})
+					if err == nil {
+						writeLine("data: " + string(usagePayload))
+					}
 				}
 			}
 		}
@@ -378,6 +410,9 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				clientOutputStarted = true
 			}
 		}
+	}
+	if sawDone && !clientDisconnected {
+		commitOpenAICachePlan(c)
 	}
 
 	return &OpenAIForwardResult{
@@ -464,6 +499,8 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(respBody); ok {
 		usage = parsedUsage
 	}
+	mergeAndCommitOpenAICachePlan(c, &usage, true)
+	respBody = rewriteOpenAIChatUsageJSON(respBody, &usage)
 	responseModel := gjson.GetBytes(respBody, "model").String()
 	if requiresBillableGrokChatUsage(account, billingModel, upstreamModel, responseModel) && !hasBillableGrokChatUsage(usage) {
 		upstreamRequestID := firstNonEmpty(requestID, resp.Header.Get("xai-request-id"))

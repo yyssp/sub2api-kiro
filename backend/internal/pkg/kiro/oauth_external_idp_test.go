@@ -203,7 +203,7 @@ func TestRefreshExternalIdpTokenUsesFormPostAndPreservesRefreshToken(t *testing.
 		t.Fatalf("AuthMethod = %q", token.AuthMethod)
 	}
 	if token.Provider != ProviderExternalIdp {
-		t.Fatalf("Provider = %q", token.Provider)
+		t.Fatalf("Provider = %q, want %q", token.Provider, ProviderExternalIdp)
 	}
 	if token.TokenEndpoint != server.URL {
 		t.Fatalf("TokenEndpoint = %q", token.TokenEndpoint)

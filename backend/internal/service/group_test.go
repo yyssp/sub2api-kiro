@@ -4,7 +4,6 @@ package service
 
 import (
 	"context"
-	"math"
 	"testing"
 	"time"
 
@@ -38,80 +37,6 @@ func TestGroup_GetImagePrice_1K(t *testing.T) {
 	result := group.GetImagePrice("1K")
 	require.NotNil(t, result)
 	require.InDelta(t, 0.10, *result, 0.0001)
-}
-
-func TestGroup_KiroCacheEmulationModes(t *testing.T) {
-	uniform := &Group{
-		Platform:                        PlatformKiro,
-		KiroCacheEmulationEnabled:       true,
-		KiroCacheEmulationRatio:         0.5,
-		KiroCacheEmulationMode:          KiroCacheEmulationModeUniform,
-		KiroCacheCreationEmulationRatio: 0.9,
-		KiroCacheReadEmulationRatio:     0.2,
-	}
-	creationRatio, readRatio := uniform.EffectiveKiroCacheEmulationRatios()
-	require.InDelta(t, 0.5, creationRatio, 1e-12)
-	require.InDelta(t, 0.5, readRatio, 1e-12)
-	require.True(t, uniform.EffectiveKiroCacheEmulationEnabled())
-
-	independent := &Group{
-		Platform:                        PlatformKiro,
-		KiroCacheEmulationEnabled:       true,
-		KiroCacheEmulationRatio:         0.5,
-		KiroCacheEmulationMode:          KiroCacheEmulationModeIndependent,
-		KiroCacheCreationEmulationRatio: 0.9,
-		KiroCacheReadEmulationRatio:     0.2,
-	}
-	creationRatio, readRatio = independent.EffectiveKiroCacheEmulationRatios()
-	require.InDelta(t, 0.9, creationRatio, 1e-12)
-	require.InDelta(t, 0.2, readRatio, 1e-12)
-	require.True(t, independent.EffectiveKiroCacheEmulationEnabled())
-
-	independent.KiroCacheCreationEmulationRatio = 0
-	independent.KiroCacheReadEmulationRatio = 0
-	require.False(t, independent.EffectiveKiroCacheEmulationEnabled())
-}
-
-func TestNormalizeKiroCacheEmulationFieldsSynchronizesAndClears(t *testing.T) {
-	uniform := &Group{
-		Platform:                        PlatformKiro,
-		KiroCacheEmulationEnabled:       true,
-		KiroCacheEmulationRatio:         0,
-		KiroCacheEmulationMode:          KiroCacheEmulationModeUniform,
-		KiroCacheCreationEmulationRatio: 0.8,
-		KiroCacheReadEmulationRatio:     0.4,
-	}
-	normalizeKiroCacheEmulationFields(uniform)
-	require.Zero(t, uniform.KiroCacheEmulationRatio)
-	require.Zero(t, uniform.KiroCacheCreationEmulationRatio)
-	require.Zero(t, uniform.KiroCacheReadEmulationRatio)
-	require.False(t, uniform.EffectiveKiroCacheEmulationEnabled())
-
-	independent := &Group{
-		Platform:                        PlatformKiro,
-		KiroCacheEmulationEnabled:       true,
-		KiroCacheEmulationRatio:         math.NaN(),
-		KiroCacheEmulationMode:          KiroCacheEmulationModeIndependent,
-		KiroCacheCreationEmulationRatio: 0,
-		KiroCacheReadEmulationRatio:     0,
-	}
-	normalizeKiroCacheEmulationFields(independent)
-	require.Zero(t, independent.KiroCacheEmulationRatio)
-	require.Zero(t, independent.KiroCacheCreationEmulationRatio)
-	require.Zero(t, independent.KiroCacheReadEmulationRatio)
-
-	nonKiro := &Group{
-		Platform:                        PlatformAnthropic,
-		KiroCacheEmulationEnabled:       true,
-		KiroCacheEmulationMode:          KiroCacheEmulationModeIndependent,
-		KiroCacheCreationEmulationRatio: 0.8,
-		KiroCacheReadEmulationRatio:     0.3,
-	}
-	normalizeKiroCacheEmulationFields(nonKiro)
-	require.False(t, nonKiro.KiroCacheEmulationEnabled)
-	require.Equal(t, KiroCacheEmulationModeUniform, nonKiro.KiroCacheEmulationMode)
-	require.Zero(t, nonKiro.KiroCacheCreationEmulationRatio)
-	require.Zero(t, nonKiro.KiroCacheReadEmulationRatio)
 }
 
 // TestGroup_GetImagePrice_2K 测试 2K 尺寸返回正确价格
@@ -257,12 +182,8 @@ func TestNormalizeGroupRuntimeFields_KiroStickySessionTTL(t *testing.T) {
 		Platform:                    PlatformAnthropic,
 		KiroAutoStickyEnabled:       true,
 		KiroStickySessionTTLSeconds: 7200,
-		KiroCacheEmulationEnabled:   true,
-		KiroCacheEmulationRatio:     0.5,
 	}
 	NormalizeGroupRuntimeFields(nonKiro)
 	require.False(t, nonKiro.KiroAutoStickyEnabled)
 	require.Zero(t, nonKiro.KiroStickySessionTTLSeconds)
-	require.False(t, nonKiro.KiroCacheEmulationEnabled)
-	require.Zero(t, nonKiro.KiroCacheEmulationRatio)
 }

@@ -43,6 +43,9 @@ func RegisterAdminRoutes(
 		// 分组管理
 		registerGroupRoutes(admin, h)
 
+		// 通用缓存策略管理
+		registerCacheStrategyRoutes(admin, h)
+
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
 
@@ -135,6 +138,23 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerCacheStrategyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	strategies := admin.Group("/cache-strategies")
+	{
+		strategies.GET("", h.Admin.CacheStrategy.List)
+		strategies.POST("", h.Admin.CacheStrategy.Create)
+		strategies.GET("/:id", h.Admin.CacheStrategy.Get)
+		strategies.PUT("/:id", h.Admin.CacheStrategy.Update)
+		strategies.POST("/:id/duplicate", h.Admin.CacheStrategy.Duplicate)
+		strategies.POST("/:id/enable", h.Admin.CacheStrategy.Enable)
+		strategies.POST("/:id/disable", h.Admin.CacheStrategy.Disable)
+		strategies.DELETE("/:id", h.Admin.CacheStrategy.Delete)
+		strategies.GET("/:id/groups", h.Admin.CacheStrategy.Groups)
+		strategies.PUT("/:id/groups", h.Admin.CacheStrategy.BindGroups)
+		strategies.PUT("/:id/groups/replace", h.Admin.CacheStrategy.ReplaceGroups)
 	}
 }
 

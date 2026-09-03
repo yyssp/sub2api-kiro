@@ -171,6 +171,7 @@ export default {
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',
+    cacheStrategies: 'Cache Strategies',
     channels: 'Channels',
     availableChannels: 'Available Channels',
     modelPlaza: 'Model Plaza',

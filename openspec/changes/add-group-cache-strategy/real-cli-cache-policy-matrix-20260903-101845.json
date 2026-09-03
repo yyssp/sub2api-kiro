@@ -1,0 +1,327 @@
+{
+  "started_at": "2026-09-03T10:18:46+0800",
+  "base_url": "http://127.0.0.1:48780",
+  "model": "claude-sonnet-4-5-20250929",
+  "rounds_required": 10,
+  "fixture_root": "/tmp/sub2api-cache-matrix-20260903-101845",
+  "strategies": [
+    {
+      "name": "验收-无缓存基线-baseline-101845",
+      "profile": "验收-无缓存基线",
+      "strategy_id": 31,
+      "group_id": 22,
+      "api_key_id": 23,
+      "api_key": "sk-matrix--baseline-101845-5a7b77e960a642018ff82296697fafbc",
+      "strategy_config": {
+        "kind": "disabled",
+        "ratio_mode": "uniform",
+        "coverage_ratio": 0,
+        "usage_ratio": 0,
+        "read_ratio": 0,
+        "creation_ratio": 0,
+        "cache_system": false,
+        "cache_tools": false,
+        "cache_history": false,
+        "cache_tool_results": false,
+        "cache_current_user_stable_prefix": false,
+        "current_user_stable_prefix_max_tokens": 0,
+        "breakpoint_mode": "hybrid",
+        "allow_derived_session": false,
+        "dynamic_content_mode": "exclude",
+        "scope_mode": "group_account_session",
+        "max_coverage_tokens": 0,
+        "max_new_creation_tokens_per_request": 0,
+        "incremental_create_enabled": false,
+        "min_cacheable_tokens": 1024,
+        "reported_input_min_tokens": 0,
+        "reported_input_max_tokens": 0,
+        "token_scale": 1,
+        "scale_min_input_tokens": 20000,
+        "max_simulated_input_tokens": 0,
+        "default_ttl_seconds": 300,
+        "hour_ttl_seconds": 3600,
+        "max_entries_per_scope": 128,
+        "max_entries_global": 10000,
+        "estimated_bytes_limit": 67108864,
+        "expire_after_idle_seconds": 0,
+        "cap_jitter_min_tokens": 0,
+        "cap_jitter_max_tokens": 0,
+        "preserve_upstream_cache_usage": false,
+        "creation_control": {
+          "enabled": false,
+          "min_creation_delta_tokens": 0,
+          "min_successful_requests_between": 0,
+          "min_creation_interval_seconds": 0,
+          "max_creation_tokens_per_event": 0,
+          "creation_budget_window_seconds": 0,
+          "max_creation_tokens_per_window": 0
+        },
+        "usage": {
+          "enabled": false,
+          "preserve_upstream_cache_usage": false,
+          "input": {
+            "mode": "raw",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "output": {
+            "mode": "raw",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "cache_read": {
+            "mode": "preserve",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "cache_creation": {
+            "mode": "preserve",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "final_cache_read_max_tokens": 0,
+          "final_cache_creation_max_tokens": 0,
+          "output_uplift_min_tokens": 0,
+          "output_uplift_percent": 0,
+          "final_output_max_tokens": 0
+        }
+      },
+      "source_group_id": 7,
+      "bound_kiro_accounts": 220,
+      "rounds": [
+        {
+          "round": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 59789,
+          "usage": {
+            "input": 79610,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 1828
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Read",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_jl491e2SorX8kOcXWsDSzh",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_xnR7bQ5xzIAnpT1Db6UJWr",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_N1z5n1TWktvsuOfObyKaJ5",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_JG8HNWBNVWXq6daqKDmbdt",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_GrcD59bjtkbZg1qzm408P3",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_BRm9COFnKlNDTftgQR5K38",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_HVhr3xTivbKzhZTT7BbdNW",
+              "input_keys": [
+                "file_path"
+              ]
+            }
+          ],
+          "tool_call_count": 7,
+          "assistant_events": 14,
+          "result_chars": 2547,
+          "errors": []
+        },
+        {
+          "round": 2,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 73294,
+          "usage": {
+            "input": 232591,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 2014
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_Ys2129AFDw2gpRD8ww6pvi",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_nDUYBEKZFEgLkDCHitqtm2",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_WvkwZpfET9Q8mWEU6oaow9",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Tbz6M2LZ8HG59SVVIRlC2c",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_asN8eYyTjR6ACNijZNNqIy",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_BHvTZbwwTxbDtLtPtqZaG2",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_1ediICsS7RENBDiLq8O3Ox",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_4oo5xIUfu4MuHhzwBSAky0",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_ZombrmH7PMbRfh8jAXcs8c",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_LMeOjhS3N0C3Rk9dGcu05u",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 10,
+          "assistant_events": 13,
+          "result_chars": 5005,
+          "errors": []
+        },
+        {
+          "round": 3,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "error",
+          "subtype": "success",
+          "stop_reason": null,
+          "duration_ms": 145031,
+          "usage": {
+            "input": 0,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 0
+          },
+          "tools": [],
+          "tool_events": [],
+          "tool_call_count": 0,
+          "assistant_events": 1,
+          "result_chars": 0,
+          "errors": [],
+          "error": "required Read+Bash tool calls were not observed"
+        }
+      ],
+      "session_id": "3cdb5207-e8f2-4993-8376-dc3ef76d09d1",
+      "failure_usage_rows": 9
+    }
+  ]
+}

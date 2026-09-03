@@ -54,6 +54,10 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 		return nil, fmt.Errorf("missing model in request")
 	}
 	clientStream := ccReq.Stream
+	prepareCachePlanForContext(
+		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
+		"openai_chat_completions", estimateOpenAIChatCompletionsInputTokens(ctx, body),
+	)
 	includeUsage := ccReq.StreamOptions != nil && ccReq.StreamOptions.IncludeUsage
 
 	// 2. Convert CC → Responses → Anthropic (chained conversion)
@@ -163,6 +167,7 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
+	sawTerminalEvent := false
 
 	// 读间隔上限：上游挂住 SSE 时中止组装（缓冲路径尚未提交响应头，可回 502）。
 	streamInterval := s.anthropicNativeStreamInterval()
@@ -228,9 +233,15 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 			if event.Usage != nil {
 				mergeAnthropicUsage(&usage, *event.Usage)
 			}
-			if event.Delta != nil && event.Delta.StopReason != "" && finalResp != nil {
-				finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
+			if event.Delta != nil && event.Delta.StopReason != "" {
+				sawTerminalEvent = true
+				if finalResp != nil {
+					finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
+				}
 			}
+		}
+		if event.Type == "message_stop" {
+			sawTerminalEvent = true
 		}
 		if event.Type == "content_block_start" && event.ContentBlock != nil && finalResp != nil {
 			finalResp.Content = append(finalResp.Content, *event.ContentBlock)
@@ -254,14 +265,17 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 		writeChatCompletionsError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
 		return nil, fmt.Errorf("upstream stream ended without response")
 	}
+	if !sawTerminalEvent {
+		writeChatCompletionsError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without terminal event")
+		return nil, fmt.Errorf("stream usage incomplete: missing terminal event")
+	}
 
-	if usage.InputTokens > 0 || usage.OutputTokens > 0 {
-		finalResp.Usage = apicompat.AnthropicUsage{
-			InputTokens:              usage.InputTokens,
-			OutputTokens:             usage.OutputTokens,
-			CacheCreationInputTokens: usage.CacheCreationInputTokens,
-			CacheReadInputTokens:     usage.CacheReadInputTokens,
-		}
+	mergeAndCommitCachePlan(c, &usage, true)
+	finalResp.Usage = apicompat.AnthropicUsage{
+		InputTokens:              usage.InputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+		CacheReadInputTokens:     usage.CacheReadInputTokens,
 	}
 
 	responsesResp := apicompat.AnthropicToResponsesResponse(finalResp)
@@ -325,6 +339,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	sawTerminalEvent := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -407,6 +422,15 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
+		if event.Type == "message_stop" ||
+			(event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason != "") {
+			sawTerminalEvent = true
+			mergeAndCommitCachePlan(c, &usage, false)
+			anthState.InputTokens = usage.InputTokens
+			anthState.CacheReadInputTokens = usage.CacheReadInputTokens
+			anthState.CacheCreationInputTokens = usage.CacheCreationInputTokens
+			anthState.OutputTokens = usage.OutputTokens
+		}
 
 		// 客户端已断开：跳过转换与写出，继续读上游直到流结束（usage 完整、
 		// 连接及时归还），不再提前 return。
@@ -480,6 +504,9 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	if !clientDisconnected {
 		fmt.Fprint(c.Writer, "data: [DONE]\n\n") //nolint:errcheck
 		c.Writer.Flush()
+	}
+	if sawTerminalEvent && !clientDisconnected {
+		commitCachePlan(c)
 	}
 
 	return resultWithUsage(), nil

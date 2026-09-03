@@ -112,13 +112,9 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetRpmLimit(groupIn.RPMLimit).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
 		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).
-		SetKiroCacheEmulationEnabled(groupIn.KiroCacheEmulationEnabled).
+		SetNillableCacheStrategyID(groupIn.CacheStrategyID).
 		SetKiroAutoStickyEnabled(groupIn.KiroAutoStickyEnabled).
 		SetKiroStickySessionTTLSeconds(groupIn.KiroStickySessionTTLSeconds).
-		SetKiroCacheEmulationRatio(groupIn.KiroCacheEmulationRatio).
-		SetKiroCacheEmulationMode(groupIn.KiroCacheEmulationMode).
-		SetKiroCacheCreationEmulationRatio(groupIn.KiroCacheCreationEmulationRatio).
-		SetKiroCacheReadEmulationRatio(groupIn.KiroCacheReadEmulationRatio).
 		SetKiroEndpointMode(groupIn.KiroEndpointMode).
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
 		SetPeakStart(groupIn.PeakStart).
@@ -297,13 +293,9 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetRpmLimit(groupIn.RPMLimit).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
 		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).
-		SetKiroCacheEmulationEnabled(groupIn.KiroCacheEmulationEnabled).
+		SetNillableCacheStrategyID(groupIn.CacheStrategyID).
 		SetKiroAutoStickyEnabled(groupIn.KiroAutoStickyEnabled).
 		SetKiroStickySessionTTLSeconds(groupIn.KiroStickySessionTTLSeconds).
-		SetKiroCacheEmulationRatio(groupIn.KiroCacheEmulationRatio).
-		SetKiroCacheEmulationMode(groupIn.KiroCacheEmulationMode).
-		SetKiroCacheCreationEmulationRatio(groupIn.KiroCacheCreationEmulationRatio).
-		SetKiroCacheReadEmulationRatio(groupIn.KiroCacheReadEmulationRatio).
 		SetKiroEndpointMode(groupIn.KiroEndpointMode).
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
 		SetPeakStart(groupIn.PeakStart).

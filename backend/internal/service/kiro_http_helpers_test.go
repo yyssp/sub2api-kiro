@@ -74,7 +74,7 @@ func TestNewKiroJSONRequestAddsConditionalHeaders(t *testing.T) {
 	account := &Account{
 		Credentials: map[string]any{
 			"auth_method": "external_idp",
-			"provider":    "Internal",
+			"provider":    kiropkg.ProviderExternalIdp,
 			"profile_arn": "arn:aws:codewhisperer:us-east-1:123456789012:profile/HEADER",
 		},
 	}
@@ -465,8 +465,8 @@ func TestNormalizeKiroEndpointFieldsAuto(t *testing.T) {
 	require.Equal(t, "", g2.KiroEndpointMode)
 }
 
-// TestKiroAccountLacksEnterpriseProfile 验证 BuilderId/Social 被判定为无企业 profile（跳过
-// ListAvailableProfiles），而 Enterprise/ExternalIdp 及未知 provider 一律照旧查询。
+// TestKiroAccountLacksEnterpriseProfile verifies that profile lookup eligibility
+// comes only from authentication facts and Kiro's start URL extension.
 func TestKiroAccountLacksEnterpriseProfile(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -474,79 +474,49 @@ func TestKiroAccountLacksEnterpriseProfile(t *testing.T) {
 		want        bool
 	}{
 		{
-			name:        "provider BuilderId 跳过",
-			credentials: map[string]any{"auth_method": "idc", "provider": "BuilderId"},
+			name:        "social skips with Google provider",
+			credentials: map[string]any{"auth_method": "social", "provider": kiropkg.ProviderGoogle},
 			want:        true,
 		},
 		{
-			name:        "provider 大小写不敏感",
-			credentials: map[string]any{"auth_method": "idc", "provider": "builderid"},
+			name:        "social skips with Github provider",
+			credentials: map[string]any{"auth_method": "social", "provider": kiropkg.ProviderGithub},
 			want:        true,
 		},
 		{
-			name:        "social 登录跳过",
-			credentials: map[string]any{"auth_method": "social", "provider": "Github"},
+			name:        "idc without start url skips",
+			credentials: map[string]any{"auth_method": "idc", "provider": kiropkg.ProviderEnterprise},
 			want:        true,
 		},
 		{
-			name:        "builder id start_url 跳过",
-			credentials: map[string]any{"auth_method": "idc", "start_url": kiropkg.BuilderIDStartURL},
+			name:        "builder id start url skips",
+			credentials: map[string]any{"auth_method": "idc", "provider": kiropkg.ProviderBuilderId, "start_url": kiropkg.BuilderIDStartURL},
 			want:        true,
 		},
 		{
-			name:        "builder id start_url 末尾斜杠跳过",
-			credentials: map[string]any{"auth_method": "idc", "start_url": kiropkg.BuilderIDStartURL + "/"},
+			name:        "builder id start url with trailing slash skips",
+			credentials: map[string]any{"auth_method": "idc", "provider": kiropkg.ProviderBuilderId, "start_url": kiropkg.BuilderIDStartURL + "/"},
 			want:        true,
 		},
 		{
-			name:        "provider 与 start_url 均缺失视为 BuilderId",
-			credentials: map[string]any{"api_region": "us-west-2"},
+			name:        "missing auth method skips even with enterprise provider",
+			credentials: map[string]any{"provider": kiropkg.ProviderEnterprise},
 			want:        true,
 		},
 		{
-			name:        "provider Enterprise 照旧查询",
-			credentials: map[string]any{"auth_method": "idc", "provider": "Enterprise"},
+			name:        "unknown auth method skips even with enterprise provider",
+			credentials: map[string]any{"auth_method": "unknown", "provider": kiropkg.ProviderEnterprise},
+			want:        true,
+		},
+		{
+			name:        "custom identity center start url queries",
+			credentials: map[string]any{"auth_method": "idc", "provider": kiropkg.ProviderEnterprise, "start_url": "https://d-example.awsapps.com/start"},
 			want:        false,
 		},
 		{
-			name:        "provider Enterprise 大小写不敏感",
-			credentials: map[string]any{"auth_method": "idc", "provider": "enterprise"},
+			name:        "external idp queries",
+			credentials: map[string]any{"auth_method": "external_idp", "provider": kiropkg.ProviderExternalIdp},
 			want:        false,
-		},
-		{
-			name:        "遗留 provider AWS + 企业 start_url 照旧查询",
-			credentials: map[string]any{"auth_method": "idc", "provider": "AWS", "start_url": "https://d-example.awsapps.com/start"},
-			want:        false,
-		},
-		{
-			name:        "遗留 provider AWS 无 start_url 跳过",
-			credentials: map[string]any{"auth_method": "idc", "provider": "AWS"},
-			want:        true,
-		},
-		{
-			name:        "遗留 provider AWS + builder id start_url 跳过",
-			credentials: map[string]any{"auth_method": "idc", "provider": "AWS", "start_url": kiropkg.BuilderIDStartURL},
-			want:        true,
-		},
-		{
-			name:        "企业 start_url 无 provider 照旧查询",
-			credentials: map[string]any{"auth_method": "idc", "start_url": "https://d-example.awsapps.com/start"},
-			want:        false,
-		},
-		{
-			name:        "external_idp 照旧查询",
-			credentials: map[string]any{"auth_method": "external_idp", "provider": "ExternalIdp"},
-			want:        false,
-		},
-		{
-			name:        "auth_method external_idp 无 provider 照旧查询",
-			credentials: map[string]any{"auth_method": "external_idp"},
-			want:        false,
-		},
-		{
-			name:        "provider BuilderId 优先于企业 start_url 跳过",
-			credentials: map[string]any{"auth_method": "idc", "provider": "BuilderId", "start_url": "https://d-example.awsapps.com/start"},
-			want:        true,
 		},
 	}
 	for _, tc := range cases {
@@ -557,4 +527,66 @@ func TestKiroAccountLacksEnterpriseProfile(t *testing.T) {
 	}
 
 	require.False(t, kiroAccountLacksEnterpriseProfile(nil))
+}
+
+func TestKiroProviderDoesNotAffectRuntimeOrCacheIdentity(t *testing.T) {
+	baseCredentials := map[string]any{
+		"auth_method":    "social",
+		"access_token":   "access-token",
+		"refresh_token":  "refresh-token",
+		"client_id":      "client-id",
+		"client_id_hash": "client-id-hash",
+		"profile_arn":    "arn:aws:codewhisperer:us-east-1:123456789012:profile/RUNTIME",
+		"api_region":     "eu-west-1",
+		"machine_id":     "2582956e-cc88-4669-b546-07adbffcb894",
+	}
+	accountA := &Account{
+		ID:          901,
+		Platform:    PlatformKiro,
+		Type:        AccountTypeOAuth,
+		Credentials: cloneKiroTestCredentials(baseCredentials, kiropkg.ProviderGoogle),
+	}
+	accountB := &Account{
+		ID:          901,
+		Platform:    PlatformKiro,
+		Type:        AccountTypeOAuth,
+		Credentials: cloneKiroTestCredentials(baseCredentials, kiropkg.ProviderGithub),
+	}
+
+	require.Equal(t, kiroAccountLacksEnterpriseProfile(accountA), kiroAccountLacksEnterpriseProfile(accountB))
+	require.Equal(t, kiroAPIRegion(accountA), kiroAPIRegion(accountB))
+	require.Equal(t, buildKiroAccountKey(accountA), buildKiroAccountKey(accountB))
+	require.Equal(t, buildKiroMachineID(accountA), buildKiroMachineID(accountB))
+	require.Equal(t, cacheCredentialKey(accountA), cacheCredentialKey(accountB))
+	require.Equal(t, cacheCredentialIdentity(accountA), cacheCredentialIdentity(accountB))
+
+	requestA, err := newKiroJSONRequest(
+		context.Background(),
+		"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
+		[]byte(`{"ok":true}`),
+		"access-token",
+		buildKiroAccountKey(accountA),
+		buildKiroMachineID(accountA),
+		"",
+		accountA,
+	)
+	require.NoError(t, err)
+	requestB, err := newKiroJSONRequest(
+		context.Background(),
+		"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
+		[]byte(`{"ok":true}`),
+		"access-token",
+		buildKiroAccountKey(accountB),
+		buildKiroMachineID(accountB),
+		"",
+		accountB,
+	)
+	require.NoError(t, err)
+	require.Equal(t, kiroStaticRequestHeaders(requestA.Header), kiroStaticRequestHeaders(requestB.Header))
+}
+
+func kiroStaticRequestHeaders(headers http.Header) http.Header {
+	result := headers.Clone()
+	result.Del("Amz-Sdk-Invocation-Id")
+	return result
 }

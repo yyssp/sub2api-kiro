@@ -1,0 +1,2427 @@
+{
+  "started_at": "2026-09-03T10:44:23+0800",
+  "base_url": "http://127.0.0.1:48780",
+  "model": "claude-sonnet-4-5-20250929",
+  "rounds_required": 10,
+  "fixture_root": "/tmp/sub2api-cache-matrix-20260903-104423",
+  "strategies": [
+    {
+      "name": "验收-无缓存基线-baseline-104422",
+      "profile": "验收-无缓存基线",
+      "strategy_id": 32,
+      "group_id": 23,
+      "api_key_id": 24,
+      "api_key": "sk-matrix--baseline-104422-0191423ca38448b88710673a4fb0e6ed",
+      "strategy_config": {
+        "kind": "disabled",
+        "ratio_mode": "uniform",
+        "coverage_ratio": 0,
+        "usage_ratio": 0,
+        "read_ratio": 0,
+        "creation_ratio": 0,
+        "cache_system": false,
+        "cache_tools": false,
+        "cache_history": false,
+        "cache_tool_results": false,
+        "cache_current_user_stable_prefix": false,
+        "current_user_stable_prefix_max_tokens": 0,
+        "breakpoint_mode": "hybrid",
+        "allow_derived_session": false,
+        "dynamic_content_mode": "exclude",
+        "scope_mode": "group_account_session",
+        "max_coverage_tokens": 0,
+        "max_new_creation_tokens_per_request": 0,
+        "incremental_create_enabled": false,
+        "min_cacheable_tokens": 1024,
+        "reported_input_min_tokens": 0,
+        "reported_input_max_tokens": 0,
+        "token_scale": 1,
+        "scale_min_input_tokens": 20000,
+        "max_simulated_input_tokens": 0,
+        "default_ttl_seconds": 300,
+        "hour_ttl_seconds": 3600,
+        "max_entries_per_scope": 128,
+        "max_entries_global": 10000,
+        "estimated_bytes_limit": 67108864,
+        "expire_after_idle_seconds": 0,
+        "cap_jitter_min_tokens": 0,
+        "cap_jitter_max_tokens": 0,
+        "preserve_upstream_cache_usage": false,
+        "creation_control": {
+          "enabled": false,
+          "min_creation_delta_tokens": 0,
+          "min_successful_requests_between": 0,
+          "min_creation_interval_seconds": 0,
+          "max_creation_tokens_per_event": 0,
+          "creation_budget_window_seconds": 0,
+          "max_creation_tokens_per_window": 0
+        },
+        "usage": {
+          "enabled": false,
+          "preserve_upstream_cache_usage": false,
+          "input": {
+            "mode": "raw",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "output": {
+            "mode": "raw",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "cache_read": {
+            "mode": "preserve",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "cache_creation": {
+            "mode": "preserve",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "final_cache_read_max_tokens": 0,
+          "final_cache_creation_max_tokens": 0,
+          "output_uplift_min_tokens": 0,
+          "output_uplift_percent": 0,
+          "final_output_max_tokens": 0
+        }
+      },
+      "source_group_id": 7,
+      "bound_kiro_accounts": 220,
+      "rounds": [
+        {
+          "round": 1,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 75180,
+          "usage": {
+            "input": 55087,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 2027
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_HQIuPfhKXisi1LZGTnCNlH",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_yrpmAqnDJjJjipK76j2ceL",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_hM2NjTWkqsbCO3h3vnYLZj",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_arkTDtGm0jbk16EBhks7zj",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_cGrvY95JWhrM5zDFd7lUBF",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_3c7s3wsmpPoVDbqSrt4BY4",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_OhiWTZBl5QpOcFOh9IvaN5",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_udAy8wkjicTQICN8YPdvw9",
+              "input_keys": [
+                "file_path",
+                "limit"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_updb8Fm0BJXOK3uZhcNP0U",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Ky8DJo4dgK8V61IVl4Izk9",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_TKbKY1U8iKe1IJedUBiPsn",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_PB9l48mpOh1YPyzjJDUUwC",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            }
+          ],
+          "tool_call_count": 12,
+          "assistant_events": 19,
+          "result_chars": 3634,
+          "errors": []
+        },
+        {
+          "round": 2,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 75277,
+          "usage": {
+            "input": 90035,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 2003
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_AJ9ZHKp7dhY4TLZwiYjyJz",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_eI2xx5v9rY4zCYeATv99OO",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_dcY6VCpJJr0mPfagxRFR8W",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_QvOfHk0uAwlXPxdEdF4ZJz",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_VWta8m86njHGWd6kUouAtD",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_9B8891Nz1knecfgr5CAipC",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_jlJpeWX6dsIQhkbzq59dzL",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_K15RDvGBWkcDw4RLqPWA3L",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_aWIZemvuvTRLVP6X3Cz3Vg",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            }
+          ],
+          "tool_call_count": 9,
+          "assistant_events": 11,
+          "result_chars": 5823,
+          "errors": []
+        },
+        {
+          "round": 3,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 85613,
+          "usage": {
+            "input": 143982,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 2538
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_nfiPCk5u5nfFv9BCiAbyWO",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_oqim1pTy4BNKFEhOpbkXtB",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_MzfIYiFFaeBvNdF3tUchUw",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_syww5fooXlMe70dUpBzB35",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_2NHQJtsfDetzl0fKakDXMn",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Uv76KmyUQuDjJCHFf4Hans",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_2BmHxgkcvnuEpeD2Kn4Rfz",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_4NmFNxv1HCCYv7NOUlJE55",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_DUsSwxm3MG9BaRpZU6mKgt",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_cwglMrbjZi61z1bcsZxQLS",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Ruo6bgYZBS4YNWamNQ25Dz",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_ACmawKu6MIjEVQxzqwdCVZ",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            }
+          ],
+          "tool_call_count": 12,
+          "assistant_events": 13,
+          "result_chars": 8267,
+          "errors": []
+        },
+        {
+          "round": 4,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 115468,
+          "usage": {
+            "input": 259984,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 2997
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_qOJ2dGYD4b7xNsWxtbraYr",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_IcjLyXJUDOALRVV7getVRh",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_hbFaPIxa4aLcLRdYyBGung",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_j7wsKW86RE35gGzZCEshP8",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_0MR62yNZPyP8u6NiiTQL0a",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_pMh9TuIQFs9ocmbNz7ijR4",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_qfM7hDSGbdGAsDq9jpqoTa",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_X2pFA4DDlpVbukhU0hRwLr",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_XcjVZAVo3p1YASzbO4b7OF",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_nqbsiyxMlcs30VsJ89EoLW",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_BBNA9efQIKbP8ch339meXa",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_QkkZXBYqXZ0Sy6xXMxrXY3",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_FwuN57fN4bd9HUmTonzMbB",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_ZcD6WJB0Qsgy3b4q602qsh",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_O0xH60lyQoSASgYALBBoKw",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_llRamS4omMrlGGilSNQthx",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_cRQQw5aYI1UA93dTVqkgS4",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_enVh00dL1u3C9ig8vwWjYY",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            }
+          ],
+          "tool_call_count": 18,
+          "assistant_events": 19,
+          "result_chars": 9099,
+          "errors": []
+        },
+        {
+          "round": 5,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 99696,
+          "usage": {
+            "input": 225328,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 2989
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_n2fmGSaybVampbV8bv60TD",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_POhfA9y3BVzeqhOPdPBdKG",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_jFaI6G3Nt4Hn8LIIiatn0v",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_y5nt3udgdO7HC2hXguOS4T",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_kYvVHGcmXgdDScjM26OCLQ",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Xtq83u91urTFQVdug9njSi",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_p2RZTysTqlLZoNwlK7w6DJ",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_6y6H3J8EIpz3yVWJMnTUXi",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_zXDmdGKKwCgT7bmUMV7P26",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_KZywqINKMIaBGuxkPQ2ZVk",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_rWYsVNMk3O57mS9oXevD9O",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_6AUuPhN7hw5GhNSzzOiAKc",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            }
+          ],
+          "tool_call_count": 12,
+          "assistant_events": 13,
+          "result_chars": 10065,
+          "errors": []
+        },
+        {
+          "round": 6,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 119155,
+          "usage": {
+            "input": 315112,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 4028
+          },
+          "tools": [
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Bash",
+              "id": "tooluse_jbmQf2B805NO0SLSDkyaYl",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_R4PriAAm97PtozEy6fgku7",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_UWbM069txHlfSmjbiGMVRV",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_B33TaxXhFo4v2zRNqHFAvJ",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_ezPuibse0MFrUpTqaIEyMb",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_rIN3V601P3Q4UrAQHcmbsg",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_IMgbww7MWA0SxZPWi5lySF",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_np4dxnYsvdCPkSejSnXw6i",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_hyWaCg1EHuxUwjsiWdCcJG",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_yfuXI3iJlav35awo0m4VuH",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_iUsQBAZsbitUOgkVtWYav6",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_fe9SBRwdyLrrEoAHL5eZwa",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_yGEietX4UJaH7aRM8pH8yn",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_hL1DLfX817XnCJzvHyDS1A",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_YSDo2VtTku5inaw4cQlgsZ",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 15,
+          "assistant_events": 16,
+          "result_chars": 13734,
+          "errors": []
+        },
+        {
+          "round": 7,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 120739,
+          "usage": {
+            "input": 363734,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 3629
+          },
+          "tools": [
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Bash",
+              "id": "tooluse_6qkKUIhWfq8oUTRoFwFbuW",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_3o0BcDh1GEgrxockPBIkpB",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Y1AKOo2wi91jRK4OEbLYVP",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_qAgD50gM6MR9uHXzKboACp",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_nLqpKi31WlQnHpIjE3seQD",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_XXOEd0Flg1PH7WLHmk0K4p",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_bs2xPyMlFixj6ZAGtP2qwU",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_wRoEk0etOvSanIRHHXDiHF",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_zxNVHWpjLqjhxRUEriqtR0",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_mUFv628nFuqZPogdfMvZoq",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Ewz8ak6iqnvTmji5Mf2Bwv",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_OudLW0wAvEAZxAIOvWcJyk",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_pBnS0YgJNtNfwDCtalxeMx",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_YPUpjzJEC3fkhg2TxLAIX0",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_nIwy5TsZXs7m4IXPxdeSjP",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            }
+          ],
+          "tool_call_count": 15,
+          "assistant_events": 16,
+          "result_chars": 12226,
+          "errors": []
+        },
+        {
+          "round": 8,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 126052,
+          "usage": {
+            "input": 409156,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 3732
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_42PhQtFLLKByFoHFbSCeEU",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_nabQG0DQX1cMPI8QG1Pwah",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_AgT1garulE62UjIkaYhTZ1",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_S1T5cBCp9zwVylwFnNK30y",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_ebaij80eMH08rqci0LYqTk",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_DlnYMWMIluXsW06xjXIKAp",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_IQeoyPrbfrGstni1YTHfoX",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_3f6raenCaoDCljYN6Nyzro",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_xjqv2VMFI9OtbDb5cAWi6u",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_AKhWhRanx53Cq3ESlttTyA",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_zxkcEuzs3r3DTY2TsSdPdB",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_Hls7CnsWQ4D5qKOdoYsmuj",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_U48tYhUsYJlw5MX9rvvhKy",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_ewDtcPzvfqphzkXhp9c8nF",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_omPaAHSm5lFIknJosIi1Ca",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 15,
+          "assistant_events": 16,
+          "result_chars": 12572,
+          "errors": []
+        },
+        {
+          "round": 9,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 129564,
+          "usage": {
+            "input": 378547,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 4323
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_h5vXccmdp38sGb9xWPaLgI",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_plkTgEYnYTpBv1a0rMxvJp",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_6oSWE0qiLYhnm7bkDDheMp",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_N1QOR5fnIadwG8YLu3ATWE",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_rTbNqRyWMbCs4hmQ9q5eCL",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_wJh2UkofbikuaAch08DB1x",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_TSFw9ymCwEE0rCkj6XQbzt",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_FGOHuikVxvtejNGqxnEfjw",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_2l77e1HugNg4Bpwe9jPyLL",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_um7xYVhPYdaElEjKiFzLm2",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_pmcwmolozsehgvXFvNGh0W",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_2FcT7QGQrj4mxC4JKKJnM5",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 12,
+          "assistant_events": 13,
+          "result_chars": 15512,
+          "errors": []
+        },
+        {
+          "round": 10,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 60631,
+          "usage": {
+            "input": 248646,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 1518
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_6u9unUpd1G3tuW14yY2Zjd",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_GUvL4OVQSCDA9cibqsxDqR",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_bhu7H9QCc6u2QV2Uf8a7ej",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_uclzMgBD7oB4BHjA9GQCJI",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_XT4nyAcJdT2i73AQC8hDeS",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_uu4yUfNaNKA4ZIcHE0HM4m",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 6,
+          "assistant_events": 7,
+          "result_chars": 5154,
+          "errors": []
+        }
+      ],
+      "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+      "db_summary": {
+        "rows": 52,
+        "input_sum": 2489611,
+        "read_sum": 0,
+        "creation_sum": 0,
+        "output_sum": 29784,
+        "max_context": 84242,
+        "negative_bucket_rows": 0,
+        "creation_breakdown_mismatch_rows": 0
+      },
+      "usage_rows": [
+        {
+          "id": 61,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 1210,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 351,
+          "created_at": "2026-09-03 02:44:36.228396+00"
+        },
+        {
+          "id": 62,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 2889,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 265,
+          "created_at": "2026-09-03 02:44:47.762172+00"
+        },
+        {
+          "id": 63,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 14240,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 379,
+          "created_at": "2026-09-03 02:45:04.351147+00"
+        },
+        {
+          "id": 64,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 17486,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 124,
+          "created_at": "2026-09-03 02:45:10.553215+00"
+        },
+        {
+          "id": 65,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 19262,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 908,
+          "created_at": "2026-09-03 02:45:41.465996+00"
+        },
+        {
+          "id": 66,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 20354,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 280,
+          "created_at": "2026-09-03 02:45:57.444514+00"
+        },
+        {
+          "id": 67,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 21891,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 144,
+          "created_at": "2026-09-03 02:46:03.493033+00"
+        },
+        {
+          "id": 68,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 22885,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 124,
+          "created_at": "2026-09-03 02:46:09.142807+00"
+        },
+        {
+          "id": 69,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 24905,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 1455,
+          "created_at": "2026-09-03 02:46:57.333056+00"
+        },
+        {
+          "id": 70,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 26560,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 107,
+          "created_at": "2026-09-03 02:47:04.181306+00"
+        },
+        {
+          "id": 71,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 27155,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 120,
+          "created_at": "2026-09-03 02:47:09.568859+00"
+        },
+        {
+          "id": 72,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 28688,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 128,
+          "created_at": "2026-09-03 02:47:14.474933+00"
+        },
+        {
+          "id": 73,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 30058,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 117,
+          "created_at": "2026-09-03 02:47:20.133177+00"
+        },
+        {
+          "id": 74,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 31521,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 2066,
+          "created_at": "2026-09-03 02:48:23.138111+00"
+        },
+        {
+          "id": 75,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 33807,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 107,
+          "created_at": "2026-09-03 02:48:36.330458+00"
+        },
+        {
+          "id": 76,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 34129,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 131,
+          "created_at": "2026-09-03 02:48:53.372874+00"
+        },
+        {
+          "id": 77,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 35687,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 121,
+          "created_at": "2026-09-03 02:49:01.350453+00"
+        },
+        {
+          "id": 78,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 37394,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 132,
+          "created_at": "2026-09-03 02:49:07.219666+00"
+        },
+        {
+          "id": 79,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 38802,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 120,
+          "created_at": "2026-09-03 02:49:12.731161+00"
+        },
+        {
+          "id": 80,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 39673,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 112,
+          "created_at": "2026-09-03 02:49:18.643761+00"
+        },
+        {
+          "id": 81,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 40492,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 2274,
+          "created_at": "2026-09-03 02:50:24.239292+00"
+        },
+        {
+          "id": 82,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 42983,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 109,
+          "created_at": "2026-09-03 02:50:31.850358+00"
+        },
+        {
+          "id": 83,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 43509,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 123,
+          "created_at": "2026-09-03 02:50:39.559307+00"
+        },
+        {
+          "id": 84,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 44955,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 116,
+          "created_at": "2026-09-03 02:50:45.338599+00"
+        },
+        {
+          "id": 85,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 46437,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 125,
+          "created_at": "2026-09-03 02:50:51.455714+00"
+        },
+        {
+          "id": 86,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 47444,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 2516,
+          "created_at": "2026-09-03 02:52:04.722775+00"
+        },
+        {
+          "id": 87,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 50208,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 113,
+          "created_at": "2026-09-03 02:52:11.774697+00"
+        },
+        {
+          "id": 88,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 50559,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 116,
+          "created_at": "2026-09-03 02:52:17.511292+00"
+        },
+        {
+          "id": 89,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 52110,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 128,
+          "created_at": "2026-09-03 02:52:22.930829+00"
+        },
+        {
+          "id": 90,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 53129,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 124,
+          "created_at": "2026-09-03 02:52:29.681855+00"
+        },
+        {
+          "id": 91,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 54087,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 114,
+          "created_at": "2026-09-03 02:52:35.91763+00"
+        },
+        {
+          "id": 92,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 55019,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 3433,
+          "created_at": "2026-09-03 02:54:04.554091+00"
+        },
+        {
+          "id": 93,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 119,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 58732,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 106,
+          "created_at": "2026-09-03 02:54:12.383325+00"
+        },
+        {
+          "id": 94,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 59027,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 115,
+          "created_at": "2026-09-03 02:54:20.659929+00"
+        },
+        {
+          "id": 95,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 60167,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 116,
+          "created_at": "2026-09-03 02:54:26.454175+00"
+        },
+        {
+          "id": 96,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 61029,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 122,
+          "created_at": "2026-09-03 02:54:32.176022+00"
+        },
+        {
+          "id": 97,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 61959,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 114,
+          "created_at": "2026-09-03 02:54:39.554154+00"
+        },
+        {
+          "id": 98,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 62820,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 3056,
+          "created_at": "2026-09-03 02:56:05.844959+00"
+        },
+        {
+          "id": 99,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 66147,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 108,
+          "created_at": "2026-09-03 02:56:13.907029+00"
+        },
+        {
+          "id": 100,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 66428,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 111,
+          "created_at": "2026-09-03 02:56:23.000253+00"
+        },
+        {
+          "id": 101,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 67466,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 120,
+          "created_at": "2026-09-03 02:56:28.906162+00"
+        },
+        {
+          "id": 102,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 68673,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 120,
+          "created_at": "2026-09-03 02:56:34.843866+00"
+        },
+        {
+          "id": 103,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 69937,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 130,
+          "created_at": "2026-09-03 02:56:41.109137+00"
+        },
+        {
+          "id": 104,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 70505,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 3143,
+          "created_at": "2026-09-03 02:58:12.387109+00"
+        },
+        {
+          "id": 105,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 73918,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 106,
+          "created_at": "2026-09-03 02:58:20.235052+00"
+        },
+        {
+          "id": 106,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 74371,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 112,
+          "created_at": "2026-09-03 02:58:26.573475+00"
+        },
+        {
+          "id": 107,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 75799,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 120,
+          "created_at": "2026-09-03 02:58:32.736446+00"
+        },
+        {
+          "id": 108,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 76877,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 107,
+          "created_at": "2026-09-03 02:58:39.336305+00"
+        },
+        {
+          "id": 109,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 77582,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 3878,
+          "created_at": "2026-09-03 03:00:22.382249+00"
+        },
+        {
+          "id": 110,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 81806,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 113,
+          "created_at": "2026-09-03 03:00:31.37873+00"
+        },
+        {
+          "id": 111,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 82598,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 117,
+          "created_at": "2026-09-03 03:00:37.72948+00"
+        },
+        {
+          "id": 112,
+          "group_id": 23,
+          "api_key_id": 24,
+          "account_id": 53,
+          "cache_strategy_id": 32,
+          "cache_strategy_name": "验收-无缓存基线-baseline-104422",
+          "session_id": "10194ac4-1c8e-4aa4-bf4b-bccf01833a88",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 84242,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 1288,
+          "created_at": "2026-09-03 03:01:24.23716+00"
+        }
+      ],
+      "db_validation": {
+        "rows": 52,
+        "first_cache_read": 0,
+        "max_context": 84242,
+        "max_input": 84242,
+        "max_read": 0,
+        "max_creation": 0,
+        "max_output": 3878
+      },
+      "selected_account_ids": [
+        53,
+        119
+      ],
+      "success_rounds": 10,
+      "tool_rounds": 10
+    }
+  ],
+  "finished_at": "2026-09-03T11:01:24+0800"
+}

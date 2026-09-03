@@ -518,10 +518,12 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					}
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
 				}
+				mergeAndCommitCachePlan(c, usage, true)
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
 			}
 			if ev.err != nil {
 				if sawTerminalEvent {
+					mergeAndCommitCachePlan(c, usage, true)
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
 				}
 				if clientDisconnected {
@@ -549,6 +551,11 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					firstTokenMs = &ms
 				}
 				parseSSEUsagePassthrough(data, usage)
+				if plan := cachePlanFromContext(c); plan != nil {
+					if rewritten := rewriteAnthropicPassthroughUsageEvent(data, usage, plan); rewritten != data {
+						line = line[:len(line)-len(data)] + rewritten
+					}
+				}
 			} else {
 				trimmed := strings.TrimSpace(line)
 				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
@@ -612,6 +619,46 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			resetKeepaliveTimer()
 		}
 	}
+}
+
+// rewriteAnthropicPassthroughUsageEvent projects the accumulated usage into
+// the current Anthropic SSE usage frame. Passthrough streams are relayed
+// line-by-line, so the projection must happen before the frame is written;
+// the final plan commit remains deferred until message_stop/terminal EOF.
+func rewriteAnthropicPassthroughUsageEvent(data string, accumulated *ClaudeUsage, plan *cacheEmulationPlan) string {
+	if plan == nil || accumulated == nil || strings.TrimSpace(data) == "" {
+		return data
+	}
+	eventType := gjson.Get(data, "type").String()
+	prefix := ""
+	switch eventType {
+	case "message_start":
+		prefix = "message.usage"
+	case "message_delta":
+		prefix = "usage"
+	default:
+		return data
+	}
+	projected := *accumulated
+	upstreamEvidence := claudeUsageHasCacheEvidence(&projected)
+	projectClaudeUsage(&projected, plan.result(), plan.usagePolicy, plan.cacheKey)
+	if plan.result() != nil && !upstreamEvidence {
+		constrainClaudeUsageTotal(&projected, plan.profile.reportedInputTokens, plan.profile.policy.ReportedInputMinTokens)
+	}
+	updated := []byte(data)
+	for path, value := range map[string]int{
+		prefix + ".input_tokens":                             projected.InputTokens,
+		prefix + ".output_tokens":                            projected.OutputTokens,
+		prefix + ".cache_read_input_tokens":                  projected.CacheReadInputTokens,
+		prefix + ".cache_creation_input_tokens":              projected.CacheCreationInputTokens,
+		prefix + ".cache_creation.ephemeral_5m_input_tokens": projected.CacheCreation5mTokens,
+		prefix + ".cache_creation.ephemeral_1h_input_tokens": projected.CacheCreation1hTokens,
+	} {
+		if next, err := sjson.SetBytes(updated, path, value); err == nil {
+			updated = next
+		}
+	}
+	return string(updated)
 }
 
 func extractAnthropicSSEDataLine(line string) (string, bool) {
@@ -897,11 +944,21 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	}
 
 	usage := parseClaudeUsageFromResponseBody(body)
-	if IsForceCacheBilling(ctx) && usage.InputTokens > 0 {
+	if IsForceCacheBilling(ctx) && usage.InputTokens > 0 &&
+		!hasBoundCacheStrategy(cacheGroupFromContext(c, account)) {
 		body, err = classifyAnthropicResponseInputAsCacheRead(body, usage)
 		if err != nil {
 			return nil, err
 		}
+	}
+	// Apply the group-bound cache strategy to passthrough responses only when
+	// the request actually produced a plan. Unbound groups must preserve the
+	// upstream JSON byte-for-byte (apart from the legacy ForceCacheBilling
+	// classification above), otherwise we would add zero-valued cache fields
+	// to clients that did not opt into a cache strategy.
+	if cachePlanFromContext(c) != nil {
+		mergeAndCommitCachePlan(c, usage, true)
+		body = rewriteClaudeUsageJSON(body, usage)
 	}
 
 	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)

@@ -130,24 +130,16 @@ const (
 	FieldModelsListConfig = "models_list_config"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldCacheStrategyID holds the string denoting the cache_strategy_id field in the database.
+	FieldCacheStrategyID = "cache_strategy_id"
 	// FieldMaxReasoningEffort holds the string denoting the max_reasoning_effort field in the database.
 	FieldMaxReasoningEffort = "max_reasoning_effort"
 	// FieldReasoningEffortMappings holds the string denoting the reasoning_effort_mappings field in the database.
 	FieldReasoningEffortMappings = "reasoning_effort_mappings"
-	// FieldKiroCacheEmulationEnabled holds the string denoting the kiro_cache_emulation_enabled field in the database.
-	FieldKiroCacheEmulationEnabled = "kiro_cache_emulation_enabled"
 	// FieldKiroAutoStickyEnabled holds the string denoting the kiro_auto_sticky_enabled field in the database.
 	FieldKiroAutoStickyEnabled = "kiro_auto_sticky_enabled"
 	// FieldKiroStickySessionTTLSeconds holds the string denoting the kiro_sticky_session_ttl_seconds field in the database.
 	FieldKiroStickySessionTTLSeconds = "kiro_sticky_session_ttl_seconds"
-	// FieldKiroCacheEmulationRatio holds the string denoting the kiro_cache_emulation_ratio field in the database.
-	FieldKiroCacheEmulationRatio = "kiro_cache_emulation_ratio"
-	// FieldKiroCacheEmulationMode holds the string denoting the kiro_cache_emulation_mode field in the database.
-	FieldKiroCacheEmulationMode = "kiro_cache_emulation_mode"
-	// FieldKiroCacheCreationEmulationRatio holds the string denoting the kiro_cache_creation_emulation_ratio field in the database.
-	FieldKiroCacheCreationEmulationRatio = "kiro_cache_creation_emulation_ratio"
-	// FieldKiroCacheReadEmulationRatio holds the string denoting the kiro_cache_read_emulation_ratio field in the database.
-	FieldKiroCacheReadEmulationRatio = "kiro_cache_read_emulation_ratio"
 	// FieldKiroEndpointMode holds the string denoting the kiro_endpoint_mode field in the database.
 	FieldKiroEndpointMode = "kiro_endpoint_mode"
 	// FieldProfitControlEnabled holds the string denoting the profit_control_enabled field in the database.
@@ -288,15 +280,11 @@ var Columns = []string{
 	FieldMessagesDispatchModelConfig,
 	FieldModelsListConfig,
 	FieldRpmLimit,
+	FieldCacheStrategyID,
 	FieldMaxReasoningEffort,
 	FieldReasoningEffortMappings,
-	FieldKiroCacheEmulationEnabled,
 	FieldKiroAutoStickyEnabled,
 	FieldKiroStickySessionTTLSeconds,
-	FieldKiroCacheEmulationRatio,
-	FieldKiroCacheEmulationMode,
-	FieldKiroCacheCreationEmulationRatio,
-	FieldKiroCacheReadEmulationRatio,
 	FieldKiroEndpointMode,
 	FieldProfitControlEnabled,
 	FieldProfitMinMargin,
@@ -430,22 +418,10 @@ var (
 	MaxReasoningEffortValidator func(string) error
 	// DefaultReasoningEffortMappings holds the default value on creation for the "reasoning_effort_mappings" field.
 	DefaultReasoningEffortMappings []domain.ReasoningEffortMapping
-	// DefaultKiroCacheEmulationEnabled holds the default value on creation for the "kiro_cache_emulation_enabled" field.
-	DefaultKiroCacheEmulationEnabled bool
 	// DefaultKiroAutoStickyEnabled holds the default value on creation for the "kiro_auto_sticky_enabled" field.
 	DefaultKiroAutoStickyEnabled bool
 	// DefaultKiroStickySessionTTLSeconds holds the default value on creation for the "kiro_sticky_session_ttl_seconds" field.
 	DefaultKiroStickySessionTTLSeconds int
-	// DefaultKiroCacheEmulationRatio holds the default value on creation for the "kiro_cache_emulation_ratio" field.
-	DefaultKiroCacheEmulationRatio float64
-	// DefaultKiroCacheEmulationMode holds the default value on creation for the "kiro_cache_emulation_mode" field.
-	DefaultKiroCacheEmulationMode string
-	// KiroCacheEmulationModeValidator is a validator for the "kiro_cache_emulation_mode" field. It is called by the builders before save.
-	KiroCacheEmulationModeValidator func(string) error
-	// DefaultKiroCacheCreationEmulationRatio holds the default value on creation for the "kiro_cache_creation_emulation_ratio" field.
-	DefaultKiroCacheCreationEmulationRatio float64
-	// DefaultKiroCacheReadEmulationRatio holds the default value on creation for the "kiro_cache_read_emulation_ratio" field.
-	DefaultKiroCacheReadEmulationRatio float64
 	// DefaultKiroEndpointMode holds the default value on creation for the "kiro_endpoint_mode" field.
 	DefaultKiroEndpointMode string
 	// KiroEndpointModeValidator is a validator for the "kiro_endpoint_mode" field. It is called by the builders before save.
@@ -721,14 +697,14 @@ func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
 }
 
+// ByCacheStrategyID orders the results by the cache_strategy_id field.
+func ByCacheStrategyID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheStrategyID, opts...).ToFunc()
+}
+
 // ByMaxReasoningEffort orders the results by the max_reasoning_effort field.
 func ByMaxReasoningEffort(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMaxReasoningEffort, opts...).ToFunc()
-}
-
-// ByKiroCacheEmulationEnabled orders the results by the kiro_cache_emulation_enabled field.
-func ByKiroCacheEmulationEnabled(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldKiroCacheEmulationEnabled, opts...).ToFunc()
 }
 
 // ByKiroAutoStickyEnabled orders the results by the kiro_auto_sticky_enabled field.
@@ -739,26 +715,6 @@ func ByKiroAutoStickyEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByKiroStickySessionTTLSeconds orders the results by the kiro_sticky_session_ttl_seconds field.
 func ByKiroStickySessionTTLSeconds(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldKiroStickySessionTTLSeconds, opts...).ToFunc()
-}
-
-// ByKiroCacheEmulationRatio orders the results by the kiro_cache_emulation_ratio field.
-func ByKiroCacheEmulationRatio(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldKiroCacheEmulationRatio, opts...).ToFunc()
-}
-
-// ByKiroCacheEmulationMode orders the results by the kiro_cache_emulation_mode field.
-func ByKiroCacheEmulationMode(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldKiroCacheEmulationMode, opts...).ToFunc()
-}
-
-// ByKiroCacheCreationEmulationRatio orders the results by the kiro_cache_creation_emulation_ratio field.
-func ByKiroCacheCreationEmulationRatio(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldKiroCacheCreationEmulationRatio, opts...).ToFunc()
-}
-
-// ByKiroCacheReadEmulationRatio orders the results by the kiro_cache_read_emulation_ratio field.
-func ByKiroCacheReadEmulationRatio(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldKiroCacheReadEmulationRatio, opts...).ToFunc()
 }
 
 // ByKiroEndpointMode orders the results by the kiro_endpoint_mode field.

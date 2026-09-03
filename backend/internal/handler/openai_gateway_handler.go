@@ -314,6 +314,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
+	service.SetCacheGroupContext(c, apiKey.Group)
 
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
@@ -1032,6 +1033,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		h.anthropicErrorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
+	service.SetCacheGroupContext(c, apiKey.Group)
 
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {

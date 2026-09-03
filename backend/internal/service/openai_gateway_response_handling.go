@@ -406,6 +406,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		if sawFailedEvent {
 			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 		}
+		if sawTerminalEvent && !clientDisconnected {
+			mergeAndCommitOpenAICachePlan(c, usage, true)
+		}
 		logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, terminalEventType, clientDisconnected)
 		return resultWithUsage(), nil
 	}
@@ -502,6 +505,17 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				terminalEventType = eventType
 				if strings.TrimSpace(data) == "[DONE]" {
 					terminalEventType = "[DONE]"
+				}
+			}
+			if eventType == "response.completed" || eventType == "response.done" {
+				// Parse terminal usage before it is relayed so a group policy can
+				// fill missing cache buckets and keep the wire usage consistent.
+				s.parseSSEUsageBytesWithType(dataBytes, eventType, usage)
+				mergeAndCommitOpenAICachePlan(c, usage, false)
+				if usage.CacheReadInputTokens > 0 || usage.CacheCreationInputTokens > 0 {
+					dataBytes = rewriteOpenAIResponsesUsageJSON(dataBytes, usage)
+					data = string(dataBytes)
+					line = "data: " + data
 				}
 			}
 			if responseID == "" {
@@ -1620,6 +1634,8 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		return nil, fmt.Errorf("parse response: invalid json response")
 	}
 	usage := &usageValue
+	mergeAndCommitOpenAICachePlan(c, usage, true)
+	body = rewriteOpenAIResponsesUsageJSON(body, usage)
 	logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, "json", false)
 
 	// Replace model in response if needed
@@ -1706,6 +1722,8 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		if parsedUsage, parsed := extractOpenAIUsageFromJSONBytes(finalResponse); parsed {
 			*usage = parsedUsage
 		}
+		mergeAndCommitOpenAICachePlan(c, usage, true)
+		finalResponse = rewriteOpenAIResponsesUsageJSON(finalResponse, usage)
 		// When the terminal event has an empty output array, reconstruct
 		// output from accumulated delta events so the client gets full content.
 		// gjson Array() returns empty slice for null, missing, or empty arrays.

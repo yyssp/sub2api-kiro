@@ -1,0 +1,64 @@
+{
+  "service": "http://127.0.0.1:48780",
+  "group_id": 7,
+  "api_key_id": 16,
+  "model": "claude-sonnet-4-5-20250929",
+  "rounds_per_strategy": 10,
+  "total_requests": 40,
+  "http_200": 40,
+  "strategies": {
+    "strict_client": {
+      "rounds": 10,
+      "input_range": [30707, 36098],
+      "read_range": [0, 0],
+      "creation_range": [0, 0],
+      "output_range": [465, 512],
+      "first_read": 0,
+      "creation_breakdown_conserved": true,
+      "response_db_match": true,
+      "configured_bounds": true,
+      "within_context_limit": true,
+      "final": true
+    },
+    "shared_session": {
+      "rounds": 10,
+      "input_range": [29049, 34044],
+      "read_range": [0, 2119],
+      "creation_range": [0, 1419],
+      "output_range": [512, 512],
+      "first_read": 0,
+      "creation_breakdown_conserved": true,
+      "response_db_match": true,
+      "configured_bounds": true,
+      "within_context_limit": true,
+      "final": true
+    },
+    "conservative_usage": {
+      "rounds": 10,
+      "input_range": [794, 1207],
+      "read_range": [0, 2400],
+      "creation_range": [288, 1600],
+      "output_range": [128, 128],
+      "first_read": 0,
+      "creation_breakdown_conserved": true,
+      "response_db_match": true,
+      "configured_bounds": true,
+      "within_context_limit": true,
+      "final": true
+    },
+    "long_context_guard": {
+      "rounds": 10,
+      "input_range": [27514, 33628],
+      "read_range": [0, 5849],
+      "creation_range": [0, 5766],
+      "output_range": [512, 512],
+      "first_read": 0,
+      "creation_breakdown_conserved": true,
+      "response_db_match": true,
+      "configured_bounds": true,
+      "within_context_limit": true,
+      "final": true
+    }
+  },
+  "all_final": true
+}

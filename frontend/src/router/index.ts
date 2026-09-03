@@ -462,6 +462,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/cache-strategies',
+    name: 'AdminCacheStrategies',
+    component: () => import('@/views/admin/CacheStrategiesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Cache Strategies',
+      titleKey: 'admin.cacheStrategies.title',
+      descriptionKey: 'admin.cacheStrategies.description'
+    }
+  },
+  {
     path: '/admin/channels',
     redirect: '/admin/channels/pricing'
   },

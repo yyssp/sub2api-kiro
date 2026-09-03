@@ -215,7 +215,7 @@ func (s *GatewayService) handleWebSearchEmulation(
 	}
 	body := parsed.Body.Bytes()
 	inputTokens := estimateKiroInputTokens(ctx, body)
-	cacheUsage := s.buildKiroCacheEmulationUsage(ctx, account, parsed.Group, body, model, inputTokens)
+	cacheUsage := s.buildCacheEmulationUsage(ctx, account, parsed.Group, body, model, inputTokens)
 
 	if parsed.Stream {
 		return writeWebSearchStreamResponse(c, query, resp, model, startTime, inputTokens, cacheUsage)
@@ -249,7 +249,7 @@ func resolveAccountProxyURL(account *Account) string {
 // --- SSE streaming response ---
 
 func writeWebSearchStreamResponse(
-	c *gin.Context, query string, resp *websearch.SearchResponse, model string, startTime time.Time, inputTokens int, cacheUsage *kiroCacheEmulationUsage,
+	c *gin.Context, query string, resp *websearch.SearchResponse, model string, startTime time.Time, inputTokens int, cacheUsage *cacheEmulationUsage,
 ) (*ForwardResult, error) {
 	msgID := webSearchMsgIDPrefix + uuid.New().String()
 	toolUseID := webSearchToolUseIDPrefix + uuid.New().String()[:16]
@@ -387,7 +387,7 @@ func flushSSEJSON(w http.ResponseWriter, event string, data any) error {
 // --- Non-streaming JSON response ---
 
 func writeWebSearchNonStreamResponse(
-	c *gin.Context, query string, resp *websearch.SearchResponse, model string, startTime time.Time, inputTokens int, cacheUsage *kiroCacheEmulationUsage,
+	c *gin.Context, query string, resp *websearch.SearchResponse, model string, startTime time.Time, inputTokens int, cacheUsage *cacheEmulationUsage,
 ) (*ForwardResult, error) {
 	msgID := webSearchMsgIDPrefix + uuid.New().String()
 	toolUseID := webSearchToolUseIDPrefix + uuid.New().String()[:16]
@@ -425,7 +425,7 @@ func writeWebSearchNonStreamResponse(
 	return &ForwardResult{Model: model, Duration: time.Since(startTime), Usage: usage}, nil
 }
 
-func buildWebSearchClaudeUsage(inputTokens, outputTokens int, cacheUsage *kiroCacheEmulationUsage) ClaudeUsage {
+func buildWebSearchClaudeUsage(inputTokens, outputTokens int, cacheUsage *cacheEmulationUsage) ClaudeUsage {
 	usage := ClaudeUsage{InputTokens: inputTokens, OutputTokens: outputTokens}
 	if cacheUsage == nil {
 		return usage

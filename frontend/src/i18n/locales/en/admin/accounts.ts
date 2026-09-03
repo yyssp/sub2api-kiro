@@ -1197,7 +1197,7 @@ export default {
           authModeTitle: 'Kiro Authorization Method',
           deviceRegistrationHint: 'Optional. Only needed when the token file does not include full client details and only has `clientIdHash`.',
           deviceRegistrationLabel: 'Device Registration JSON',
-          deviceRegistrationRequired: 'Device Registration JSON is required for BuilderId / Enterprise accounts.',
+          deviceRegistrationRequired: 'Device Registration JSON is required because this token only contains clientIdHash. Provide its matching clientId and clientSecret.',
           extIdpAuthCodeDescIdp: 'Copy the full link after M365 sign-in (looks like http://localhost:3128/oauth/callback?code=...&state=...), paste it below, then click "Finish".',
           extIdpAuthCodeDescPortal: 'Copy the full redirected link from the address bar (looks like http://localhost:49153/signin/callback?login_option=external_idp...), paste it below, then click "Next".',
           extIdpAuthCodeHintIdp: 'The code/state will be parsed from the link automatically to create the account.',
@@ -1231,7 +1231,6 @@ export default {
           idcTitle: 'AWS Builder ID / IDC',
           importAndUpdate: 'Import and Update',
           importDialogTitle: 'Import Kiro Token',
-          importProviderLabel: 'Account source',
           importSubtitle: 'Use this if you already signed in via Kiro IDE',
           importTitle: 'Import from Kiro IDE',
           importTokenFile: 'Import Token File',
@@ -1239,7 +1238,6 @@ export default {
           oauthSubtitle: 'Browser-based auth with Google or GitHub',
           oauthTitle: 'Social OAuth',
           openUrlDesc: 'Open the authorization URL in a new tab. The Kiro sign-in page will open at app.kiro.dev; choose Google or GitHub there. After approval, the browser may redirect to http://localhost:49153/oauth/callback and show an unreachable-page error; that is expected.',
-          providerMismatch: 'Selected source ({selected}) does not match the provider ({actual}) in the Token JSON. Please verify.',
           regionLabel: 'Region',
           regionPlaceholder: 'us-east-1',
           socialSubtitle: 'Google / GitHub sign-in',
@@ -1249,10 +1247,14 @@ export default {
           step2OpenUrl: 'Open the URL in your browser and complete authorization',
           step3EnterCode: 'Enter Callback URL or Code',
           title: 'Kiro Authorization',
-          tokenJsonHint: 'Sign in through Kiro IDE first, then paste the contents of `~/.aws/sso/cache/kiro-auth-token.json` here.',
+          importedAccountName: 'Kiro Account',
+          oauthOnlyReauthorization: 'Reauthorization only accepts OAuth credentials. Update a Kiro API Key separately from the account edit page.',
+          tokenJsonHint: 'Only a Kiro IDE credential object or credential array is accepted. Each entry must include Kiro runtime metadata such as apiRegion, machineId, or profileArn; generic OAuth or API Key JSON is rejected. The importer creates OAuth or API Key accounts from authMethod, and provider remains optional source metadata.',
           tokenJsonInvalid: 'Kiro Token JSON is invalid and cannot be parsed.',
           tokenJsonLabel: 'Kiro Token JSON',
-          tokenJsonRequired: 'Please provide the Kiro Token JSON.'
+          tokenJsonPlaceholder: '{"accessToken":"...","refreshToken":"...","authMethod":"social","apiRegion":"us-east-1"}\nor\n{"authMethod":"api_key","kiroApiKey":"ksk_...","machineId":"..."}',
+          tokenJsonRequired: 'Please provide the Kiro Token JSON.',
+          singleTokenRequired: 'Reauthorization updates one account at a time. Paste exactly one token object instead of a token array.'
         },
         // Gemini specific
 	        gemini: {

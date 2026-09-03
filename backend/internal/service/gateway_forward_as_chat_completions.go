@@ -94,6 +94,15 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		return nil, fmt.Errorf("marshal anthropic request: %w", err)
 	}
 
+	var group *Group
+	if parsed != nil {
+		group = parsed.Group
+	}
+	cachePlan := prepareCachePlanForContext(
+		ctx, c, account, group, body, mappedModel, "openai_chat_completions",
+		estimateOpenAIChatCompletionsInputTokens(ctx, body),
+	)
+
 	// 6. Apply Claude Code mimicry for OAuth accounts.
 	// Chat Completions 协议进来的请求永远不是 Claude Code 客户端，所以对 OAuth 账号
 	// 必须完整执行 /v1/messages 主路径上的伪装链路（system 重写 + normalize + metadata 注入），
@@ -112,11 +121,6 @@ func (s *GatewayService) ForwardAsChatCompletions(
 
 	var resp *http.Response
 	if isKiroDirectModeAccount(account) {
-		var group *Group
-		if parsed != nil {
-			group = parsed.Group
-		}
-		cachePlan := s.prepareKiroChatCompletionsCacheEmulationUsage(ctx, account, group, body, mappedModel, estimateKiroInputTokens(ctx, anthropicBody))
 		resp, _, err = s.openKiroAnthropicStreamResponse(ctx, account, parsed, anthropicBody, mappedModel, originalModel, c.Request.Header, group, cachePlan)
 		if err != nil {
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
@@ -272,6 +276,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
+	sawTerminalEvent := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -306,9 +311,15 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 				mergeAnthropicUsage(&usage, *event.Usage)
 			}
 			mergeKiroCreditsFromAnthropicPayload(&usage, payload)
-			if event.Delta != nil && event.Delta.StopReason != "" && finalResp != nil {
-				finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
+			if event.Delta != nil && event.Delta.StopReason != "" {
+				sawTerminalEvent = true
+				if finalResp != nil {
+					finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
+				}
 			}
+		}
+		if event.Type == "message_stop" {
+			sawTerminalEvent = true
 		}
 		if event.Type == "content_block_start" && event.ContentBlock != nil && finalResp != nil {
 			finalResp.Content = append(finalResp.Content, *event.ContentBlock)
@@ -341,9 +352,20 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
 		return nil, fmt.Errorf("upstream stream ended without response")
 	}
+	if !sawTerminalEvent {
+		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without terminal event")
+		return nil, fmt.Errorf("stream usage incomplete: missing terminal event")
+	}
 
 	// Update usage from accumulated delta. 无条件赋值：纯缓存命中的响应
 	// （input/output 均为 0 但 cache read/write 非 0）不能被整体丢弃。
+	finalResp.Usage = apicompat.AnthropicUsage{
+		InputTokens:              usage.InputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+		CacheReadInputTokens:     usage.CacheReadInputTokens,
+	}
+	mergeAndCommitCachePlan(c, &usage, true)
 	finalResp.Usage = apicompat.AnthropicUsage{
 		InputTokens:              usage.InputTokens,
 		OutputTokens:             usage.OutputTokens,
@@ -416,6 +438,8 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	sawTerminalEvent := false
+	clientDisconnected := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -446,6 +470,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		// c 可能持有请求侧注入的 ToolNameRewrite；无则仅做静态前缀还原。
 		out := string(reverseToolNamesIfPresent(c, []byte(sse)))
 		if _, err := fmt.Fprint(c.Writer, out); err != nil {
+			clientDisconnected = true
 			return true // client disconnected
 		}
 		return false
@@ -461,6 +486,15 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		// Extract usage from message_delta
 		if event.Type == "message_delta" && event.Usage != nil {
 			mergeAnthropicUsage(&usage, *event.Usage)
+		}
+		if event.Type == "message_stop" ||
+			(event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason != "") {
+			sawTerminalEvent = true
+			mergeAndCommitCachePlan(c, &usage, false)
+			anthState.InputTokens = usage.InputTokens
+			anthState.CacheReadInputTokens = usage.CacheReadInputTokens
+			anthState.CacheCreationInputTokens = usage.CacheCreationInputTokens
+			anthState.OutputTokens = usage.OutputTokens
 		}
 		// Also capture usage from message_start (carries cache fields)
 		if event.Type == "message_start" && event.Message != nil {
@@ -514,6 +548,12 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 				zap.String("request_id", requestID),
 			)
 		}
+	}
+	if !sawTerminalEvent {
+		return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
+	}
+	if !clientDisconnected {
+		commitCachePlan(c)
 	}
 
 	// Finalize both state machines

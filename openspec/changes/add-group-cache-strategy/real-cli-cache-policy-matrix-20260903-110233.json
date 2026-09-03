@@ -1,0 +1,3492 @@
+{
+  "started_at": "2026-09-03T11:02:33+0800",
+  "base_url": "http://127.0.0.1:48780",
+  "model": "claude-sonnet-4-5-20250929",
+  "rounds_required": 10,
+  "fixture_root": "/tmp/sub2api-cache-matrix-20260903-110233",
+  "strategies": [
+    {
+      "name": "验收-无缓存基线-full-110233",
+      "profile": "验收-无缓存基线",
+      "strategy_id": 33,
+      "group_id": 24,
+      "api_key_id": 25,
+      "api_key": "sk-matrix--full-110233-497c11cb00d741eebc1b3510a7685784",
+      "strategy_config": {
+        "kind": "disabled",
+        "ratio_mode": "uniform",
+        "coverage_ratio": 0,
+        "usage_ratio": 0,
+        "read_ratio": 0,
+        "creation_ratio": 0,
+        "cache_system": false,
+        "cache_tools": false,
+        "cache_history": false,
+        "cache_tool_results": false,
+        "cache_current_user_stable_prefix": false,
+        "current_user_stable_prefix_max_tokens": 0,
+        "breakpoint_mode": "hybrid",
+        "allow_derived_session": false,
+        "dynamic_content_mode": "exclude",
+        "scope_mode": "group_account_session",
+        "max_coverage_tokens": 0,
+        "max_new_creation_tokens_per_request": 0,
+        "incremental_create_enabled": false,
+        "min_cacheable_tokens": 1024,
+        "reported_input_min_tokens": 0,
+        "reported_input_max_tokens": 0,
+        "token_scale": 1,
+        "scale_min_input_tokens": 20000,
+        "max_simulated_input_tokens": 0,
+        "default_ttl_seconds": 300,
+        "hour_ttl_seconds": 3600,
+        "max_entries_per_scope": 128,
+        "max_entries_global": 10000,
+        "estimated_bytes_limit": 67108864,
+        "expire_after_idle_seconds": 0,
+        "cap_jitter_min_tokens": 0,
+        "cap_jitter_max_tokens": 0,
+        "preserve_upstream_cache_usage": false,
+        "creation_control": {
+          "enabled": false,
+          "min_creation_delta_tokens": 0,
+          "min_successful_requests_between": 0,
+          "min_creation_interval_seconds": 0,
+          "max_creation_tokens_per_event": 0,
+          "creation_budget_window_seconds": 0,
+          "max_creation_tokens_per_window": 0
+        },
+        "usage": {
+          "enabled": false,
+          "preserve_upstream_cache_usage": false,
+          "input": {
+            "mode": "raw",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "output": {
+            "mode": "raw",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "cache_read": {
+            "mode": "preserve",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "cache_creation": {
+            "mode": "preserve",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "final_cache_read_max_tokens": 0,
+          "final_cache_creation_max_tokens": 0,
+          "output_uplift_min_tokens": 0,
+          "output_uplift_percent": 0,
+          "final_output_max_tokens": 0
+        }
+      },
+      "source_group_id": 7,
+      "bound_kiro_accounts": 220,
+      "rounds": [
+        {
+          "round": 1,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 48081,
+          "usage": {
+            "input": 47922,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 1366
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Read",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_7XCXoBiubB01jSb6dklGx6",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_sLLq4k70sAZ8MFz3MmVs2X",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Y8hLsIIR5lv8Cpsd7uLMv9",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_I38Taap7Q5C7RE9pnswaeQ",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_H1wu42EYn5yhSNtSreRSkl",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_d3QsF5GlQn1ZkdbyFQco0E",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_9BBt2D5s7l2whSf5e49NER",
+              "input_keys": [
+                "file_path"
+              ]
+            }
+          ],
+          "tool_call_count": 7,
+          "assistant_events": 12,
+          "result_chars": 2298,
+          "errors": []
+        },
+        {
+          "round": 2,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 58761,
+          "usage": {
+            "input": 137441,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 1543
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_8ZqWvvbEWSsxZ7zDiSbP6F",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_zUYKskBJexK1pIx2FA1emx",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_AgVBABO3e83mDjaKEGX56Z",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_5zWn85nS4kEGkbk31RUcwC",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_4OHSTlAabAK7FljGLWDDkc",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_lbll0zfzpwrOhIu7z4IO9R",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_TYkYb5KaEEO06YG2tXOKz0",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_NE9ELFaZwuqf4WkQIDuGFK",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_lS5e4QUrAgkHIpOViWwmhV",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 9,
+          "assistant_events": 12,
+          "result_chars": 3979,
+          "errors": []
+        },
+        {
+          "round": 3,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 71756,
+          "usage": {
+            "input": 153186,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 1881
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_K8tr0Z8aTv0newOCsA2mWN",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_eTO4wSZTM23JruocxkPjwV",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_bfdjxXr2yZI93hNPKwWRjl",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_ngRHhy9eM7G35u6wiQ0CA5",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_E98K97UKCVS3r4WgYgwh8r",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_B7Uxe3Iiq4yCOTRDJtOmYt",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Ob9aNbVXz2VvIQb2uIv86A",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_EwN1CKEzBLKtV4rr4xqAep",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_XEPulLUsHAek8UKmSmmtHV",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_eZ5bQURFRERJf0Kol5x1zh",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_psDgGy3zluu5nR4rVOZwA6",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_YYdK0Z9DjHeX4bO9pQQePF",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            }
+          ],
+          "tool_call_count": 12,
+          "assistant_events": 13,
+          "result_chars": 5770,
+          "errors": []
+        },
+        {
+          "round": 4,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 84703,
+          "usage": {
+            "input": 170822,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 2380
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_HE6SWsXFXIqWb0PmUqSjdb",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_HVL5BHz6VkOD7rnT3fizVx",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_lLlcPkWyC8S6xdUktNfKRi",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_1tgmBaZMTcfciLeE3rimfz",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_1Y62P4AXLkxrRAdGFcIkKE",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_77VQnesCTggxSBr4k55lNZ",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_LSq8xPkVlH8uzf3Tb3jctS",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_hL7lTPSrJfRAPfT8HLHJD8",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_lEk7TzkEsh8mGug6MnRfK0",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_ChsljyAzEqN3LaN9qunutM",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_hRG6HHZ1jR5N9mkFDUME0M",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_2sJ0G7wMcir6GqdwtDMBXX",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 12,
+          "assistant_events": 13,
+          "result_chars": 7771,
+          "errors": []
+        },
+        {
+          "round": 5,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 118334,
+          "usage": {
+            "input": 395250,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 3237
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_g7j5B3IKnO2RDBRlSHe6ou",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Ma5YMaT8NJEQpbHNCWEw3Q",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_EykuQDrkZvlVZgnzxtZ6kS",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_77u1kAEJJNFATWluKirxpt",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_iKpleYSfE2dQzLlwan6aQ1",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_ujMBMUA5ACtIK3YvLc2wwI",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_GWfRUXpG48I3l9Y8OHrXOa",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_KMGa5ailRJD9lXGGjA1zxH",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_fqwLu89bIflhFLek6BzxCn",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_Sk0RteZGeuKpVK9F7WJGPq",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_8tkhVFT5MTy6z1z5L3F7vE",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_0okgbDiWCS57wdWHdtt9ll",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_md9XfsKrixvTPNmY1IK0WH",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_7jOoUH67LoipPqszH6IQIM",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_eR8ASYBYzlePCwDEy4qUi4",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_YwMco1SyUfdRjm0MZvgrWG",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_q2FHoRw0jJpD5dwDJt9ZqK",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_VdxTr3rYE3nSIrgpkcUad2",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_IKzh5Svffvt7rz0NvrBnXE",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_0iHY2AAWqHBvdfEHCP1z11",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_VeKI5kbX1fK0R43oFdMtQi",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_HvkYAZveU7FWnFAE3h2U9x",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_GzGvRLb5TjPrG0VwNp0pQc",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_BDXCfqR2IfWA1F7iKpH4TX",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_pBlMDMO9zj3QAkD8lOJok4",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_xSPvz6jc8ujFsqCaizBD0k",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_QJZEEzBMNDA5rO5VWjERm7",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_Rw7XbG6ww5BwiTfLVZ6BYM",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            }
+          ],
+          "tool_call_count": 28,
+          "assistant_events": 29,
+          "result_chars": 8460,
+          "errors": []
+        },
+        {
+          "round": 6,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 109847,
+          "usage": {
+            "input": 304525,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 3004
+          },
+          "tools": [
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Bash",
+              "id": "tooluse_LfpvlCbfN2qq0wEcwrEXKJ",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_KpgN83b6g3u5SNuFku5yJG",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_q9bT4AFy2Z10R3JkTq6Peq",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_frcKwyqu0tfxKpsVh6taCn",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Jt7YPOuEGlzyijoIeWY32D",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_kkGneMFY8jgH4WiyZys9xj",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_M3MEk4l3AsXYFIAULjugHo",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_UN1mAtTfgqVFTLGS9VcVRE",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_9FeNSXwABwOsM1nXYZdWwq",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_KYgz3jXlbnYFrmBdciN8Lm",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_dip344re1HyOLbvl6Y93pz",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_0XBFOPlNVTAwFzvFYxd8fQ",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_flARMMJH4d1wMC7Hpkdjgd",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_wrWXbCCWz15rk6tZApj2Qv",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_zinCp2fNyAQNGivInmQvbT",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_4lbiUPMq19uPCZHZ3e1l3v",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_2zmsd20eDATGVtcBW2IfnJ",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_swwdRQKPUhJXxqyVOkHNLF",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 18,
+          "assistant_events": 19,
+          "result_chars": 9274,
+          "errors": []
+        },
+        {
+          "round": 7,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 101984,
+          "usage": {
+            "input": 251297,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 2888
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_7Qwq93Igl1DDQtr8eY22OJ",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_R0BJtft2c2rNWWx1cIxO8g",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_uP4WpdTe6ZEC3Ll5UNMCXk",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_XZr7GLOWCmQXtbsH5vibnM",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_viXBg61CWFO6ZDjAFD0hPZ",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_eZCEpML2v8LvfAviWqX57i",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_EkQ69ZklVWCD3SSFL2VWzo",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_NSzZQocJxyLWSLzkVg0Uvh",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_cBvIKTVvnJ2vYBZiNGXvcg",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Dtrwh8ahGKCjt2kDCntE3d",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_unXFFzgvjD4mB8GrQXowgO",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_ulrGsjJLaFUczOU0wLKqGR",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_yPpOu2DxcJfwnv6fdIJFni",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 13,
+          "assistant_events": 14,
+          "result_chars": 9652,
+          "errors": []
+        },
+        {
+          "round": 8,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 109391,
+          "usage": {
+            "input": 273400,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 2850
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_LYWKC9txZgJIqjcx658kwL",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_0a1N3sQ1MUXRF9l4CJWdye",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_zR092AUPKL9LuNnSMbp8Ca",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Y21EGIRkop2O4pITlrUP82",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Ltm5GlALJD1iVkFOIjRe1P",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_53IFH4bgo96chCbUNuU1DN",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Ghas3KjJf6VY3EczxI4IBM",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_IxMnEv6UHmOLjrs44uuHcX",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_CFdrM1ZaC44ipnlQcqGl8W",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_9jhAPBmfd7J4ONH9Dgmf3Z",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_IWSyDm2golK9ojJBacfMoB",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_u0YlFk06XlQMCEcgIYib4U",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_f4y17FqkhEIZJDPU6feTEG",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 13,
+          "assistant_events": 14,
+          "result_chars": 9573,
+          "errors": []
+        },
+        {
+          "round": 9,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 116303,
+          "usage": {
+            "input": 294077,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 3135
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_d0iGwmvBXXLfwuTAZhK14S",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_o0nqhBFt8c1E1DJfM6jHMl",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_2TeeD5Wjz56O94I2Gn8KjM",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_5qkQeI5LorELUtGpfAcL2t",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_eKwgrY5cY4GDlcFZDjsjZ3",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_H7VUfP2kkUZ6tfS52LyoRO",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_kGSOmr2u34t4t5psJZ8LBn",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_5Ffk6NdGl855hg7HmJgcaB",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_b6tYk3JSX7lrG8z4k1STqf",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_g33FqdSqHj9vSK6muP8Azj",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_7OLvNLs1YkWJNnXOXMaF61",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_G9U2SzIZY8LSjxdRXlpGRX",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_z2mjbuZQMZCXL0Uv1tcqQP",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 13,
+          "assistant_events": 14,
+          "result_chars": 10677,
+          "errors": []
+        },
+        {
+          "round": 10,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 120418,
+          "usage": {
+            "input": 311891,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 3157
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_jHdF0QP9AfZWKSmfEYrf1a",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_NMbmSPMCVcqLq01fgij3df",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_OAWgqpIgPpw3XDoggrggwb",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_9vCALJnMHD6PYgR4VYaXwv",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_zAGzzSuOhPDTiRqaVUSwxF",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_huowM8gEJ8IXAvxzN6Y49J",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_GSVbtjIczT2fEVzXNTGlni",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_DESrl72ZV1zCMuwmgGphAf",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_hd2eRT9uzy6yXOI3oZdI8K",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_oFLsi6qpHl6E9zbx2x9cia",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_UYf2wxjNdjSsqEo7lbpyz0",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_6U3jff21lkTPlTiCzyTvEY",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_gGRox6glcOzAAKSC7nO5HU",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 13,
+          "assistant_events": 14,
+          "result_chars": 10727,
+          "errors": []
+        }
+      ],
+      "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+      "db_summary": {
+        "rows": 34,
+        "input_sum": 2339811,
+        "read_sum": 0,
+        "creation_sum": 0,
+        "output_sum": 25441,
+        "max_context": 105512,
+        "negative_bucket_rows": 0,
+        "creation_breakdown_mismatch_rows": 0
+      },
+      "usage_rows": [
+        {
+          "id": 113,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 1210,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 477,
+          "created_at": "2026-09-03 03:02:45.901792+00"
+        },
+        {
+          "id": 114,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 3635,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 315,
+          "created_at": "2026-09-03 03:02:54.437591+00"
+        },
+        {
+          "id": 115,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 43077,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 574,
+          "created_at": "2026-09-03 03:03:22.873029+00"
+        },
+        {
+          "id": 116,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 43806,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 391,
+          "created_at": "2026-09-03 03:03:36.454403+00"
+        },
+        {
+          "id": 117,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 45648,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 158,
+          "created_at": "2026-09-03 03:03:42.665962+00"
+        },
+        {
+          "id": 118,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 47987,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 994,
+          "created_at": "2026-09-03 03:04:22.075461+00"
+        },
+        {
+          "id": 119,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 49154,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 249,
+          "created_at": "2026-09-03 03:04:31.385168+00"
+        },
+        {
+          "id": 120,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 50989,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 190,
+          "created_at": "2026-09-03 03:04:38.640707+00"
+        },
+        {
+          "id": 121,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 53043,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 1442,
+          "created_at": "2026-09-03 03:05:34.202056+00"
+        },
+        {
+          "id": 122,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 54686,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 255,
+          "created_at": "2026-09-03 03:05:44.580737+00"
+        },
+        {
+          "id": 123,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 56916,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 183,
+          "created_at": "2026-09-03 03:05:52.468846+00"
+        },
+        {
+          "id": 124,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 59220,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 1942,
+          "created_at": "2026-09-03 03:06:59.735328+00"
+        },
+        {
+          "id": 125,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 61378,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 210,
+          "created_at": "2026-09-03 03:07:09.902166+00"
+        },
+        {
+          "id": 126,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 63318,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 242,
+          "created_at": "2026-09-03 03:07:19.212756+00"
+        },
+        {
+          "id": 127,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 65033,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 251,
+          "created_at": "2026-09-03 03:07:28.318215+00"
+        },
+        {
+          "id": 128,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 66198,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 213,
+          "created_at": "2026-09-03 03:07:36.404517+00"
+        },
+        {
+          "id": 129,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 68537,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 206,
+          "created_at": "2026-09-03 03:07:43.946691+00"
+        },
+        {
+          "id": 130,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 70786,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 2115,
+          "created_at": "2026-09-03 03:08:58.700768+00"
+        },
+        {
+          "id": 131,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 73144,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 261,
+          "created_at": "2026-09-03 03:09:09.507021+00"
+        },
+        {
+          "id": 132,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 75307,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 220,
+          "created_at": "2026-09-03 03:09:18.298548+00"
+        },
+        {
+          "id": 133,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 77175,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 205,
+          "created_at": "2026-09-03 03:09:26.631225+00"
+        },
+        {
+          "id": 134,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 78899,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 2318,
+          "created_at": "2026-09-03 03:10:49.080961+00"
+        },
+        {
+          "id": 135,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 81446,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 243,
+          "created_at": "2026-09-03 03:11:00.080837+00"
+        },
+        {
+          "id": 136,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 84280,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 232,
+          "created_at": "2026-09-03 03:11:08.698772+00"
+        },
+        {
+          "id": 137,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 85571,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 2413,
+          "created_at": "2026-09-03 03:12:31.522008+00"
+        },
+        {
+          "id": 138,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 88217,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 236,
+          "created_at": "2026-09-03 03:12:44.22695+00"
+        },
+        {
+          "id": 139,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 91528,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 221,
+          "created_at": "2026-09-03 03:12:53.690446+00"
+        },
+        {
+          "id": 140,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 93655,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 2393,
+          "created_at": "2026-09-03 03:14:21.501944+00"
+        },
+        {
+          "id": 141,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 96281,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 244,
+          "created_at": "2026-09-03 03:14:33.715017+00"
+        },
+        {
+          "id": 142,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 94,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 98200,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 222,
+          "created_at": "2026-09-03 03:14:43.184227+00"
+        },
+        {
+          "id": 143,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 128,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 99596,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 2669,
+          "created_at": "2026-09-03 03:16:18.263251+00"
+        },
+        {
+          "id": 144,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 128,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 102524,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 233,
+          "created_at": "2026-09-03 03:16:31.105993+00"
+        },
+        {
+          "id": 145,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 128,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 103855,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 243,
+          "created_at": "2026-09-03 03:16:41.960103+00"
+        },
+        {
+          "id": 146,
+          "group_id": 24,
+          "api_key_id": 25,
+          "account_id": 128,
+          "cache_strategy_id": 33,
+          "cache_strategy_name": "验收-无缓存基线-full-110233",
+          "session_id": "8d6c6c07-2fae-4ee0-a899-4d61ae488c4e",
+          "model": "claude-sonnet-4-5-20250929",
+          "input_tokens": 105512,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cache_creation_5m_tokens": 0,
+          "cache_creation_1h_tokens": 0,
+          "output_tokens": 2681,
+          "created_at": "2026-09-03 03:18:19.448092+00"
+        }
+      ],
+      "db_validation": {
+        "rows": 34,
+        "first_cache_read": 0,
+        "max_context": 105512,
+        "max_input": 105512,
+        "max_read": 0,
+        "max_creation": 0,
+        "max_output": 2681
+      },
+      "selected_account_ids": [
+        94,
+        128
+      ],
+      "success_rounds": 10,
+      "tool_rounds": 10
+    },
+    {
+      "name": "验收-高命中长会话-full-110233",
+      "profile": "验收-高命中长会话",
+      "strategy_id": 34,
+      "group_id": 25,
+      "api_key_id": 26,
+      "api_key": "sk-matrix--full-110233-31afa1cc352a407e988225a7e4eb9238",
+      "strategy_config": {
+        "kind": "prefix",
+        "ratio_mode": "uniform",
+        "coverage_ratio": 0.98,
+        "usage_ratio": 0.98,
+        "read_ratio": 0.98,
+        "creation_ratio": 0.98,
+        "cache_system": false,
+        "cache_tools": false,
+        "cache_history": false,
+        "cache_tool_results": false,
+        "cache_current_user_stable_prefix": false,
+        "current_user_stable_prefix_max_tokens": 0,
+        "breakpoint_mode": "auto",
+        "allow_derived_session": false,
+        "dynamic_content_mode": "exclude",
+        "scope_mode": "group_account_session",
+        "max_coverage_tokens": 300000,
+        "max_new_creation_tokens_per_request": 30000,
+        "incremental_create_enabled": false,
+        "min_cacheable_tokens": 1024,
+        "reported_input_min_tokens": 0,
+        "reported_input_max_tokens": 0,
+        "token_scale": 1.6,
+        "scale_min_input_tokens": 20000,
+        "max_simulated_input_tokens": 300000,
+        "default_ttl_seconds": 300,
+        "hour_ttl_seconds": 3600,
+        "max_entries_per_scope": 128,
+        "max_entries_global": 10000,
+        "estimated_bytes_limit": 67108864,
+        "expire_after_idle_seconds": 0,
+        "cap_jitter_min_tokens": 12000,
+        "cap_jitter_max_tokens": 24000,
+        "preserve_upstream_cache_usage": false,
+        "creation_control": {
+          "enabled": false,
+          "min_creation_delta_tokens": 0,
+          "min_successful_requests_between": 0,
+          "min_creation_interval_seconds": 0,
+          "max_creation_tokens_per_event": 0,
+          "creation_budget_window_seconds": 0,
+          "max_creation_tokens_per_window": 0
+        },
+        "usage": {
+          "enabled": false,
+          "preserve_upstream_cache_usage": false,
+          "input": {
+            "mode": "raw",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "output": {
+            "mode": "raw",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "cache_read": {
+            "mode": "preserve",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "cache_creation": {
+            "mode": "preserve",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "final_cache_read_max_tokens": 700000,
+          "final_cache_creation_max_tokens": 400000,
+          "output_uplift_min_tokens": 1000,
+          "output_uplift_percent": 50,
+          "final_output_max_tokens": 200000
+        }
+      },
+      "source_group_id": 7,
+      "bound_kiro_accounts": 220,
+      "rounds": [
+        {
+          "round": 1,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 66399,
+          "usage": {
+            "input": 49441,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 1893
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Read",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_fHlPpsCJhesASWkeqBYPE5",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_fLdbJmZ6DmyK4uTxP3CqvM",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_BapFKtOJcypmjbMMTu6AQ9",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_7SwsbnpQRfIlGi77Bh3Spc",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_xX0wKgyW4ypUss7lt1ogfN",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_Wnp8pLm9KUeavGYnAlPP1J",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_V0CvsKnrs1XFKeAzYnE2E6",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_thI58KqDpmMBfBsb7xoDws",
+              "input_keys": [
+                "file_path"
+              ]
+            }
+          ],
+          "tool_call_count": 8,
+          "assistant_events": 15,
+          "result_chars": 4417,
+          "errors": []
+        },
+        {
+          "round": 2,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 91841,
+          "usage": {
+            "input": 202460,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 2610
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Read",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_cSenuU5Wt7rLX6PdrGVnKy",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_e1zhxc6Njfaf7nUsJqaEbK",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Q0cLo902ckMRwHysJHBerb",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_3KZylpwncXbE9GmWvw4oiN",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_EQ98ALxgDDUbKXRB58payC",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_ZeSeLgIxZZwc40DICrDdfx",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_ESNwortQ0uHkfQX9TEwMoo",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_UdxpgFDOgGadyvrTaroQqx",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_up8alKZU73gLlpubz0he3G",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_GgPIGhd23OGwLBrjjWsJLO",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 10,
+          "assistant_events": 16,
+          "result_chars": 7248,
+          "errors": []
+        },
+        {
+          "round": 3,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 105428,
+          "usage": {
+            "input": 184020,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 3229
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_k7RnMjNRey0SwIzuqxsSCt",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_c1sGeACVTrzQMBzjDafUdK",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_nDykheHl8fjZPggr08V2uA",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_8NmRNqqDSgJflXjOsuC4OZ",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_fVZRF4ddnxsZaZtcYFS2WH",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_WHoHTdcENF8X4tZwFdvtOs",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_XkARdOGTCpPABDJFnKXcGo",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_jFNEcbnIhydk5sMpOG4o2F",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 8,
+          "assistant_events": 10,
+          "result_chars": 11630,
+          "errors": []
+        },
+        {
+          "round": 4,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 147502,
+          "usage": {
+            "input": 283022,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 4522
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_rwVr3DiHEm8JkmZNCf1Ha8",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_SJWZKybgm1ZjyRkmlgUxcf",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_PLAYgZZuQzuyAhPqXYdwS2",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_V94TAUlfOmeZtF2oAv4rVw",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_CPFxZlfEELRAhIOiq600SF",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_jIhcFg9kXmqdViV3XVBxo3",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_aF7GpNeAq9hRvTQIBktQov",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_GPY19zBJvpRuA4MUH6SDUJ",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_BEcvsW3iEmkuUjdpAFhjoX",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_wsVUayX3WRwqF8KnIo7Qsg",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_PihBMP4DZD13EWDsSiBAGp",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_i21YQcSvCO3EGL7OqE13dC",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 12,
+          "assistant_events": 14,
+          "result_chars": 16183,
+          "errors": []
+        },
+        {
+          "round": 5,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 164576,
+          "usage": {
+            "input": 417448,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 5529
+          },
+          "tools": [
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Bash",
+              "id": "tooluse_09lB9VOZLtPeMowLOuAmyh",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_AGlevpUpLIw5c8Z4DhBYxE",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_oiVZWFMQsLaFUzE1Y9g7yM",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_shYVkDJ1Kck8TsdOCZ1Ez0",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_jl3bzhbEjh3MxrtD9Rthqr",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Apwv0BcDHaY44mPhArzhoo",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_UljmA9FOZMJwhpUkNtuu1J",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_HPFVFyY8g0V11VECPatk8V",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Azc7pBxqpoM1TiKcDBLlW4",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_WbriNSRHnJHycoRzTs417E",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_hvcYz3KFRHfNk6HOGw9bep",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_1rfRr99Lm1OehaCgcuzhcs",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_U4bJvyddGTEbKZ8zzK8WxX",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_FSldgoiqGVbcC0X9U3liIm",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_WuHFUIDQNjHG5TXidVA37t",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_ZmlDCXWRzHLfqAAlSiTEIq",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 16,
+          "assistant_events": 18,
+          "result_chars": 19385,
+          "errors": []
+        },
+        {
+          "round": 6,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 155833,
+          "usage": {
+            "input": 382312,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 5996
+          },
+          "tools": [
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Bash",
+              "id": "tooluse_yox8MgKhIESrNRTkeukSnq",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_Wem8dW5dJctmiFeiAOdVMw",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_NrYK5PZg6YDz0zPAvyOKIV",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_aBXmyCGRvoo9PKeuqdbTBO",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_ViDEgIFlrkDwLOj2OLzhd3",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_gy1NR7xK8X2ecWH2CItBN0",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_TJIhUsdYfdKzMSeRGKqTPs",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_E7H8ZfETp2hDvN1dxvT5wn",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_uN3Z3uc7udFOMBqHhQyzfX",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_0S1AYb6f4tpbNqJzV92Otv",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_oxCXGFsApu8AOwZoZ8r1IJ",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_c76xZDAFHnmEccQ23AbCfv",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 12,
+          "assistant_events": 14,
+          "result_chars": 21927,
+          "errors": []
+        },
+        {
+          "round": 7,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 175777,
+          "usage": {
+            "input": 427297,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 6103
+          },
+          "tools": [
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Bash",
+              "id": "tooluse_k240wm4HSNnYEooaSrMl3v",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_Pm5V9ERL5hlFGjmHMmSB59",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_xweFeENBxLvaBfVQNhtLze",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_nEr1hWfk2zSUWdTPICFH43",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_P9HIPxtzL79X58auFNNL1n",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_dLiU8oMp6QGEcU9wX0dNU4",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_y0SZfGi5dQ1zsv1uLIOnd0",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_i7BA8sY7eF9WCKRhLohAxP",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_PsPY75ucszOupyUb9EYjly",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_wpxb07fttiVtGW4FZbrO8q",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_1CbgTWu3mDHILZGWBL5VCe",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_8inFFO6R06JX3uGjqPAolg",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            }
+          ],
+          "tool_call_count": 12,
+          "assistant_events": 14,
+          "result_chars": 22412,
+          "errors": []
+        },
+        {
+          "round": 8,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 62077,
+          "usage": {
+            "input": 232355,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 1296
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_YEZOQRgBG4ntShIKfA2yOa",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_0H5enhbF7e3rHotYqlfmZb",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_SAw1ubs8cf6PHQGScM6KBq",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_XSmKFmyjM6OuLTv6oQV8Rv",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 4,
+          "assistant_events": 6,
+          "result_chars": 4615,
+          "errors": []
+        },
+        {
+          "round": 9,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 120915,
+          "usage": {
+            "input": 487192,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 3616
+          },
+          "tools": [
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read"
+          ],
+          "tool_events": [
+            {
+              "name": "Read",
+              "id": "tooluse_rYeBTPLzm3SYJPJnX80NH0",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_4Er2dK484jkQLuithP15kn",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_8Gvylx5qScL75xRcJEOJn1",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_FjcBIO1sNXG2manIXXgT6V",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_bXPDgFcH9ARFryONuxy4wD",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_qN70HBmyZrExffIuI0rLqD",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_dmkgAlVOsumrrN5FqBmjba",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_nSpcTkoB1RSdQWqxODuvdG",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_xyY5XbRnecCaJ5YiUJDllW",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_Sqy2mq44iwAKIPlkgWRliH",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_MHPvb5aI7vuJnYpLJv4gCM",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_1EDq1Rjs8fe7LOuuE0KzGZ",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            }
+          ],
+          "tool_call_count": 12,
+          "assistant_events": 14,
+          "result_chars": 12424,
+          "errors": []
+        },
+        {
+          "round": 10,
+          "attempt": 1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "status": "success",
+          "subtype": "success",
+          "stop_reason": "end_turn",
+          "duration_ms": 140453,
+          "usage": {
+            "input": 391294,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 4435
+          },
+          "tools": [
+            "Bash",
+            "Read",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Bash",
+            "Read",
+            "Bash"
+          ],
+          "tool_events": [
+            {
+              "name": "Bash",
+              "id": "tooluse_KFxVFqTzulm828FEWVmOWx",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_6B61Yr8145wok6IaRmfuh6",
+              "input_keys": [
+                "file_path"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_5cxP6s94aI9CRcMkKhuYQi",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_smQjxoSVX0iSmQlq74iByw",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_6RkcA53Y7NIJH0Pc2FK9Fa",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_oDswwVkymDSDuM4eR8XWXG",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            },
+            {
+              "name": "Read",
+              "id": "tooluse_vKGwEHtyel4I66moc9I0Ll",
+              "input_keys": [
+                "file_path",
+                "limit",
+                "offset"
+              ]
+            },
+            {
+              "name": "Bash",
+              "id": "tooluse_NTPQW5vWmU9VVaOSoXzhcp",
+              "input_keys": [
+                "command",
+                "description"
+              ]
+            }
+          ],
+          "tool_call_count": 8,
+          "assistant_events": 10,
+          "result_chars": 16443,
+          "errors": []
+        }
+      ],
+      "session_id": "824defb3-acec-4dbd-b60a-37f2d7b0ecc2"
+    }
+  ]
+}

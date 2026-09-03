@@ -116,6 +116,18 @@
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
+        <template #cell-cache_strategy="{ row }">
+          <span
+            v-if="row.cache_strategy_name"
+            class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-200"
+          >
+            {{ row.cache_strategy_name }}
+          </span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">
+            {{ t('usage.unboundCacheStrategy') }}
+          </span>
+        </template>
+
         <template #cell-stream="{ row }">
           <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="getRequestTypeBadgeClass(row)">
             {{ getRequestTypeLabel(row) }}

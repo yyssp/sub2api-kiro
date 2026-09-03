@@ -25,6 +25,9 @@ export interface KiroTokenInfo {
   email?: string
   start_url?: string
   region?: string
+  api_region?: string
+  machine_id?: string
+  subscription_title?: string
   token_endpoint?: string
   issuer_url?: string
   scopes?: string
@@ -32,6 +35,21 @@ export interface KiroTokenInfo {
   session_id?: string
   state?: string
   [key: string]: unknown
+}
+
+export type KiroImportAccountType = 'oauth' | 'apikey'
+
+// A validated account creation entry returned by the Kiro IDE importer.
+// OAuth fields are flattened for reuse by the existing OAuth credential
+// builder; API-key entries carry api_key separately and must create an
+// apikey account instead of an OAuth account.
+export interface KiroImportEntry extends KiroTokenInfo {
+  account_type: KiroImportAccountType
+  api_key?: string
+}
+
+export interface KiroImportTokenResult {
+  entries: KiroImportEntry[]
 }
 
 export async function generateAuthUrl(payload: {
@@ -71,6 +89,7 @@ export async function refreshToken(payload: {
   client_secret?: string
   start_url?: string
   region?: string
+  api_region?: string
   profile_arn?: string
   token_endpoint?: string
   issuer_url?: string
@@ -84,8 +103,8 @@ export async function refreshToken(payload: {
 export async function importToken(payload: {
   token_json: string
   device_registration_json?: string
-}): Promise<KiroTokenInfo> {
-  const { data } = await apiClient.post<KiroTokenInfo>('/admin/kiro/oauth/import-token', payload)
+}): Promise<KiroImportTokenResult> {
+  const { data } = await apiClient.post<KiroImportTokenResult>('/admin/kiro/oauth/import-token', payload)
   return data
 }
 

@@ -310,6 +310,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		requestedModel = input.OriginalModel
 	}
 	sentModel := upstreamSentModel(result.Model, result.UpstreamModel)
+	cacheStrategyID, cacheStrategyName := cacheStrategySnapshotForAPIKey(apiKey)
 	if result.UpstreamResponseModelConflict {
 		logger.L().Warn("upstream_response_model_conflict",
 			zap.String("platform", account.Platform),
@@ -324,6 +325,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		UserID:                user.ID,
 		APIKeyID:              apiKey.ID,
 		AccountID:             account.ID,
+		CacheStrategyID:       cacheStrategyID,
+		CacheStrategyName:     cacheStrategyName,
 		RequestID:             requestID,
 		Model:                 result.Model,
 		RequestedModel:        requestedModel,

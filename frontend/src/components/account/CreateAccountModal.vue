@@ -1162,10 +1162,10 @@
         <div class="grid grid-cols-2 gap-3">
           <button
             type="button"
-            @click="kiroOAuthProvider = 'google'"
+            @click="kiroLoginProvider = 'google'"
             :class="[
               'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              kiroOAuthProvider === 'google'
+              kiroLoginProvider === 'google'
                 ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
                 : 'border-gray-200 hover:border-amber-300 dark:border-dark-600 dark:hover:border-amber-700'
             ]"
@@ -1173,7 +1173,7 @@
             <div
               :class="[
                 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                kiroOAuthProvider === 'google'
+                kiroLoginProvider === 'google'
                   ? 'bg-amber-500 text-white'
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
@@ -1191,10 +1191,10 @@
           </button>
           <button
             type="button"
-            @click="kiroOAuthProvider = 'github'"
+            @click="kiroLoginProvider = 'github'"
             :class="[
               'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              kiroOAuthProvider === 'github'
+              kiroLoginProvider === 'github'
                 ? 'border-slate-500 bg-slate-50 dark:bg-slate-900/20'
                 : 'border-gray-200 hover:border-slate-300 dark:border-dark-600 dark:hover:border-slate-700'
             ]"
@@ -1202,7 +1202,7 @@
             <div
               :class="[
                 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                kiroOAuthProvider === 'github'
+                kiroLoginProvider === 'github'
                   ? 'bg-slate-700 text-white dark:bg-slate-500'
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
@@ -3862,28 +3862,6 @@
     <!-- Step 2: OAuth Authorization -->
     <div v-else class="space-y-5">
       <div v-if="isKiroImportMode" class="space-y-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/20">
-        <!-- Provider 选择:决定字段显隐与必填、示例 -->
-        <div>
-          <label class="input-label">{{ t('admin.accounts.oauth.kiro.importProviderLabel') }}</label>
-          <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-            <label
-              v-for="opt in kiroImportProviderOptions"
-              :key="opt"
-              class="flex cursor-pointer items-center rounded-lg border px-3 py-2"
-              :class="kiroImportProvider === opt
-                ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
-                : 'border-gray-200 dark:border-dark-600'"
-            >
-              <input
-                v-model="kiroImportProvider"
-                type="radio"
-                :value="opt"
-                class="mr-2 text-primary-600 focus:ring-primary-500"
-              />
-              <span class="text-sm text-gray-700 dark:text-gray-300">{{ opt }}</span>
-            </label>
-          </div>
-        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.oauth.kiro.tokenJsonLabel') }} <span class="text-red-500">*</span></label>
           <textarea v-model="kiroTokenJson" rows="8" class="input font-mono text-xs" :placeholder="kiroImportTokenPlaceholder"></textarea>
@@ -3986,7 +3964,7 @@
         <button
           v-if="isKiroImportMode"
           type="button"
-          :disabled="currentOAuthLoading || !kiroTokenJson.trim()"
+          :disabled="currentOAuthLoading || !kiroTokenJson.trim() || (kiroImportNeedsDeviceRegistration && !kiroDeviceRegistrationJson.trim())"
           class="btn btn-primary"
           @click="handleKiroImport"
         >
@@ -4278,6 +4256,7 @@ import {
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import type { KiroImportEntry } from '@/api/admin/kiro'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -4786,26 +4765,37 @@ const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
 const kiroAccountType = ref<'oauth' | 'idc' | 'external_idp' | 'import'>('oauth')
-const kiroOAuthProvider = ref<'google' | 'github'>('google')
+const kiroLoginProvider = ref<'google' | 'github'>('google')
 const kiroIDCStartUrl = ref('https://view.awsapps.com/start')
 const kiroIDCRegion = ref('us-east-1')
 const kiroTokenJson = ref('')
 const kiroDeviceRegistrationJson = ref('')
-// 「从 Kiro IDE 导入」provider 选择:决定字段显隐/必填/示例,并与 token JSON 内 provider 做一致性校验。
-const kiroImportProvider = ref<'Google' | 'Github' | 'BuilderId' | 'Enterprise' | 'ExternalIdp'>('Google')
-const kiroImportProviderOptions = ['Google', 'Github', 'BuilderId', 'Enterprise', 'ExternalIdp'] as const
-// BuilderId/Enterprise(IDC)需 Device Registration JSON;Google/Github(社交)不需要。
-const kiroImportNeedsDeviceRegistration = computed(
-  () => kiroImportProvider.value === 'BuilderId' || kiroImportProvider.value === 'Enterprise'
-)
-const kiroImportTokenPlaceholder = computed(() => {
-  if (kiroImportProvider.value === 'ExternalIdp') {
-    return '{"accessToken":"...","refreshToken":"...","authMethod":"external_idp","provider":"ExternalIdp","clientId":"...","tokenEndpoint":"https://idp.example.com/token","issuerUrl":"https://idp.example.com","scopes":"openid profile email"}'
+// Device registration is needed only when the imported payload contains a
+// clientIdHash without the corresponding client credentials. Provider is
+// optional metadata and is intentionally not used to drive the form.
+const kiroImportNeedsDeviceRegistration = computed(() => {
+  try {
+    const parsed = JSON.parse(kiroTokenJson.value)
+    const entries = Array.isArray(parsed) ? parsed : [parsed]
+    return entries.some((entry) => {
+      if (!entry || typeof entry !== 'object') return false
+      const value = entry as Record<string, unknown>
+      const authMethod = String(value.authMethod ?? value.auth_method ?? '').trim().toLowerCase()
+      if (authMethod === 'api_key' || authMethod === 'api-key' || authMethod === 'apikey') {
+        return false
+      }
+      const clientIdHash = String(value.clientIdHash ?? value.client_id_hash ?? '').trim()
+      const clientId = String(value.clientId ?? value.client_id ?? '').trim()
+      const clientSecret = String(value.clientSecret ?? value.client_secret ?? '').trim()
+      return Boolean(clientIdHash && (!clientId || !clientSecret))
+    })
+  } catch {
+    return false
   }
-  return kiroImportNeedsDeviceRegistration.value
-    ? '{"accessToken":"...","refreshToken":"...","clientIdHash":"...","authMethod":"IdC","provider":"' + kiroImportProvider.value + '"}'
-    : '{"accessToken":"...","refreshToken":"...","authMethod":"social","provider":"' + kiroImportProvider.value + '"}'
 })
+const kiroImportTokenPlaceholder = computed(
+  () => t('admin.accounts.oauth.kiro.tokenJsonPlaceholder')
+)
 const kiroModelMappings = ref<ModelMapping[]>([])
 const kiroCreditUnitPriceUsd = ref(0)
 const kiroPresetMappings = computed(() => getPresetMappingsByPlatform('kiro'))
@@ -5251,7 +5241,7 @@ watch(
       })
       accountCategory.value = 'oauth-based'
       kiroAccountType.value = 'oauth'
-      kiroOAuthProvider.value = 'google'
+      kiroLoginProvider.value = 'google'
       apiKeyBaseUrl.value = ''
       apiKeyValue.value = ''
       kiroAPIRegion.value = 'us-east-1'
@@ -5758,12 +5748,11 @@ const resetForm = () => {
     antigravityModelMappings.value = [...mappings]
   })
   kiroAccountType.value = 'oauth'
-  kiroOAuthProvider.value = 'google'
+  kiroLoginProvider.value = 'google'
   kiroIDCStartUrl.value = 'https://view.awsapps.com/start'
   kiroIDCRegion.value = 'us-east-1'
   kiroTokenJson.value = ''
   kiroDeviceRegistrationJson.value = ''
-  kiroImportProvider.value = 'Google'
   kiroCreditUnitPriceUsd.value = 0
   fetchKiroDefaultMappings().then(mappings => {
     kiroModelMappings.value = [...mappings]
@@ -6401,7 +6390,7 @@ const handleGenerateUrl = async () => {
     } else {
       const provider = kiroAccountType.value === 'external_idp'
         ? 'ExternalIdp'
-        : kiroOAuthProvider.value === 'github'
+        : kiroLoginProvider.value === 'github'
           ? 'Github'
           : 'Google'
       await kiroOAuth.generateAuthUrl(form.proxy_id, provider)
@@ -7364,6 +7353,15 @@ const buildKiroCredentials = (tokenInfo: Parameters<typeof kiroOAuth.buildCreden
   return credentials
 }
 
+const buildKiroImportedAPIKeyCredentials = (entry: KiroImportEntry) => {
+  const credentials = kiroOAuth.buildImportedAPIKeyCredentials(entry)
+  const modelMapping = buildModelMappingObject('mapping', [], kiroModelMappings.value)
+  if (modelMapping) {
+    credentials.model_mapping = modelMapping
+  }
+  return credentials
+}
+
 const handleKiroExchange = async (authCode: string) => {
   if (!authCode.trim() || !kiroOAuth.sessionId.value) return
 
@@ -7548,7 +7546,8 @@ const handleExchangeCode = async () => {
 const handleKiroImport = async () => {
   if (!isKiroImportMode.value) return
 
-  // 必填校验:token JSON 必填;BuilderId/Enterprise 还需 Device Registration JSON。
+  // Token JSON is required. Device registration is required only when the
+  // payload has clientIdHash but lacks clientId/clientSecret.
   if (!kiroTokenJson.value.trim()) {
     kiroOAuth.error.value = t('admin.accounts.oauth.kiro.tokenJsonRequired')
     appStore.showError(kiroOAuth.error.value)
@@ -7560,33 +7559,76 @@ const handleKiroImport = async () => {
     return
   }
 
-  // 一致性校验:token JSON 内 provider 必须与所选 radio 一致(后端白名单兜底)。
-  let parsedProvider = ''
   try {
-    parsedProvider = String(JSON.parse(kiroTokenJson.value)?.provider ?? '').trim()
+    JSON.parse(kiroTokenJson.value)
   } catch {
     kiroOAuth.error.value = t('admin.accounts.oauth.kiro.tokenJsonInvalid')
     appStore.showError(kiroOAuth.error.value)
     return
   }
-  if (parsedProvider !== kiroImportProvider.value) {
-    kiroOAuth.error.value = t('admin.accounts.oauth.kiro.providerMismatch', {
-      selected: kiroImportProvider.value,
-      actual: parsedProvider || '-'
-    })
-    appStore.showError(kiroOAuth.error.value)
-    return
-  }
 
-  const tokenInfo = await kiroOAuth.importToken(
+  const importEntries = await kiroOAuth.importToken(
     kiroTokenJson.value,
     kiroDeviceRegistrationJson.value || undefined
   )
-  if (!tokenInfo) return
+  if (!importEntries || importEntries.length === 0) return
 
   try {
-    const credentials = buildKiroCredentials(tokenInfo)
-    await createAccountAndFinish('kiro', 'oauth', credentials)
+    if (importEntries.length === 1) {
+      const entry = importEntries[0]
+      const credentials =
+        entry.account_type === 'apikey'
+          ? buildKiroImportedAPIKeyCredentials(entry)
+          : buildKiroCredentials(entry)
+      await createAccountAndFinish('kiro', entry.account_type, credentials)
+      return
+    }
+
+    const accounts = []
+    for (let index = 0; index < importEntries.length; index++) {
+      const entry = importEntries[index]
+      const credentials =
+        entry.account_type === 'apikey'
+          ? buildKiroImportedAPIKeyCredentials(entry)
+          : buildKiroCredentials(entry)
+      if (!applyTempUnschedConfig(credentials)) return
+      accounts.push({
+        name: `${form.name || t('admin.accounts.oauth.kiro.importedAccountName')} #${index + 1}`,
+        notes: form.notes,
+        platform: 'kiro' as const,
+        type: entry.account_type,
+        credentials,
+        extra: { kiro_credit_unit_price_usd: Number(kiroCreditUnitPriceUsd.value || 0) },
+        proxy_id: form.proxy_id,
+        concurrency: form.concurrency,
+        load_factor: form.load_factor ?? undefined,
+        priority: form.priority,
+        rate_multiplier: form.rate_multiplier,
+        group_ids: form.group_ids,
+        expires_at: form.expires_at,
+        auto_pause_on_expired: autoPauseOnExpired.value
+      })
+    }
+    const result = await adminAPI.accounts.batchCreate(accounts)
+    if (result.failed === 0) {
+      appStore.showSuccess(t('admin.accounts.oauth.batchSuccess', { count: result.success }))
+      emit('created')
+      handleClose()
+    } else if (result.success > 0) {
+      appStore.showWarning(
+        t('admin.accounts.oauth.batchPartialSuccess', { success: result.success, failed: result.failed })
+      )
+      kiroOAuth.error.value = result.results
+        .map((item, index) => (item.success ? '' : `#${index + 1}: ${item.error || 'Unknown error'}`))
+        .filter(Boolean)
+        .join('\n')
+      emit('created')
+    } else {
+      kiroOAuth.error.value = result.results
+        .map((item, index) => `#${index + 1}: ${item.error || 'Unknown error'}`)
+        .join('\n')
+      appStore.showError(t('admin.accounts.oauth.batchFailed'))
+    }
   } catch (error: any) {
     kiroOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(kiroOAuth.error.value)

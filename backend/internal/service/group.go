@@ -97,6 +97,10 @@ type Group struct {
 	// 分组排序
 	SortOrder int
 
+	// CacheStrategyID binds this group to a reusable, protocol-neutral cache policy.
+	// A nil value means cache shaping is disabled for the group.
+	CacheStrategyID *int64
+
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool
 	AllowLive                   bool
@@ -116,14 +120,9 @@ type Group struct {
 	// ReasoningEffortMappings rewrites explicit request values before applying the ceiling.
 	ReasoningEffortMappings []ReasoningEffortMapping
 
-	// Kiro 模拟缓存配置（仅 Kiro 平台生效）。
-	KiroCacheEmulationEnabled       bool
-	KiroAutoStickyEnabled           bool
-	KiroStickySessionTTLSeconds     int
-	KiroCacheEmulationRatio         float64
-	KiroCacheEmulationMode          string
-	KiroCacheCreationEmulationRatio float64
-	KiroCacheReadEmulationRatio     float64
+	// Kiro sticky routing configuration (non-cache responsibility).
+	KiroAutoStickyEnabled       bool
+	KiroStickySessionTTLSeconds int
 
 	// Kiro 推理 endpoint 模式（仅 platform=kiro 生效）。
 	// "q"   = AWS Q (q.{region}.amazonaws.com)，默认，与其它工具共用限流池
@@ -145,14 +144,6 @@ type Group struct {
 	AccountCount            int64
 	ActiveAccountCount      int64
 	RateLimitedAccountCount int64
-}
-
-func (g *Group) EffectiveKiroCacheEmulationEnabled() bool {
-	if g == nil || g.Platform != PlatformKiro || !g.KiroCacheEmulationEnabled {
-		return false
-	}
-	creationRatio, readRatio := g.EffectiveKiroCacheEmulationRatios()
-	return creationRatio > 0 || readRatio > 0
 }
 
 func (g *Group) EffectiveKiroAutoStickyEnabled() bool {
@@ -180,49 +171,6 @@ func (g *Group) EffectiveKiroStickySessionTTL() time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
-func (g *Group) EffectiveKiroCacheEmulationRatio() float64 {
-	if g == nil || g.Platform != PlatformKiro || !g.KiroCacheEmulationEnabled {
-		return 0
-	}
-	return normalizeKiroCacheEmulationRatio(g.KiroCacheEmulationRatio)
-}
-
-const (
-	KiroCacheEmulationModeUniform     = "uniform"
-	KiroCacheEmulationModeIndependent = "independent"
-)
-
-func (g *Group) EffectiveKiroCacheEmulationMode() string {
-	if g == nil || g.Platform != PlatformKiro {
-		return KiroCacheEmulationModeUniform
-	}
-	return normalizeKiroCacheEmulationMode(g.KiroCacheEmulationMode)
-}
-
-func (g *Group) EffectiveKiroCacheCreationEmulationRatio() float64 {
-	if g == nil || g.Platform != PlatformKiro || !g.KiroCacheEmulationEnabled {
-		return 0
-	}
-	if g.EffectiveKiroCacheEmulationMode() == KiroCacheEmulationModeUniform {
-		return g.EffectiveKiroCacheEmulationRatio()
-	}
-	return normalizeKiroCacheEmulationRatio(g.KiroCacheCreationEmulationRatio)
-}
-
-func (g *Group) EffectiveKiroCacheReadEmulationRatio() float64 {
-	if g == nil || g.Platform != PlatformKiro || !g.KiroCacheEmulationEnabled {
-		return 0
-	}
-	if g.EffectiveKiroCacheEmulationMode() == KiroCacheEmulationModeUniform {
-		return g.EffectiveKiroCacheEmulationRatio()
-	}
-	return normalizeKiroCacheEmulationRatio(g.KiroCacheReadEmulationRatio)
-}
-
-func (g *Group) EffectiveKiroCacheEmulationRatios() (creationRatio, readRatio float64) {
-	return g.EffectiveKiroCacheCreationEmulationRatio(), g.EffectiveKiroCacheReadEmulationRatio()
-}
-
 func normalizeKiroStickySessionTTLSeconds(seconds int) int {
 	if seconds <= 0 {
 		return DefaultKiroStickySessionTTLSeconds
@@ -234,56 +182,6 @@ func normalizeKiroStickySessionTTLSeconds(seconds int) int {
 		return MaxKiroStickySessionTTLSeconds
 	}
 	return seconds
-}
-
-func normalizeKiroCacheEmulationRatio(ratio float64) float64 {
-	if math.IsNaN(ratio) || math.IsInf(ratio, 0) {
-		return 0
-	}
-	if ratio < 0 {
-		return 0
-	}
-	if ratio > 1 {
-		return 1
-	}
-	if ratio == 0 {
-		return 0
-	}
-	return ratio
-}
-
-func normalizeKiroCacheEmulationMode(mode string) string {
-	switch mode {
-	case KiroCacheEmulationModeIndependent:
-		return KiroCacheEmulationModeIndependent
-	default:
-		return KiroCacheEmulationModeUniform
-	}
-}
-
-func normalizeKiroCacheEmulationFields(g *Group) {
-	if g == nil {
-		return
-	}
-	if g.Platform != PlatformKiro {
-		g.KiroAutoStickyEnabled = false
-		g.KiroStickySessionTTLSeconds = 0
-		g.KiroCacheEmulationEnabled = false
-		g.KiroCacheEmulationRatio = 0
-		g.KiroCacheEmulationMode = KiroCacheEmulationModeUniform
-		g.KiroCacheCreationEmulationRatio = 0
-		g.KiroCacheReadEmulationRatio = 0
-		return
-	}
-	g.KiroStickySessionTTLSeconds = normalizeKiroStickySessionTTLSeconds(g.KiroStickySessionTTLSeconds)
-	g.KiroCacheEmulationMode = normalizeKiroCacheEmulationMode(g.KiroCacheEmulationMode)
-	g.KiroCacheEmulationRatio = normalizeKiroCacheEmulationRatio(g.KiroCacheEmulationRatio)
-	if g.KiroCacheEmulationMode == KiroCacheEmulationModeUniform {
-		g.KiroCacheCreationEmulationRatio = g.KiroCacheEmulationRatio
-		g.KiroCacheReadEmulationRatio = g.KiroCacheEmulationRatio
-	}
-	g.KiroCacheCreationEmulationRatio = normalizeKiroCacheEmulationRatio(g.KiroCacheCreationEmulationRatio)
-	g.KiroCacheReadEmulationRatio = normalizeKiroCacheEmulationRatio(g.KiroCacheReadEmulationRatio)
 }
 
 // Kiro 推理 endpoint 模式取值。
@@ -314,6 +212,18 @@ func (g *Group) KiroKRSEnabled() bool {
 	return g.EffectiveKiroEndpointMode() == KiroEndpointModeKRS
 }
 
+func normalizeKiroStickyFields(g *Group) {
+	if g == nil {
+		return
+	}
+	if g.Platform != PlatformKiro {
+		g.KiroAutoStickyEnabled = false
+		g.KiroStickySessionTTLSeconds = 0
+		return
+	}
+	g.KiroStickySessionTTLSeconds = normalizeKiroStickySessionTTLSeconds(g.KiroStickySessionTTLSeconds)
+}
+
 func normalizeKiroEndpointFields(g *Group) {
 	if g == nil {
 		return
@@ -331,7 +241,7 @@ func normalizeKiroEndpointFields(g *Group) {
 }
 
 func NormalizeGroupRuntimeFields(g *Group) {
-	normalizeKiroCacheEmulationFields(g)
+	normalizeKiroStickyFields(g)
 	normalizeKiroEndpointFields(g)
 }
 

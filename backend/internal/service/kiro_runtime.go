@@ -97,7 +97,15 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 	}
 
 	if parsed.Stream {
-		resp, _, err := s.openKiroAnthropicStreamResponse(ctx, account, parsed, body, mappedModel, originalModel, c.Request.Header, parsed.Group, nil)
+		inputTokens := estimateKiroInputTokens(ctx, body)
+		cachePlan := prepareCachePlanForContext(
+			ctx, c, account, parsed.Group, body, mappedModel,
+			"anthropic_messages", inputTokens,
+		)
+		resp, _, err := s.openKiroAnthropicStreamResponse(
+			ctx, account, parsed, body, mappedModel, originalModel,
+			c.Request.Header, parsed.Group, cachePlan,
+		)
 		if err != nil {
 			var failoverErr *UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
@@ -211,6 +219,10 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 	}
 
 	inputTokens := estimateKiroInputTokens(ctx, body)
+	prepareCachePlanForContext(
+		ctx, c, account, parsed.Group, body, mappedModel,
+		"anthropic_messages", inputTokens,
+	)
 	resp, requestCtx, err := s.executeKiroUpstreamWithParsed(ctx, account, parsed, body, mappedModel, originalModel, token, c.Request.Header)
 	if err != nil {
 		var failoverErr *UpstreamFailoverError
@@ -240,8 +252,6 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 		return nil, s.handleKiroHTTPError(ctx, resp, c, account, mappedModel, body)
 	}
 
-	cacheUsage := s.buildKiroCacheEmulationUsage(ctx, account, parsed.Group, body, mappedModel, inputTokens)
-	requestCtx.CacheEmulationUsage = cacheUsage.toKiroUsage()
 	requestCtx.EstimatedInputTokens = inputTokens
 	parseResult, err := kiropkg.ParseNonStreamingEventStreamWithContext(resp.Body, originalModel, requestCtx)
 	if err != nil {
@@ -255,6 +265,14 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 		return nil, err
 	}
 
+	usage := kiroUsageToClaude(parseResult.Usage, inputTokens)
+	// Apply the same group-bound usage projection used by the other
+	// Claude-Code-compatible protocol adapters. The Kiro translator only
+	// understands upstream/native usage and response shaping; policy projection
+	// belongs to the protocol-neutral runtime.
+	mergeAndCommitCachePlan(c, &usage, true)
+	parseResult.ResponseBody = rewriteKiroClaudeResponseUsage(parseResult.ResponseBody, usage)
+
 	c.Header("Content-Type", "application/json")
 	requestID := buildKiroRequestID(resp)
 	claudeReqID := kiropkg.NewClaudeRequestID()
@@ -266,7 +284,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 
 	return &ForwardResult{
 		RequestID:     requestID,
-		Usage:         kiroUsageToClaude(parseResult.Usage, inputTokens),
+		Usage:         usage,
 		Model:         originalModel,
 		UpstreamModel: upstreamModel,
 		Stream:        false,
@@ -274,7 +292,39 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 	}, nil
 }
 
-func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, account *Account, parsed *ParsedRequest, anthropicBody []byte, mappedModel, requestModel string, headers http.Header, group *Group, cachePlanOverride *kiroCacheEmulationPlan) (*http.Response, int, error) {
+// rewriteKiroClaudeResponseUsage keeps the JSON response body in lockstep with
+// the usage value recorded by the gateway after cache-policy projection.
+// Kiro's translator builds the body before the protocol-neutral runtime sees
+// the final policy, so the fields must be patched once more here.
+func rewriteKiroClaudeResponseUsage(body []byte, usage ClaudeUsage) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	setInt := func(path string, value int) {
+		if next, err := sjson.SetBytes(body, path, value); err == nil {
+			body = next
+		}
+	}
+	deletePath := func(path string) {
+		if next, err := sjson.DeleteBytes(body, path); err == nil {
+			body = next
+		}
+	}
+	setInt("usage.input_tokens", max(usage.InputTokens, 0))
+	setInt("usage.output_tokens", max(usage.OutputTokens, 0))
+	setInt("usage.cache_read_input_tokens", max(usage.CacheReadInputTokens, 0))
+	if usage.CacheCreationInputTokens > 0 {
+		setInt("usage.cache_creation_input_tokens", usage.CacheCreationInputTokens)
+		setInt("usage.cache_creation.ephemeral_5m_input_tokens", max(usage.CacheCreation5mTokens, 0))
+		setInt("usage.cache_creation.ephemeral_1h_input_tokens", max(usage.CacheCreation1hTokens, 0))
+	} else {
+		deletePath("usage.cache_creation_input_tokens")
+		deletePath("usage.cache_creation")
+	}
+	return body
+}
+
+func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, account *Account, parsed *ParsedRequest, anthropicBody []byte, mappedModel, requestModel string, headers http.Header, group *Group, cachePlanOverride *cacheEmulationPlan) (*http.Response, int, error) {
 	token, tokenType, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, 0, err
@@ -294,7 +344,7 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 	if isOnlyWebSearchToolInBody(anthropicBody) {
 		plan := cachePlanOverride
 		if plan == nil {
-			plan = s.prepareKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
+			plan = s.prepareCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
 		}
 		pr, pw := io.Pipe()
 		headers := make(http.Header)
@@ -327,10 +377,8 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 	}
 	plan := cachePlanOverride
 	if plan == nil {
-		plan = s.prepareKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
+		plan = s.prepareCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
 	}
-	// 请求已确认成功(2xx)，此时提交缓存前缀落盘才是安全的。
-	plan.commit()
 	requestCtx.CacheEmulationUsage = plan.result().toKiroUsage()
 
 	pr, pw := io.Pipe()
@@ -348,6 +396,11 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 			_ = pw.CloseWithError(streamErr)
 			return
 		}
+		// Cache prefixes are persisted only after the complete upstream stream
+		// has been transformed successfully. An HTTP 2xx alone is insufficient:
+		// a truncated stream or client cancellation must not poison the next
+		// request's cache-read accounting.
+		plan.commit()
 		_ = pw.Close()
 	}()
 
@@ -648,7 +701,7 @@ func stableKiroConversationSeed(account *Account, parsed *ParsedRequest, anthrop
 		_, _ = sb.WriteString("account:")
 		_, _ = sb.WriteString(strconv.FormatInt(account.ID, 10))
 		_, _ = sb.WriteString("|credential:")
-		_, _ = sb.WriteString(kiroCacheCredentialIdentity(account))
+		_, _ = sb.WriteString(cacheCredentialIdentity(account))
 		_, _ = sb.WriteString("|")
 	}
 	if parsed != nil && parsed.SessionContext != nil {

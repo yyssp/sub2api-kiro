@@ -788,6 +788,20 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetCacheStrategyID sets the "cache_strategy_id" field.
+func (_c *GroupCreate) SetCacheStrategyID(v int64) *GroupCreate {
+	_c.mutation.SetCacheStrategyID(v)
+	return _c
+}
+
+// SetNillableCacheStrategyID sets the "cache_strategy_id" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCacheStrategyID(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetCacheStrategyID(*v)
+	}
+	return _c
+}
+
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (_c *GroupCreate) SetMaxReasoningEffort(v string) *GroupCreate {
 	_c.mutation.SetMaxReasoningEffort(v)
@@ -805,20 +819,6 @@ func (_c *GroupCreate) SetNillableMaxReasoningEffort(v *string) *GroupCreate {
 // SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
 func (_c *GroupCreate) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupCreate {
 	_c.mutation.SetReasoningEffortMappings(v)
-	return _c
-}
-
-// SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
-func (_c *GroupCreate) SetKiroCacheEmulationEnabled(v bool) *GroupCreate {
-	_c.mutation.SetKiroCacheEmulationEnabled(v)
-	return _c
-}
-
-// SetNillableKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field if the given value is not nil.
-func (_c *GroupCreate) SetNillableKiroCacheEmulationEnabled(v *bool) *GroupCreate {
-	if v != nil {
-		_c.SetKiroCacheEmulationEnabled(*v)
-	}
 	return _c
 }
 
@@ -846,62 +846,6 @@ func (_c *GroupCreate) SetKiroStickySessionTTLSeconds(v int) *GroupCreate {
 func (_c *GroupCreate) SetNillableKiroStickySessionTTLSeconds(v *int) *GroupCreate {
 	if v != nil {
 		_c.SetKiroStickySessionTTLSeconds(*v)
-	}
-	return _c
-}
-
-// SetKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field.
-func (_c *GroupCreate) SetKiroCacheEmulationRatio(v float64) *GroupCreate {
-	_c.mutation.SetKiroCacheEmulationRatio(v)
-	return _c
-}
-
-// SetNillableKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field if the given value is not nil.
-func (_c *GroupCreate) SetNillableKiroCacheEmulationRatio(v *float64) *GroupCreate {
-	if v != nil {
-		_c.SetKiroCacheEmulationRatio(*v)
-	}
-	return _c
-}
-
-// SetKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field.
-func (_c *GroupCreate) SetKiroCacheEmulationMode(v string) *GroupCreate {
-	_c.mutation.SetKiroCacheEmulationMode(v)
-	return _c
-}
-
-// SetNillableKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field if the given value is not nil.
-func (_c *GroupCreate) SetNillableKiroCacheEmulationMode(v *string) *GroupCreate {
-	if v != nil {
-		_c.SetKiroCacheEmulationMode(*v)
-	}
-	return _c
-}
-
-// SetKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field.
-func (_c *GroupCreate) SetKiroCacheCreationEmulationRatio(v float64) *GroupCreate {
-	_c.mutation.SetKiroCacheCreationEmulationRatio(v)
-	return _c
-}
-
-// SetNillableKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field if the given value is not nil.
-func (_c *GroupCreate) SetNillableKiroCacheCreationEmulationRatio(v *float64) *GroupCreate {
-	if v != nil {
-		_c.SetKiroCacheCreationEmulationRatio(*v)
-	}
-	return _c
-}
-
-// SetKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field.
-func (_c *GroupCreate) SetKiroCacheReadEmulationRatio(v float64) *GroupCreate {
-	_c.mutation.SetKiroCacheReadEmulationRatio(v)
-	return _c
-}
-
-// SetNillableKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field if the given value is not nil.
-func (_c *GroupCreate) SetNillableKiroCacheReadEmulationRatio(v *float64) *GroupCreate {
-	if v != nil {
-		_c.SetKiroCacheReadEmulationRatio(*v)
 	}
 	return _c
 }
@@ -1239,10 +1183,6 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultReasoningEffortMappings
 		_c.mutation.SetReasoningEffortMappings(v)
 	}
-	if _, ok := _c.mutation.KiroCacheEmulationEnabled(); !ok {
-		v := group.DefaultKiroCacheEmulationEnabled
-		_c.mutation.SetKiroCacheEmulationEnabled(v)
-	}
 	if _, ok := _c.mutation.KiroAutoStickyEnabled(); !ok {
 		v := group.DefaultKiroAutoStickyEnabled
 		_c.mutation.SetKiroAutoStickyEnabled(v)
@@ -1250,22 +1190,6 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.KiroStickySessionTTLSeconds(); !ok {
 		v := group.DefaultKiroStickySessionTTLSeconds
 		_c.mutation.SetKiroStickySessionTTLSeconds(v)
-	}
-	if _, ok := _c.mutation.KiroCacheEmulationRatio(); !ok {
-		v := group.DefaultKiroCacheEmulationRatio
-		_c.mutation.SetKiroCacheEmulationRatio(v)
-	}
-	if _, ok := _c.mutation.KiroCacheEmulationMode(); !ok {
-		v := group.DefaultKiroCacheEmulationMode
-		_c.mutation.SetKiroCacheEmulationMode(v)
-	}
-	if _, ok := _c.mutation.KiroCacheCreationEmulationRatio(); !ok {
-		v := group.DefaultKiroCacheCreationEmulationRatio
-		_c.mutation.SetKiroCacheCreationEmulationRatio(v)
-	}
-	if _, ok := _c.mutation.KiroCacheReadEmulationRatio(); !ok {
-		v := group.DefaultKiroCacheReadEmulationRatio
-		_c.mutation.SetKiroCacheReadEmulationRatio(v)
 	}
 	if _, ok := _c.mutation.KiroEndpointMode(); !ok {
 		v := group.DefaultKiroEndpointMode
@@ -1464,31 +1388,11 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
 		return &ValidationError{Name: "reasoning_effort_mappings", err: errors.New(`ent: missing required field "Group.reasoning_effort_mappings"`)}
 	}
-	if _, ok := _c.mutation.KiroCacheEmulationEnabled(); !ok {
-		return &ValidationError{Name: "kiro_cache_emulation_enabled", err: errors.New(`ent: missing required field "Group.kiro_cache_emulation_enabled"`)}
-	}
 	if _, ok := _c.mutation.KiroAutoStickyEnabled(); !ok {
 		return &ValidationError{Name: "kiro_auto_sticky_enabled", err: errors.New(`ent: missing required field "Group.kiro_auto_sticky_enabled"`)}
 	}
 	if _, ok := _c.mutation.KiroStickySessionTTLSeconds(); !ok {
 		return &ValidationError{Name: "kiro_sticky_session_ttl_seconds", err: errors.New(`ent: missing required field "Group.kiro_sticky_session_ttl_seconds"`)}
-	}
-	if _, ok := _c.mutation.KiroCacheEmulationRatio(); !ok {
-		return &ValidationError{Name: "kiro_cache_emulation_ratio", err: errors.New(`ent: missing required field "Group.kiro_cache_emulation_ratio"`)}
-	}
-	if _, ok := _c.mutation.KiroCacheEmulationMode(); !ok {
-		return &ValidationError{Name: "kiro_cache_emulation_mode", err: errors.New(`ent: missing required field "Group.kiro_cache_emulation_mode"`)}
-	}
-	if v, ok := _c.mutation.KiroCacheEmulationMode(); ok {
-		if err := group.KiroCacheEmulationModeValidator(v); err != nil {
-			return &ValidationError{Name: "kiro_cache_emulation_mode", err: fmt.Errorf(`ent: validator failed for field "Group.kiro_cache_emulation_mode": %w`, err)}
-		}
-	}
-	if _, ok := _c.mutation.KiroCacheCreationEmulationRatio(); !ok {
-		return &ValidationError{Name: "kiro_cache_creation_emulation_ratio", err: errors.New(`ent: missing required field "Group.kiro_cache_creation_emulation_ratio"`)}
-	}
-	if _, ok := _c.mutation.KiroCacheReadEmulationRatio(); !ok {
-		return &ValidationError{Name: "kiro_cache_read_emulation_ratio", err: errors.New(`ent: missing required field "Group.kiro_cache_read_emulation_ratio"`)}
 	}
 	if _, ok := _c.mutation.KiroEndpointMode(); !ok {
 		return &ValidationError{Name: "kiro_endpoint_mode", err: errors.New(`ent: missing required field "Group.kiro_endpoint_mode"`)}
@@ -1762,6 +1666,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
 	}
+	if value, ok := _c.mutation.CacheStrategyID(); ok {
+		_spec.SetField(group.FieldCacheStrategyID, field.TypeInt64, value)
+		_node.CacheStrategyID = &value
+	}
 	if value, ok := _c.mutation.MaxReasoningEffort(); ok {
 		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)
 		_node.MaxReasoningEffort = value
@@ -1770,10 +1678,6 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldReasoningEffortMappings, field.TypeJSON, value)
 		_node.ReasoningEffortMappings = value
 	}
-	if value, ok := _c.mutation.KiroCacheEmulationEnabled(); ok {
-		_spec.SetField(group.FieldKiroCacheEmulationEnabled, field.TypeBool, value)
-		_node.KiroCacheEmulationEnabled = value
-	}
 	if value, ok := _c.mutation.KiroAutoStickyEnabled(); ok {
 		_spec.SetField(group.FieldKiroAutoStickyEnabled, field.TypeBool, value)
 		_node.KiroAutoStickyEnabled = value
@@ -1781,22 +1685,6 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.KiroStickySessionTTLSeconds(); ok {
 		_spec.SetField(group.FieldKiroStickySessionTTLSeconds, field.TypeInt, value)
 		_node.KiroStickySessionTTLSeconds = value
-	}
-	if value, ok := _c.mutation.KiroCacheEmulationRatio(); ok {
-		_spec.SetField(group.FieldKiroCacheEmulationRatio, field.TypeFloat64, value)
-		_node.KiroCacheEmulationRatio = value
-	}
-	if value, ok := _c.mutation.KiroCacheEmulationMode(); ok {
-		_spec.SetField(group.FieldKiroCacheEmulationMode, field.TypeString, value)
-		_node.KiroCacheEmulationMode = value
-	}
-	if value, ok := _c.mutation.KiroCacheCreationEmulationRatio(); ok {
-		_spec.SetField(group.FieldKiroCacheCreationEmulationRatio, field.TypeFloat64, value)
-		_node.KiroCacheCreationEmulationRatio = value
-	}
-	if value, ok := _c.mutation.KiroCacheReadEmulationRatio(); ok {
-		_spec.SetField(group.FieldKiroCacheReadEmulationRatio, field.TypeFloat64, value)
-		_node.KiroCacheReadEmulationRatio = value
 	}
 	if value, ok := _c.mutation.KiroEndpointMode(); ok {
 		_spec.SetField(group.FieldKiroEndpointMode, field.TypeString, value)
@@ -2906,6 +2794,30 @@ func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	return u
 }
 
+// SetCacheStrategyID sets the "cache_strategy_id" field.
+func (u *GroupUpsert) SetCacheStrategyID(v int64) *GroupUpsert {
+	u.Set(group.FieldCacheStrategyID, v)
+	return u
+}
+
+// UpdateCacheStrategyID sets the "cache_strategy_id" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCacheStrategyID() *GroupUpsert {
+	u.SetExcluded(group.FieldCacheStrategyID)
+	return u
+}
+
+// AddCacheStrategyID adds v to the "cache_strategy_id" field.
+func (u *GroupUpsert) AddCacheStrategyID(v int64) *GroupUpsert {
+	u.Add(group.FieldCacheStrategyID, v)
+	return u
+}
+
+// ClearCacheStrategyID clears the value of the "cache_strategy_id" field.
+func (u *GroupUpsert) ClearCacheStrategyID() *GroupUpsert {
+	u.SetNull(group.FieldCacheStrategyID)
+	return u
+}
+
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (u *GroupUpsert) SetMaxReasoningEffort(v string) *GroupUpsert {
 	u.Set(group.FieldMaxReasoningEffort, v)
@@ -2927,18 +2839,6 @@ func (u *GroupUpsert) SetReasoningEffortMappings(v []domain.ReasoningEffortMappi
 // UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateReasoningEffortMappings() *GroupUpsert {
 	u.SetExcluded(group.FieldReasoningEffortMappings)
-	return u
-}
-
-// SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
-func (u *GroupUpsert) SetKiroCacheEmulationEnabled(v bool) *GroupUpsert {
-	u.Set(group.FieldKiroCacheEmulationEnabled, v)
-	return u
-}
-
-// UpdateKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateKiroCacheEmulationEnabled() *GroupUpsert {
-	u.SetExcluded(group.FieldKiroCacheEmulationEnabled)
 	return u
 }
 
@@ -2969,72 +2869,6 @@ func (u *GroupUpsert) UpdateKiroStickySessionTTLSeconds() *GroupUpsert {
 // AddKiroStickySessionTTLSeconds adds v to the "kiro_sticky_session_ttl_seconds" field.
 func (u *GroupUpsert) AddKiroStickySessionTTLSeconds(v int) *GroupUpsert {
 	u.Add(group.FieldKiroStickySessionTTLSeconds, v)
-	return u
-}
-
-// SetKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field.
-func (u *GroupUpsert) SetKiroCacheEmulationRatio(v float64) *GroupUpsert {
-	u.Set(group.FieldKiroCacheEmulationRatio, v)
-	return u
-}
-
-// UpdateKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateKiroCacheEmulationRatio() *GroupUpsert {
-	u.SetExcluded(group.FieldKiroCacheEmulationRatio)
-	return u
-}
-
-// AddKiroCacheEmulationRatio adds v to the "kiro_cache_emulation_ratio" field.
-func (u *GroupUpsert) AddKiroCacheEmulationRatio(v float64) *GroupUpsert {
-	u.Add(group.FieldKiroCacheEmulationRatio, v)
-	return u
-}
-
-// SetKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field.
-func (u *GroupUpsert) SetKiroCacheEmulationMode(v string) *GroupUpsert {
-	u.Set(group.FieldKiroCacheEmulationMode, v)
-	return u
-}
-
-// UpdateKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateKiroCacheEmulationMode() *GroupUpsert {
-	u.SetExcluded(group.FieldKiroCacheEmulationMode)
-	return u
-}
-
-// SetKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field.
-func (u *GroupUpsert) SetKiroCacheCreationEmulationRatio(v float64) *GroupUpsert {
-	u.Set(group.FieldKiroCacheCreationEmulationRatio, v)
-	return u
-}
-
-// UpdateKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateKiroCacheCreationEmulationRatio() *GroupUpsert {
-	u.SetExcluded(group.FieldKiroCacheCreationEmulationRatio)
-	return u
-}
-
-// AddKiroCacheCreationEmulationRatio adds v to the "kiro_cache_creation_emulation_ratio" field.
-func (u *GroupUpsert) AddKiroCacheCreationEmulationRatio(v float64) *GroupUpsert {
-	u.Add(group.FieldKiroCacheCreationEmulationRatio, v)
-	return u
-}
-
-// SetKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field.
-func (u *GroupUpsert) SetKiroCacheReadEmulationRatio(v float64) *GroupUpsert {
-	u.Set(group.FieldKiroCacheReadEmulationRatio, v)
-	return u
-}
-
-// UpdateKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateKiroCacheReadEmulationRatio() *GroupUpsert {
-	u.SetExcluded(group.FieldKiroCacheReadEmulationRatio)
-	return u
-}
-
-// AddKiroCacheReadEmulationRatio adds v to the "kiro_cache_read_emulation_ratio" field.
-func (u *GroupUpsert) AddKiroCacheReadEmulationRatio(v float64) *GroupUpsert {
-	u.Add(group.FieldKiroCacheReadEmulationRatio, v)
 	return u
 }
 
@@ -4238,6 +4072,34 @@ func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	})
 }
 
+// SetCacheStrategyID sets the "cache_strategy_id" field.
+func (u *GroupUpsertOne) SetCacheStrategyID(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheStrategyID(v)
+	})
+}
+
+// AddCacheStrategyID adds v to the "cache_strategy_id" field.
+func (u *GroupUpsertOne) AddCacheStrategyID(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheStrategyID(v)
+	})
+}
+
+// UpdateCacheStrategyID sets the "cache_strategy_id" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCacheStrategyID() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheStrategyID()
+	})
+}
+
+// ClearCacheStrategyID clears the value of the "cache_strategy_id" field.
+func (u *GroupUpsertOne) ClearCacheStrategyID() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearCacheStrategyID()
+	})
+}
+
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (u *GroupUpsertOne) SetMaxReasoningEffort(v string) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -4263,20 +4125,6 @@ func (u *GroupUpsertOne) SetReasoningEffortMappings(v []domain.ReasoningEffortMa
 func (u *GroupUpsertOne) UpdateReasoningEffortMappings() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateReasoningEffortMappings()
-	})
-}
-
-// SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
-func (u *GroupUpsertOne) SetKiroCacheEmulationEnabled(v bool) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetKiroCacheEmulationEnabled(v)
-	})
-}
-
-// UpdateKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateKiroCacheEmulationEnabled() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateKiroCacheEmulationEnabled()
 	})
 }
 
@@ -4312,83 +4160,6 @@ func (u *GroupUpsertOne) AddKiroStickySessionTTLSeconds(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateKiroStickySessionTTLSeconds() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateKiroStickySessionTTLSeconds()
-	})
-}
-
-// SetKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field.
-func (u *GroupUpsertOne) SetKiroCacheEmulationRatio(v float64) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetKiroCacheEmulationRatio(v)
-	})
-}
-
-// AddKiroCacheEmulationRatio adds v to the "kiro_cache_emulation_ratio" field.
-func (u *GroupUpsertOne) AddKiroCacheEmulationRatio(v float64) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.AddKiroCacheEmulationRatio(v)
-	})
-}
-
-// UpdateKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateKiroCacheEmulationRatio() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateKiroCacheEmulationRatio()
-	})
-}
-
-// SetKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field.
-func (u *GroupUpsertOne) SetKiroCacheEmulationMode(v string) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetKiroCacheEmulationMode(v)
-	})
-}
-
-// UpdateKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateKiroCacheEmulationMode() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateKiroCacheEmulationMode()
-	})
-}
-
-// SetKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field.
-func (u *GroupUpsertOne) SetKiroCacheCreationEmulationRatio(v float64) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetKiroCacheCreationEmulationRatio(v)
-	})
-}
-
-// AddKiroCacheCreationEmulationRatio adds v to the "kiro_cache_creation_emulation_ratio" field.
-func (u *GroupUpsertOne) AddKiroCacheCreationEmulationRatio(v float64) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.AddKiroCacheCreationEmulationRatio(v)
-	})
-}
-
-// UpdateKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateKiroCacheCreationEmulationRatio() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateKiroCacheCreationEmulationRatio()
-	})
-}
-
-// SetKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field.
-func (u *GroupUpsertOne) SetKiroCacheReadEmulationRatio(v float64) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetKiroCacheReadEmulationRatio(v)
-	})
-}
-
-// AddKiroCacheReadEmulationRatio adds v to the "kiro_cache_read_emulation_ratio" field.
-func (u *GroupUpsertOne) AddKiroCacheReadEmulationRatio(v float64) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.AddKiroCacheReadEmulationRatio(v)
-	})
-}
-
-// UpdateKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateKiroCacheReadEmulationRatio() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateKiroCacheReadEmulationRatio()
 	})
 }
 
@@ -5768,6 +5539,34 @@ func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	})
 }
 
+// SetCacheStrategyID sets the "cache_strategy_id" field.
+func (u *GroupUpsertBulk) SetCacheStrategyID(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheStrategyID(v)
+	})
+}
+
+// AddCacheStrategyID adds v to the "cache_strategy_id" field.
+func (u *GroupUpsertBulk) AddCacheStrategyID(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheStrategyID(v)
+	})
+}
+
+// UpdateCacheStrategyID sets the "cache_strategy_id" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCacheStrategyID() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheStrategyID()
+	})
+}
+
+// ClearCacheStrategyID clears the value of the "cache_strategy_id" field.
+func (u *GroupUpsertBulk) ClearCacheStrategyID() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearCacheStrategyID()
+	})
+}
+
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (u *GroupUpsertBulk) SetMaxReasoningEffort(v string) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -5793,20 +5592,6 @@ func (u *GroupUpsertBulk) SetReasoningEffortMappings(v []domain.ReasoningEffortM
 func (u *GroupUpsertBulk) UpdateReasoningEffortMappings() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateReasoningEffortMappings()
-	})
-}
-
-// SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
-func (u *GroupUpsertBulk) SetKiroCacheEmulationEnabled(v bool) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetKiroCacheEmulationEnabled(v)
-	})
-}
-
-// UpdateKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateKiroCacheEmulationEnabled() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateKiroCacheEmulationEnabled()
 	})
 }
 
@@ -5842,83 +5627,6 @@ func (u *GroupUpsertBulk) AddKiroStickySessionTTLSeconds(v int) *GroupUpsertBulk
 func (u *GroupUpsertBulk) UpdateKiroStickySessionTTLSeconds() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateKiroStickySessionTTLSeconds()
-	})
-}
-
-// SetKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field.
-func (u *GroupUpsertBulk) SetKiroCacheEmulationRatio(v float64) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetKiroCacheEmulationRatio(v)
-	})
-}
-
-// AddKiroCacheEmulationRatio adds v to the "kiro_cache_emulation_ratio" field.
-func (u *GroupUpsertBulk) AddKiroCacheEmulationRatio(v float64) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.AddKiroCacheEmulationRatio(v)
-	})
-}
-
-// UpdateKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateKiroCacheEmulationRatio() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateKiroCacheEmulationRatio()
-	})
-}
-
-// SetKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field.
-func (u *GroupUpsertBulk) SetKiroCacheEmulationMode(v string) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetKiroCacheEmulationMode(v)
-	})
-}
-
-// UpdateKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateKiroCacheEmulationMode() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateKiroCacheEmulationMode()
-	})
-}
-
-// SetKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field.
-func (u *GroupUpsertBulk) SetKiroCacheCreationEmulationRatio(v float64) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetKiroCacheCreationEmulationRatio(v)
-	})
-}
-
-// AddKiroCacheCreationEmulationRatio adds v to the "kiro_cache_creation_emulation_ratio" field.
-func (u *GroupUpsertBulk) AddKiroCacheCreationEmulationRatio(v float64) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.AddKiroCacheCreationEmulationRatio(v)
-	})
-}
-
-// UpdateKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateKiroCacheCreationEmulationRatio() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateKiroCacheCreationEmulationRatio()
-	})
-}
-
-// SetKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field.
-func (u *GroupUpsertBulk) SetKiroCacheReadEmulationRatio(v float64) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetKiroCacheReadEmulationRatio(v)
-	})
-}
-
-// AddKiroCacheReadEmulationRatio adds v to the "kiro_cache_read_emulation_ratio" field.
-func (u *GroupUpsertBulk) AddKiroCacheReadEmulationRatio(v float64) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.AddKiroCacheReadEmulationRatio(v)
-	})
-}
-
-// UpdateKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateKiroCacheReadEmulationRatio() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateKiroCacheReadEmulationRatio()
 	})
 }
 

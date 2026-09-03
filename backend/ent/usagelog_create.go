@@ -183,6 +183,34 @@ func (_c *UsageLogCreate) SetNillableGroupID(v *int64) *UsageLogCreate {
 	return _c
 }
 
+// SetCacheStrategyID sets the "cache_strategy_id" field.
+func (_c *UsageLogCreate) SetCacheStrategyID(v int64) *UsageLogCreate {
+	_c.mutation.SetCacheStrategyID(v)
+	return _c
+}
+
+// SetNillableCacheStrategyID sets the "cache_strategy_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheStrategyID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheStrategyID(*v)
+	}
+	return _c
+}
+
+// SetCacheStrategyName sets the "cache_strategy_name" field.
+func (_c *UsageLogCreate) SetCacheStrategyName(v string) *UsageLogCreate {
+	_c.mutation.SetCacheStrategyName(v)
+	return _c
+}
+
+// SetNillableCacheStrategyName sets the "cache_strategy_name" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheStrategyName(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheStrategyName(*v)
+	}
+	return _c
+}
+
 // SetSubscriptionID sets the "subscription_id" field.
 func (_c *UsageLogCreate) SetSubscriptionID(v int64) *UsageLogCreate {
 	_c.mutation.SetSubscriptionID(v)
@@ -836,6 +864,11 @@ func (_c *UsageLogCreate) check() error {
 			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_mode": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.CacheStrategyName(); ok {
+		if err := usagelog.CacheStrategyNameValidator(v); err != nil {
+			return &ValidationError{Name: "cache_strategy_name", err: fmt.Errorf(`ent: validator failed for field "UsageLog.cache_strategy_name": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.InputTokens(); !ok {
 		return &ValidationError{Name: "input_tokens", err: errors.New(`ent: missing required field "UsageLog.input_tokens"`)}
 	}
@@ -1006,6 +1039,14 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.BillingMode(); ok {
 		_spec.SetField(usagelog.FieldBillingMode, field.TypeString, value)
 		_node.BillingMode = &value
+	}
+	if value, ok := _c.mutation.CacheStrategyID(); ok {
+		_spec.SetField(usagelog.FieldCacheStrategyID, field.TypeInt64, value)
+		_node.CacheStrategyID = &value
+	}
+	if value, ok := _c.mutation.CacheStrategyName(); ok {
+		_spec.SetField(usagelog.FieldCacheStrategyName, field.TypeString, value)
+		_node.CacheStrategyName = &value
 	}
 	if value, ok := _c.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)
@@ -1497,6 +1538,48 @@ func (u *UsageLogUpsert) UpdateGroupID() *UsageLogUpsert {
 // ClearGroupID clears the value of the "group_id" field.
 func (u *UsageLogUpsert) ClearGroupID() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldGroupID)
+	return u
+}
+
+// SetCacheStrategyID sets the "cache_strategy_id" field.
+func (u *UsageLogUpsert) SetCacheStrategyID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheStrategyID, v)
+	return u
+}
+
+// UpdateCacheStrategyID sets the "cache_strategy_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheStrategyID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheStrategyID)
+	return u
+}
+
+// AddCacheStrategyID adds v to the "cache_strategy_id" field.
+func (u *UsageLogUpsert) AddCacheStrategyID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheStrategyID, v)
+	return u
+}
+
+// ClearCacheStrategyID clears the value of the "cache_strategy_id" field.
+func (u *UsageLogUpsert) ClearCacheStrategyID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCacheStrategyID)
+	return u
+}
+
+// SetCacheStrategyName sets the "cache_strategy_name" field.
+func (u *UsageLogUpsert) SetCacheStrategyName(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheStrategyName, v)
+	return u
+}
+
+// UpdateCacheStrategyName sets the "cache_strategy_name" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheStrategyName() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheStrategyName)
+	return u
+}
+
+// ClearCacheStrategyName clears the value of the "cache_strategy_name" field.
+func (u *UsageLogUpsert) ClearCacheStrategyName() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCacheStrategyName)
 	return u
 }
 
@@ -2390,6 +2473,55 @@ func (u *UsageLogUpsertOne) UpdateGroupID() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearGroupID() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetCacheStrategyID sets the "cache_strategy_id" field.
+func (u *UsageLogUpsertOne) SetCacheStrategyID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheStrategyID(v)
+	})
+}
+
+// AddCacheStrategyID adds v to the "cache_strategy_id" field.
+func (u *UsageLogUpsertOne) AddCacheStrategyID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheStrategyID(v)
+	})
+}
+
+// UpdateCacheStrategyID sets the "cache_strategy_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheStrategyID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheStrategyID()
+	})
+}
+
+// ClearCacheStrategyID clears the value of the "cache_strategy_id" field.
+func (u *UsageLogUpsertOne) ClearCacheStrategyID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCacheStrategyID()
+	})
+}
+
+// SetCacheStrategyName sets the "cache_strategy_name" field.
+func (u *UsageLogUpsertOne) SetCacheStrategyName(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheStrategyName(v)
+	})
+}
+
+// UpdateCacheStrategyName sets the "cache_strategy_name" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheStrategyName() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheStrategyName()
+	})
+}
+
+// ClearCacheStrategyName clears the value of the "cache_strategy_name" field.
+func (u *UsageLogUpsertOne) ClearCacheStrategyName() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCacheStrategyName()
 	})
 }
 
@@ -3546,6 +3678,55 @@ func (u *UsageLogUpsertBulk) UpdateGroupID() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearGroupID() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetCacheStrategyID sets the "cache_strategy_id" field.
+func (u *UsageLogUpsertBulk) SetCacheStrategyID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheStrategyID(v)
+	})
+}
+
+// AddCacheStrategyID adds v to the "cache_strategy_id" field.
+func (u *UsageLogUpsertBulk) AddCacheStrategyID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheStrategyID(v)
+	})
+}
+
+// UpdateCacheStrategyID sets the "cache_strategy_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheStrategyID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheStrategyID()
+	})
+}
+
+// ClearCacheStrategyID clears the value of the "cache_strategy_id" field.
+func (u *UsageLogUpsertBulk) ClearCacheStrategyID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCacheStrategyID()
+	})
+}
+
+// SetCacheStrategyName sets the "cache_strategy_name" field.
+func (u *UsageLogUpsertBulk) SetCacheStrategyName(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheStrategyName(v)
+	})
+}
+
+// UpdateCacheStrategyName sets the "cache_strategy_name" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheStrategyName() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheStrategyName()
+	})
+}
+
+// ClearCacheStrategyName clears the value of the "cache_strategy_name" field.
+func (u *UsageLogUpsertBulk) ClearCacheStrategyName() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCacheStrategyName()
 	})
 }
 

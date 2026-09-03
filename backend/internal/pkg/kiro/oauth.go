@@ -48,8 +48,6 @@ const (
 	SocialProviderGitHub SocialProvider = "Github"
 )
 
-// Kiro 账号 provider 白名单。社交登录为 Google/Github;
-// IDC 登录按 startURL 区分为 BuilderId(个人 Builder ID)/ Enterprise(企业自建 IAM Identity Center)。
 const (
 	ProviderGoogle      = "Google"
 	ProviderGithub      = "Github"
@@ -58,7 +56,6 @@ const (
 	ProviderExternalIdp = "ExternalIdp"
 )
 
-// IsValidKiroProvider 校验 provider 是否在白名单内。
 func IsValidKiroProvider(p string) bool {
 	switch strings.TrimSpace(p) {
 	case ProviderGoogle, ProviderGithub, ProviderBuilderId, ProviderEnterprise, ProviderExternalIdp:
@@ -68,11 +65,8 @@ func IsValidKiroProvider(p string) bool {
 	}
 }
 
-// resolveIDCProvider 按 startURL 推导 IDC 子类型:
-// startURL 为空或等于默认 Builder ID start URL → BuilderId;其余视为企业自建 → Enterprise。
-// 仅用于「有 startURL」的写入路径(IDC 登录),刷新/导入路径不得调用本函数推导。
 func resolveIDCProvider(startURL string) string {
-	if strings.TrimSpace(startURL) == "" || strings.TrimSpace(startURL) == BuilderIDStartURL {
+	if strings.TrimSpace(startURL) == "" || strings.EqualFold(strings.TrimRight(strings.TrimSpace(startURL), "/"), strings.TrimRight(BuilderIDStartURL, "/")) {
 		return ProviderBuilderId
 	}
 	return ProviderEnterprise
@@ -186,21 +180,76 @@ func sessionExpired(session *AuthSession, now time.Time) bool {
 }
 
 type TokenData struct {
-	AccessToken   string `json:"accessToken"`
-	RefreshToken  string `json:"refreshToken"`
-	ProfileArn    string `json:"profileArn,omitempty"`
-	ExpiresAt     string `json:"expiresAt,omitempty"`
-	AuthMethod    string `json:"authMethod,omitempty"`
-	Provider      string `json:"provider,omitempty"`
-	ClientID      string `json:"clientId,omitempty"`
-	ClientSecret  string `json:"clientSecret,omitempty"`
-	ClientIDHash  string `json:"clientIdHash,omitempty"`
-	Email         string `json:"email,omitempty"`
-	StartURL      string `json:"startUrl,omitempty"`
-	Region        string `json:"region,omitempty"`
-	TokenEndpoint string `json:"tokenEndpoint,omitempty"`
-	IssuerURL     string `json:"issuerUrl,omitempty"`
-	Scopes        string `json:"scopes,omitempty"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	// APIKey is only used while adapting Kiro IDE API-key exports. Account
+	// storage keeps the canonical current-project key as credentials.api_key.
+	APIKey       string `json:"kiroApiKey,omitempty"`
+	ProfileArn   string `json:"profileArn,omitempty"`
+	ExpiresAt    string `json:"expiresAt,omitempty"`
+	AuthMethod   string `json:"authMethod,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	ClientID     string `json:"clientId,omitempty"`
+	ClientSecret string `json:"clientSecret,omitempty"`
+	ClientIDHash string `json:"clientIdHash,omitempty"`
+	Email        string `json:"email,omitempty"`
+	StartURL     string `json:"startUrl,omitempty"`
+	// Region is the IAM Identity Center/OIDC region used for token refresh.
+	Region string `json:"region,omitempty"`
+	// APIRegion is the Kiro runtime API region. It must remain distinct from
+	// Region because Kiro IDE social exports use apiRegion without IDC data.
+	APIRegion         string `json:"apiRegion,omitempty"`
+	MachineID         string `json:"machineId,omitempty"`
+	SubscriptionTitle string `json:"subscriptionTitle,omitempty"`
+	TokenEndpoint     string `json:"tokenEndpoint,omitempty"`
+	IssuerURL         string `json:"issuerUrl,omitempty"`
+	Scopes            string `json:"scopes,omitempty"`
+}
+
+// UnmarshalJSON accepts both Kiro IDE exports (camelCase) and the normalized
+// snake_case credential shape used by account storage. This keeps the Kiro
+// adapter tolerant of exports from different clients without adding Kiro-only
+// fields to the global account model.
+func (t *TokenData) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	readString := func(keys ...string) string {
+		for _, key := range keys {
+			value, ok := raw[key]
+			if !ok {
+				continue
+			}
+			var result string
+			if err := json.Unmarshal(value, &result); err == nil && strings.TrimSpace(result) != "" {
+				return strings.TrimSpace(result)
+			}
+		}
+		return ""
+	}
+
+	t.AccessToken = readString("accessToken", "access_token")
+	t.RefreshToken = readString("refreshToken", "refresh_token")
+	t.APIKey = readString("kiroApiKey", "kiro_api_key", "apiKey", "api_key")
+	t.ProfileArn = readString("profileArn", "profile_arn")
+	t.ExpiresAt = readString("expiresAt", "expires_at")
+	t.AuthMethod = readString("authMethod", "auth_method")
+	t.Provider = readString("provider")
+	t.ClientID = readString("clientId", "client_id")
+	t.ClientSecret = readString("clientSecret", "client_secret")
+	t.ClientIDHash = readString("clientIdHash", "client_id_hash")
+	t.Email = readString("email")
+	t.StartURL = readString("startUrl", "start_url")
+	t.Region = readString("region")
+	t.APIRegion = readString("apiRegion", "api_region")
+	t.MachineID = readString("machineId", "machine_id")
+	t.SubscriptionTitle = readString("subscriptionTitle", "subscription_title")
+	t.TokenEndpoint = readString("tokenEndpoint", "token_endpoint")
+	t.IssuerURL = readString("issuerUrl", "issuer_url")
+	t.Scopes = readString("scopes")
+	return nil
 }
 
 type socialTokenResponse struct {
@@ -356,7 +405,7 @@ func RefreshSocialToken(ctx context.Context, proxyURL, refreshToken, provider st
 		ProfileArn:   resp.ProfileArn,
 		ExpiresAt:    time.Now().Add(time.Duration(expiresIn) * time.Second).Format(time.RFC3339),
 		AuthMethod:   "social",
-		Provider:     provider,
+		Provider:     strings.TrimSpace(provider),
 		Region:       defaultIDCRegion,
 	}, nil
 }
@@ -592,8 +641,6 @@ func RefreshIDCToken(ctx context.Context, proxyURL, clientID, clientSecret, refr
 		ProfileArn:   resp.ProfileArn,
 		ExpiresAt:    time.Now().Add(time.Duration(expiresIn) * time.Second).Format(time.RFC3339),
 		AuthMethod:   "idc",
-		// 刷新路径优先保留存量 provider(导入的 Enterprise 账号无 startURL,
-		// 不得用 startURL 重新推导,否则会退化为 BuilderId)。仅当存量为空时才按 startURL 兜底。
 		Provider:     strings.TrimSpace(provider),
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
@@ -621,12 +668,116 @@ func FetchOIDCUserEmail(ctx context.Context, proxyURL, accessToken, region strin
 	return strings.TrimSpace(resp.Email)
 }
 
+// ParseImportedTokens parses either one token object or an array of token
+// objects into Kiro credentials. It keeps accepting the credential forms used
+// by existing account workflows. The administrator-facing Kiro IDE import
+// endpoint must use ParseKiroCredentialExport instead, which requires the
+// explicit Kiro export shape and therefore cannot accidentally accept an
+// arbitrary OAuth/API-key JSON document.
+func ParseImportedTokens(tokenJSON string, deviceRegistrationJSON string) ([]*TokenData, error) {
+	raw := strings.TrimSpace(tokenJSON)
+	if raw == "" {
+		return nil, fmt.Errorf("kiro token is empty")
+	}
+	if strings.HasPrefix(raw, "[") {
+		var entries []json.RawMessage
+		if err := json.Unmarshal([]byte(raw), &entries); err != nil {
+			return nil, fmt.Errorf("failed to parse kiro token list: %w", err)
+		}
+		if len(entries) == 0 {
+			return nil, fmt.Errorf("kiro token list is empty")
+		}
+		tokens := make([]*TokenData, 0, len(entries))
+		for index, entry := range entries {
+			token, err := parseImportedTokenObject(entry, deviceRegistrationJSON)
+			if err != nil {
+				return nil, fmt.Errorf("token %d: %w", index+1, err)
+			}
+			tokens = append(tokens, token)
+		}
+		return tokens, nil
+	}
+	token, err := parseImportedTokenObject([]byte(raw), deviceRegistrationJSON)
+	if err != nil {
+		return nil, err
+	}
+	return []*TokenData{token}, nil
+}
+
+// ParseKiroCredentialExport parses a Kiro IDE credential export. In addition
+// to the normal credential checks, every entry must contain Kiro-specific
+// runtime metadata. This is intentionally separate from ParseImportedTokens:
+// only the dedicated import flow needs to reject generic credential JSON.
+func ParseKiroCredentialExport(tokenJSON string, deviceRegistrationJSON string) ([]*TokenData, error) {
+	raw := strings.TrimSpace(tokenJSON)
+	if raw == "" {
+		return nil, fmt.Errorf("kiro token is empty")
+	}
+	if strings.HasPrefix(raw, "[") {
+		var entries []json.RawMessage
+		if err := json.Unmarshal([]byte(raw), &entries); err != nil {
+			return nil, fmt.Errorf("failed to parse kiro token list: %w", err)
+		}
+		if len(entries) == 0 {
+			return nil, fmt.Errorf("kiro token list is empty")
+		}
+		tokens := make([]*TokenData, 0, len(entries))
+		for index, entry := range entries {
+			if err := validateKiroCredentialExportShape(entry); err != nil {
+				return nil, fmt.Errorf("token %d: %w", index+1, err)
+			}
+			token, err := parseImportedTokenObject(entry, deviceRegistrationJSON)
+			if err != nil {
+				return nil, fmt.Errorf("token %d: %w", index+1, err)
+			}
+			tokens = append(tokens, token)
+		}
+		return tokens, nil
+	}
+	if err := validateKiroCredentialExportShape([]byte(raw)); err != nil {
+		return nil, err
+	}
+	token, err := parseImportedTokenObject([]byte(raw), deviceRegistrationJSON)
+	if err != nil {
+		return nil, err
+	}
+	return []*TokenData{token}, nil
+}
+
 func ParseImportedToken(tokenJSON string, deviceRegistrationJSON string) (*TokenData, error) {
+	tokens, err := ParseImportedTokens(tokenJSON, deviceRegistrationJSON)
+	if err != nil {
+		return nil, err
+	}
+	if len(tokens) != 1 {
+		return nil, fmt.Errorf("expected one Kiro token, got %d", len(tokens))
+	}
+	return tokens[0], nil
+}
+
+func parseImportedTokenObject(data []byte, deviceRegistrationJSON string) (*TokenData, error) {
 	var token TokenData
-	if err := json.Unmarshal([]byte(tokenJSON), &token); err != nil {
+	if err := json.Unmarshal(data, &token); err != nil {
 		return nil, fmt.Errorf("failed to parse kiro token: %w", err)
 	}
-	token.AuthMethod = strings.ToLower(strings.TrimSpace(token.AuthMethod))
+	token.AuthMethod = normalizeImportedAuthMethod(token.AuthMethod)
+	token.APIKey = strings.TrimSpace(token.APIKey)
+	if token.AuthMethod == "" && token.APIKey != "" && strings.TrimSpace(token.AccessToken) == "" {
+		token.AuthMethod = "api_key"
+	}
+	if token.AuthMethod == "api_key" {
+		if token.APIKey == "" {
+			return nil, fmt.Errorf("api key is empty")
+		}
+		token.Provider = strings.TrimSpace(token.Provider)
+		token.APIRegion = strings.TrimSpace(token.APIRegion)
+		token.MachineID = strings.TrimSpace(token.MachineID)
+		token.SubscriptionTitle = strings.TrimSpace(token.SubscriptionTitle)
+		if token.Provider != "" && !IsValidKiroProvider(token.Provider) {
+			return nil, fmt.Errorf("unsupported kiro provider: %q", token.Provider)
+		}
+		return &token, nil
+	}
 	if strings.TrimSpace(token.AccessToken) == "" {
 		return nil, fmt.Errorf("access token is empty")
 	}
@@ -642,17 +793,32 @@ func ParseImportedToken(tokenJSON string, deviceRegistrationJSON string) (*Token
 			token.ClientSecret = reg.ClientSecret
 		}
 	}
-	if token.AuthMethod == "" && strings.TrimSpace(token.ClientID) != "" && strings.TrimSpace(token.ClientSecret) != "" {
-		token.AuthMethod = "idc"
-	}
-	// provider 严格校验:必须显式提供且属于白名单(Google/Github/BuilderId/Enterprise/ExternalIdp),
-	// 空值或非法值一律拒绝,不再兜底为 AWS。
 	token.Provider = strings.TrimSpace(token.Provider)
-	if !IsValidKiroProvider(token.Provider) {
-		return nil, fmt.Errorf("unsupported or missing kiro provider: %q (must be one of Google/Github/BuilderId/Enterprise/ExternalIdp)", token.Provider)
+	token.Region = strings.TrimSpace(token.Region)
+	token.APIRegion = strings.TrimSpace(token.APIRegion)
+	token.MachineID = strings.TrimSpace(token.MachineID)
+	token.StartURL = strings.TrimSpace(token.StartURL)
+
+	if token.ClientIDHash != "" && (token.ClientID == "" || token.ClientSecret == "") {
+		return nil, fmt.Errorf("device registration is required when clientIdHash is present without clientId and clientSecret")
+	}
+	if token.AuthMethod == "" {
+		switch {
+		case strings.TrimSpace(token.TokenEndpoint) != "" && strings.TrimSpace(token.ClientID) != "":
+			token.AuthMethod = "external_idp"
+		case strings.TrimSpace(token.ClientID) != "" && strings.TrimSpace(token.ClientSecret) != "":
+			token.AuthMethod = "idc"
+		default:
+			// Kiro IDE social exports contain access/refresh tokens but no
+			// provider. Treat that shape as social OAuth by default.
+			token.AuthMethod = "social"
+		}
 	}
 	switch token.AuthMethod {
 	case "idc":
+		if token.Provider == "" {
+			token.Provider = resolveIDCProvider(token.StartURL)
+		}
 		if strings.TrimSpace(token.Region) == "" {
 			token.Region = defaultIDCRegion
 		}
@@ -668,6 +834,14 @@ func ParseImportedToken(tokenJSON string, deviceRegistrationJSON string) (*Token
 		if strings.TrimSpace(token.Region) == "" {
 			token.Region = defaultIDCRegion
 		}
+	case "social":
+		// Kiro IDE social exports may omit provider because the exported token
+		// itself does not always expose the browser sign-in choice.
+	default:
+		return nil, fmt.Errorf("unsupported kiro auth method: %q", token.AuthMethod)
+	}
+	if token.Provider != "" && !IsValidKiroProvider(token.Provider) {
+		return nil, fmt.Errorf("unsupported kiro provider: %q", token.Provider)
 	}
 	// expiresAt 归一化为带本地时区偏移的 RFC3339,对齐 OAuth 登录流程。
 	if strings.TrimSpace(token.ExpiresAt) != "" {
@@ -678,6 +852,89 @@ func ParseImportedToken(tokenJSON string, deviceRegistrationJSON string) (*Token
 		token.ExpiresAt = normalized
 	}
 	return &token, nil
+}
+
+// validateKiroCredentialExportShape makes the Kiro importer intentionally
+// format-specific. The endpoint is not a generic JSON-to-account converter:
+// a payload must contain an explicit Kiro credential shape before any OAuth
+// or API-key value is parsed or returned to the caller.
+//
+// Both Kiro IDE's camelCase export and this project's normalized snake_case
+// credential export are accepted. Requiring a Kiro runtime companion field
+// prevents an unrelated OAuth document with access_token/refresh_token from
+// being imported as a Kiro account by accident.
+func validateKiroCredentialExportShape(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("failed to parse kiro token: %w", err)
+	}
+	if len(raw) == 0 {
+		return fmt.Errorf("not a recognized Kiro credential export: credential object is empty")
+	}
+
+	readString := func(keys ...string) string {
+		for _, key := range keys {
+			value, ok := raw[key]
+			if !ok {
+				continue
+			}
+			var text string
+			if err := json.Unmarshal(value, &text); err == nil && strings.TrimSpace(text) != "" {
+				return strings.TrimSpace(text)
+			}
+		}
+		return ""
+	}
+	authMethod := normalizeImportedAuthMethod(readString("authMethod", "auth_method"))
+	apiKey := readString("kiroApiKey", "kiro_api_key", "apiKey", "api_key")
+	accessToken := readString("accessToken", "access_token")
+	refreshToken := readString("refreshToken", "refresh_token")
+	// These fields belong to Kiro's runtime/auth export rather than a generic
+	// OAuth document. At least one is required for every imported account.
+	hasKiroCompanion := readString(
+		"profileArn", "profile_arn",
+		"apiRegion", "api_region",
+		"machineId", "machine_id",
+		"subscriptionTitle", "subscription_title",
+		"startUrl", "start_url",
+		"clientIdHash", "client_id_hash",
+		"tokenEndpoint", "token_endpoint",
+	) != ""
+
+	if authMethod == "" && apiKey != "" && accessToken == "" {
+		authMethod = "api_key"
+	}
+	switch authMethod {
+	case "api_key":
+		if apiKey == "" || !hasKiroCompanion {
+			return fmt.Errorf("not a recognized Kiro credential export: api_key entries require kiroApiKey/api_key and Kiro runtime metadata")
+		}
+	case "social", "idc", "external_idp":
+		if accessToken == "" || refreshToken == "" || !hasKiroCompanion {
+			return fmt.Errorf("not a recognized Kiro credential export: OAuth entries require accessToken, refreshToken, authMethod, and Kiro runtime metadata")
+		}
+	default:
+		return fmt.Errorf("not a recognized Kiro credential export: unsupported or missing authMethod")
+	}
+	return nil
+}
+
+func normalizeImportedAuthMethod(method string) string {
+	switch strings.ToLower(strings.TrimSpace(method)) {
+	case "", "oauth", "social", "social_oauth", "oauth_social":
+		if strings.TrimSpace(method) == "" {
+			return ""
+		}
+		return "social"
+	case "idc", "identity_center", "identity-center", "builderid", "builder_id":
+		return "idc"
+	case "external_idp", "external-idp", "externalidp":
+		return "external_idp"
+	case "api_key", "api-key", "apikey":
+		return "api_key"
+	default:
+		return strings.ToLower(strings.TrimSpace(method))
+	}
 }
 
 func getOIDCEndpoint(region string) string {

@@ -265,47 +265,32 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+		field.Int64("cache_strategy_id").
+			Optional().
+			Nillable().
+			Comment("绑定的通用缓存策略 ID；为空表示关闭缓存整形"),
 
 		// OpenAI/Codex 请求的推理强度上限（空字符串表示不限制）。
-		field.String("max_reasoning_effort").
-			MaxLen(20).
-			Default("").
-			Comment("OpenAI reasoning effort 上限；可选 minimal/low/medium/high/xhigh/max"),
-		field.JSON("reasoning_effort_mappings", []domain.ReasoningEffortMapping{}).
-			Default([]domain.ReasoningEffortMapping{}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
-			Comment("OpenAI reasoning effort 自定义精确映射；先映射再应用上限"),
+			field.String("max_reasoning_effort").
+				MaxLen(20).
+				Default("").
+				Comment("OpenAI reasoning effort 上限；可选 minimal/low/medium/high/xhigh/max"),
+			field.JSON("reasoning_effort_mappings", []domain.ReasoningEffortMapping{}).
+				Default([]domain.ReasoningEffortMapping{}).
+				SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+				Comment("OpenAI reasoning effort 自定义精确映射；先映射再应用上限"),
 
-		// Kiro 模拟缓存配置（仅 Kiro 平台生效）
-		field.Bool("kiro_cache_emulation_enabled").
-			Default(false).
-			Comment("是否启用 Kiro 模拟缓存（仅 kiro 分组生效）"),
-		field.Bool("kiro_auto_sticky_enabled").
-			Default(true).
-			Comment("是否启用 Kiro 自动会话粘性路由（仅 kiro 分组生效）"),
-		field.Int("kiro_sticky_session_ttl_seconds").
-			Default(3600).
-			Comment("Kiro 自动会话粘性绑定 TTL（秒，仅 kiro 分组生效）"),
-		field.Float("kiro_cache_emulation_ratio").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(5,4)"}).
-			Default(1.0).
-			Comment("Kiro 模拟缓存生效比例，范围 0-1（仅 kiro 分组生效）"),
-		field.String("kiro_cache_emulation_mode").
-			MaxLen(16).
-			Default("uniform").
-			Comment("Kiro 模拟缓存比例模式：uniform=统一比例，independent=独立比例"),
-		field.Float("kiro_cache_creation_emulation_ratio").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(5,4)"}).
-			Default(1.0).
-			Comment("Kiro 缓存创建模拟比例，范围 0-1（独立模式生效）"),
-		field.Float("kiro_cache_read_emulation_ratio").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(5,4)"}).
-			Default(1.0).
-			Comment("Kiro 缓存读取模拟比例，范围 0-1（独立模式生效）"),
-		field.String("kiro_endpoint_mode").
-			MaxLen(8).
-			Default("q").
-			Comment("Kiro 推理 endpoint：q=AWS Q (q.{region}.amazonaws.com), krs=Kiro Runtime Service (runtime.us-east-1.kiro.dev)"),
+			// Kiro sticky routing configuration (non-cache responsibility)
+			field.Bool("kiro_auto_sticky_enabled").
+				Default(true).
+				Comment("是否启用 Kiro 自动会话粘性路由（仅 kiro 分组生效）"),
+			field.Int("kiro_sticky_session_ttl_seconds").
+				Default(3600).
+				Comment("Kiro 自动会话粘性绑定 TTL（秒，仅 kiro 分组生效）"),
+			field.String("kiro_endpoint_mode").
+				MaxLen(8).
+				Default("q").
+				Comment("Kiro 推理 endpoint：q=AWS Q (q.{region}.amazonaws.com), krs=Kiro Runtime Service (runtime.us-east-1.kiro.dev)"),
 		// 分组利润控制（migration 192/193）：openai/anthropic/gemini/grok/antigravity
 		// 的 token 分组可启用，composite 分组不能直接启用。
 		field.Bool("profit_control_enabled").

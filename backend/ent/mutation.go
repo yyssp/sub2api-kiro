@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
+	"github.com/Wei-Shaw/sub2api/ent/cachestrategy"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -75,6 +76,7 @@ const (
 	TypeBatchImageEvent               = "BatchImageEvent"
 	TypeBatchImageItem                = "BatchImageItem"
 	TypeBatchImageJob                 = "BatchImageJob"
+	TypeCacheStrategy                 = "CacheStrategy"
 	TypeChannelMonitor                = "ChannelMonitor"
 	TypeChannelMonitorDailyRollup     = "ChannelMonitorDailyRollup"
 	TypeChannelMonitorHistory         = "ChannelMonitorHistory"
@@ -14600,6 +14602,692 @@ func (m *BatchImageJobMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown BatchImageJob edge %s", name)
 }
 
+// CacheStrategyMutation represents an operation that mutates the CacheStrategy nodes in the graph.
+type CacheStrategyMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	name          *string
+	description   *string
+	enabled       *bool
+	revision      *int64
+	addrevision   *int64
+	_config       *map[string]interface{}
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*CacheStrategy, error)
+	predicates    []predicate.CacheStrategy
+}
+
+var _ ent.Mutation = (*CacheStrategyMutation)(nil)
+
+// cachestrategyOption allows management of the mutation configuration using functional options.
+type cachestrategyOption func(*CacheStrategyMutation)
+
+// newCacheStrategyMutation creates new mutation for the CacheStrategy entity.
+func newCacheStrategyMutation(c config, op Op, opts ...cachestrategyOption) *CacheStrategyMutation {
+	m := &CacheStrategyMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCacheStrategy,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCacheStrategyID sets the ID field of the mutation.
+func withCacheStrategyID(id int64) cachestrategyOption {
+	return func(m *CacheStrategyMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CacheStrategy
+		)
+		m.oldValue = func(ctx context.Context) (*CacheStrategy, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CacheStrategy.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCacheStrategy sets the old CacheStrategy of the mutation.
+func withCacheStrategy(node *CacheStrategy) cachestrategyOption {
+	return func(m *CacheStrategyMutation) {
+		m.oldValue = func(context.Context) (*CacheStrategy, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CacheStrategyMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CacheStrategyMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CacheStrategyMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CacheStrategyMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CacheStrategy.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetName sets the "name" field.
+func (m *CacheStrategyMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *CacheStrategyMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the CacheStrategy entity.
+// If the CacheStrategy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CacheStrategyMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *CacheStrategyMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *CacheStrategyMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *CacheStrategyMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the CacheStrategy entity.
+// If the CacheStrategy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CacheStrategyMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *CacheStrategyMutation) ResetDescription() {
+	m.description = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *CacheStrategyMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *CacheStrategyMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the CacheStrategy entity.
+// If the CacheStrategy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CacheStrategyMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *CacheStrategyMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetRevision sets the "revision" field.
+func (m *CacheStrategyMutation) SetRevision(i int64) {
+	m.revision = &i
+	m.addrevision = nil
+}
+
+// Revision returns the value of the "revision" field in the mutation.
+func (m *CacheStrategyMutation) Revision() (r int64, exists bool) {
+	v := m.revision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevision returns the old "revision" field's value of the CacheStrategy entity.
+// If the CacheStrategy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CacheStrategyMutation) OldRevision(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevision is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevision requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevision: %w", err)
+	}
+	return oldValue.Revision, nil
+}
+
+// AddRevision adds i to the "revision" field.
+func (m *CacheStrategyMutation) AddRevision(i int64) {
+	if m.addrevision != nil {
+		*m.addrevision += i
+	} else {
+		m.addrevision = &i
+	}
+}
+
+// AddedRevision returns the value that was added to the "revision" field in this mutation.
+func (m *CacheStrategyMutation) AddedRevision() (r int64, exists bool) {
+	v := m.addrevision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRevision resets all changes to the "revision" field.
+func (m *CacheStrategyMutation) ResetRevision() {
+	m.revision = nil
+	m.addrevision = nil
+}
+
+// SetConfig sets the "config" field.
+func (m *CacheStrategyMutation) SetConfig(value map[string]interface{}) {
+	m._config = &value
+}
+
+// Config returns the value of the "config" field in the mutation.
+func (m *CacheStrategyMutation) Config() (r map[string]interface{}, exists bool) {
+	v := m._config
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConfig returns the old "config" field's value of the CacheStrategy entity.
+// If the CacheStrategy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CacheStrategyMutation) OldConfig(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConfig is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConfig requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConfig: %w", err)
+	}
+	return oldValue.Config, nil
+}
+
+// ResetConfig resets all changes to the "config" field.
+func (m *CacheStrategyMutation) ResetConfig() {
+	m._config = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CacheStrategyMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CacheStrategyMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CacheStrategy entity.
+// If the CacheStrategy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CacheStrategyMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CacheStrategyMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CacheStrategyMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CacheStrategyMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CacheStrategy entity.
+// If the CacheStrategy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CacheStrategyMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CacheStrategyMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the CacheStrategyMutation builder.
+func (m *CacheStrategyMutation) Where(ps ...predicate.CacheStrategy) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CacheStrategyMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CacheStrategyMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CacheStrategy, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CacheStrategyMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CacheStrategyMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CacheStrategy).
+func (m *CacheStrategyMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CacheStrategyMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.name != nil {
+		fields = append(fields, cachestrategy.FieldName)
+	}
+	if m.description != nil {
+		fields = append(fields, cachestrategy.FieldDescription)
+	}
+	if m.enabled != nil {
+		fields = append(fields, cachestrategy.FieldEnabled)
+	}
+	if m.revision != nil {
+		fields = append(fields, cachestrategy.FieldRevision)
+	}
+	if m._config != nil {
+		fields = append(fields, cachestrategy.FieldConfig)
+	}
+	if m.created_at != nil {
+		fields = append(fields, cachestrategy.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, cachestrategy.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CacheStrategyMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case cachestrategy.FieldName:
+		return m.Name()
+	case cachestrategy.FieldDescription:
+		return m.Description()
+	case cachestrategy.FieldEnabled:
+		return m.Enabled()
+	case cachestrategy.FieldRevision:
+		return m.Revision()
+	case cachestrategy.FieldConfig:
+		return m.Config()
+	case cachestrategy.FieldCreatedAt:
+		return m.CreatedAt()
+	case cachestrategy.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CacheStrategyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case cachestrategy.FieldName:
+		return m.OldName(ctx)
+	case cachestrategy.FieldDescription:
+		return m.OldDescription(ctx)
+	case cachestrategy.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case cachestrategy.FieldRevision:
+		return m.OldRevision(ctx)
+	case cachestrategy.FieldConfig:
+		return m.OldConfig(ctx)
+	case cachestrategy.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case cachestrategy.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown CacheStrategy field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CacheStrategyMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case cachestrategy.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case cachestrategy.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case cachestrategy.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case cachestrategy.FieldRevision:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevision(v)
+		return nil
+	case cachestrategy.FieldConfig:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConfig(v)
+		return nil
+	case cachestrategy.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case cachestrategy.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CacheStrategy field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CacheStrategyMutation) AddedFields() []string {
+	var fields []string
+	if m.addrevision != nil {
+		fields = append(fields, cachestrategy.FieldRevision)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CacheStrategyMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case cachestrategy.FieldRevision:
+		return m.AddedRevision()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CacheStrategyMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case cachestrategy.FieldRevision:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRevision(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CacheStrategy numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CacheStrategyMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CacheStrategyMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CacheStrategyMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown CacheStrategy nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CacheStrategyMutation) ResetField(name string) error {
+	switch name {
+	case cachestrategy.FieldName:
+		m.ResetName()
+		return nil
+	case cachestrategy.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case cachestrategy.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case cachestrategy.FieldRevision:
+		m.ResetRevision()
+		return nil
+	case cachestrategy.FieldConfig:
+		m.ResetConfig()
+		return nil
+	case cachestrategy.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case cachestrategy.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CacheStrategy field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CacheStrategyMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CacheStrategyMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CacheStrategyMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CacheStrategyMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CacheStrategyMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CacheStrategyMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CacheStrategyMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CacheStrategy unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CacheStrategyMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CacheStrategy edge %s", name)
+}
+
 // ChannelMonitorMutation represents an operation that mutates the ChannelMonitor nodes in the graph.
 type ChannelMonitorMutation struct {
 	config
@@ -22274,20 +22962,14 @@ type GroupMutation struct {
 	models_list_config                      *domain.GroupModelsListConfig
 	rpm_limit                               *int
 	addrpm_limit                            *int
+	cache_strategy_id                       *int64
+	addcache_strategy_id                    *int64
 	max_reasoning_effort                    *string
 	reasoning_effort_mappings               *[]domain.ReasoningEffortMapping
 	appendreasoning_effort_mappings         []domain.ReasoningEffortMapping
-	kiro_cache_emulation_enabled            *bool
 	kiro_auto_sticky_enabled                *bool
 	kiro_sticky_session_ttl_seconds         *int
 	addkiro_sticky_session_ttl_seconds      *int
-	kiro_cache_emulation_ratio              *float64
-	addkiro_cache_emulation_ratio           *float64
-	kiro_cache_emulation_mode               *string
-	kiro_cache_creation_emulation_ratio     *float64
-	addkiro_cache_creation_emulation_ratio  *float64
-	kiro_cache_read_emulation_ratio         *float64
-	addkiro_cache_read_emulation_ratio      *float64
 	kiro_endpoint_mode                      *string
 	profit_control_enabled                  *bool
 	profit_min_margin                       *float64
@@ -25301,6 +25983,76 @@ func (m *GroupMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetCacheStrategyID sets the "cache_strategy_id" field.
+func (m *GroupMutation) SetCacheStrategyID(i int64) {
+	m.cache_strategy_id = &i
+	m.addcache_strategy_id = nil
+}
+
+// CacheStrategyID returns the value of the "cache_strategy_id" field in the mutation.
+func (m *GroupMutation) CacheStrategyID() (r int64, exists bool) {
+	v := m.cache_strategy_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheStrategyID returns the old "cache_strategy_id" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldCacheStrategyID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheStrategyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheStrategyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheStrategyID: %w", err)
+	}
+	return oldValue.CacheStrategyID, nil
+}
+
+// AddCacheStrategyID adds i to the "cache_strategy_id" field.
+func (m *GroupMutation) AddCacheStrategyID(i int64) {
+	if m.addcache_strategy_id != nil {
+		*m.addcache_strategy_id += i
+	} else {
+		m.addcache_strategy_id = &i
+	}
+}
+
+// AddedCacheStrategyID returns the value that was added to the "cache_strategy_id" field in this mutation.
+func (m *GroupMutation) AddedCacheStrategyID() (r int64, exists bool) {
+	v := m.addcache_strategy_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCacheStrategyID clears the value of the "cache_strategy_id" field.
+func (m *GroupMutation) ClearCacheStrategyID() {
+	m.cache_strategy_id = nil
+	m.addcache_strategy_id = nil
+	m.clearedFields[group.FieldCacheStrategyID] = struct{}{}
+}
+
+// CacheStrategyIDCleared returns if the "cache_strategy_id" field was cleared in this mutation.
+func (m *GroupMutation) CacheStrategyIDCleared() bool {
+	_, ok := m.clearedFields[group.FieldCacheStrategyID]
+	return ok
+}
+
+// ResetCacheStrategyID resets all changes to the "cache_strategy_id" field.
+func (m *GroupMutation) ResetCacheStrategyID() {
+	m.cache_strategy_id = nil
+	m.addcache_strategy_id = nil
+	delete(m.clearedFields, group.FieldCacheStrategyID)
+}
+
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (m *GroupMutation) SetMaxReasoningEffort(s string) {
 	m.max_reasoning_effort = &s
@@ -25386,42 +26138,6 @@ func (m *GroupMutation) AppendedReasoningEffortMappings() ([]domain.ReasoningEff
 func (m *GroupMutation) ResetReasoningEffortMappings() {
 	m.reasoning_effort_mappings = nil
 	m.appendreasoning_effort_mappings = nil
-}
-
-// SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
-func (m *GroupMutation) SetKiroCacheEmulationEnabled(b bool) {
-	m.kiro_cache_emulation_enabled = &b
-}
-
-// KiroCacheEmulationEnabled returns the value of the "kiro_cache_emulation_enabled" field in the mutation.
-func (m *GroupMutation) KiroCacheEmulationEnabled() (r bool, exists bool) {
-	v := m.kiro_cache_emulation_enabled
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldKiroCacheEmulationEnabled returns the old "kiro_cache_emulation_enabled" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldKiroCacheEmulationEnabled(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldKiroCacheEmulationEnabled is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldKiroCacheEmulationEnabled requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldKiroCacheEmulationEnabled: %w", err)
-	}
-	return oldValue.KiroCacheEmulationEnabled, nil
-}
-
-// ResetKiroCacheEmulationEnabled resets all changes to the "kiro_cache_emulation_enabled" field.
-func (m *GroupMutation) ResetKiroCacheEmulationEnabled() {
-	m.kiro_cache_emulation_enabled = nil
 }
 
 // SetKiroAutoStickyEnabled sets the "kiro_auto_sticky_enabled" field.
@@ -25514,210 +26230,6 @@ func (m *GroupMutation) AddedKiroStickySessionTTLSeconds() (r int, exists bool) 
 func (m *GroupMutation) ResetKiroStickySessionTTLSeconds() {
 	m.kiro_sticky_session_ttl_seconds = nil
 	m.addkiro_sticky_session_ttl_seconds = nil
-}
-
-// SetKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field.
-func (m *GroupMutation) SetKiroCacheEmulationRatio(f float64) {
-	m.kiro_cache_emulation_ratio = &f
-	m.addkiro_cache_emulation_ratio = nil
-}
-
-// KiroCacheEmulationRatio returns the value of the "kiro_cache_emulation_ratio" field in the mutation.
-func (m *GroupMutation) KiroCacheEmulationRatio() (r float64, exists bool) {
-	v := m.kiro_cache_emulation_ratio
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldKiroCacheEmulationRatio returns the old "kiro_cache_emulation_ratio" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldKiroCacheEmulationRatio(ctx context.Context) (v float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldKiroCacheEmulationRatio is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldKiroCacheEmulationRatio requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldKiroCacheEmulationRatio: %w", err)
-	}
-	return oldValue.KiroCacheEmulationRatio, nil
-}
-
-// AddKiroCacheEmulationRatio adds f to the "kiro_cache_emulation_ratio" field.
-func (m *GroupMutation) AddKiroCacheEmulationRatio(f float64) {
-	if m.addkiro_cache_emulation_ratio != nil {
-		*m.addkiro_cache_emulation_ratio += f
-	} else {
-		m.addkiro_cache_emulation_ratio = &f
-	}
-}
-
-// AddedKiroCacheEmulationRatio returns the value that was added to the "kiro_cache_emulation_ratio" field in this mutation.
-func (m *GroupMutation) AddedKiroCacheEmulationRatio() (r float64, exists bool) {
-	v := m.addkiro_cache_emulation_ratio
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetKiroCacheEmulationRatio resets all changes to the "kiro_cache_emulation_ratio" field.
-func (m *GroupMutation) ResetKiroCacheEmulationRatio() {
-	m.kiro_cache_emulation_ratio = nil
-	m.addkiro_cache_emulation_ratio = nil
-}
-
-// SetKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field.
-func (m *GroupMutation) SetKiroCacheEmulationMode(s string) {
-	m.kiro_cache_emulation_mode = &s
-}
-
-// KiroCacheEmulationMode returns the value of the "kiro_cache_emulation_mode" field in the mutation.
-func (m *GroupMutation) KiroCacheEmulationMode() (r string, exists bool) {
-	v := m.kiro_cache_emulation_mode
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldKiroCacheEmulationMode returns the old "kiro_cache_emulation_mode" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldKiroCacheEmulationMode(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldKiroCacheEmulationMode is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldKiroCacheEmulationMode requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldKiroCacheEmulationMode: %w", err)
-	}
-	return oldValue.KiroCacheEmulationMode, nil
-}
-
-// ResetKiroCacheEmulationMode resets all changes to the "kiro_cache_emulation_mode" field.
-func (m *GroupMutation) ResetKiroCacheEmulationMode() {
-	m.kiro_cache_emulation_mode = nil
-}
-
-// SetKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field.
-func (m *GroupMutation) SetKiroCacheCreationEmulationRatio(f float64) {
-	m.kiro_cache_creation_emulation_ratio = &f
-	m.addkiro_cache_creation_emulation_ratio = nil
-}
-
-// KiroCacheCreationEmulationRatio returns the value of the "kiro_cache_creation_emulation_ratio" field in the mutation.
-func (m *GroupMutation) KiroCacheCreationEmulationRatio() (r float64, exists bool) {
-	v := m.kiro_cache_creation_emulation_ratio
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldKiroCacheCreationEmulationRatio returns the old "kiro_cache_creation_emulation_ratio" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldKiroCacheCreationEmulationRatio(ctx context.Context) (v float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldKiroCacheCreationEmulationRatio is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldKiroCacheCreationEmulationRatio requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldKiroCacheCreationEmulationRatio: %w", err)
-	}
-	return oldValue.KiroCacheCreationEmulationRatio, nil
-}
-
-// AddKiroCacheCreationEmulationRatio adds f to the "kiro_cache_creation_emulation_ratio" field.
-func (m *GroupMutation) AddKiroCacheCreationEmulationRatio(f float64) {
-	if m.addkiro_cache_creation_emulation_ratio != nil {
-		*m.addkiro_cache_creation_emulation_ratio += f
-	} else {
-		m.addkiro_cache_creation_emulation_ratio = &f
-	}
-}
-
-// AddedKiroCacheCreationEmulationRatio returns the value that was added to the "kiro_cache_creation_emulation_ratio" field in this mutation.
-func (m *GroupMutation) AddedKiroCacheCreationEmulationRatio() (r float64, exists bool) {
-	v := m.addkiro_cache_creation_emulation_ratio
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetKiroCacheCreationEmulationRatio resets all changes to the "kiro_cache_creation_emulation_ratio" field.
-func (m *GroupMutation) ResetKiroCacheCreationEmulationRatio() {
-	m.kiro_cache_creation_emulation_ratio = nil
-	m.addkiro_cache_creation_emulation_ratio = nil
-}
-
-// SetKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field.
-func (m *GroupMutation) SetKiroCacheReadEmulationRatio(f float64) {
-	m.kiro_cache_read_emulation_ratio = &f
-	m.addkiro_cache_read_emulation_ratio = nil
-}
-
-// KiroCacheReadEmulationRatio returns the value of the "kiro_cache_read_emulation_ratio" field in the mutation.
-func (m *GroupMutation) KiroCacheReadEmulationRatio() (r float64, exists bool) {
-	v := m.kiro_cache_read_emulation_ratio
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldKiroCacheReadEmulationRatio returns the old "kiro_cache_read_emulation_ratio" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldKiroCacheReadEmulationRatio(ctx context.Context) (v float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldKiroCacheReadEmulationRatio is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldKiroCacheReadEmulationRatio requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldKiroCacheReadEmulationRatio: %w", err)
-	}
-	return oldValue.KiroCacheReadEmulationRatio, nil
-}
-
-// AddKiroCacheReadEmulationRatio adds f to the "kiro_cache_read_emulation_ratio" field.
-func (m *GroupMutation) AddKiroCacheReadEmulationRatio(f float64) {
-	if m.addkiro_cache_read_emulation_ratio != nil {
-		*m.addkiro_cache_read_emulation_ratio += f
-	} else {
-		m.addkiro_cache_read_emulation_ratio = &f
-	}
-}
-
-// AddedKiroCacheReadEmulationRatio returns the value that was added to the "kiro_cache_read_emulation_ratio" field in this mutation.
-func (m *GroupMutation) AddedKiroCacheReadEmulationRatio() (r float64, exists bool) {
-	v := m.addkiro_cache_read_emulation_ratio
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetKiroCacheReadEmulationRatio resets all changes to the "kiro_cache_read_emulation_ratio" field.
-func (m *GroupMutation) ResetKiroCacheReadEmulationRatio() {
-	m.kiro_cache_read_emulation_ratio = nil
-	m.addkiro_cache_read_emulation_ratio = nil
 }
 
 // SetKiroEndpointMode sets the "kiro_endpoint_mode" field.
@@ -26262,7 +26774,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 70)
+	fields := make([]string, 0, 66)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26434,32 +26946,20 @@ func (m *GroupMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.cache_strategy_id != nil {
+		fields = append(fields, group.FieldCacheStrategyID)
+	}
 	if m.max_reasoning_effort != nil {
 		fields = append(fields, group.FieldMaxReasoningEffort)
 	}
 	if m.reasoning_effort_mappings != nil {
 		fields = append(fields, group.FieldReasoningEffortMappings)
 	}
-	if m.kiro_cache_emulation_enabled != nil {
-		fields = append(fields, group.FieldKiroCacheEmulationEnabled)
-	}
 	if m.kiro_auto_sticky_enabled != nil {
 		fields = append(fields, group.FieldKiroAutoStickyEnabled)
 	}
 	if m.kiro_sticky_session_ttl_seconds != nil {
 		fields = append(fields, group.FieldKiroStickySessionTTLSeconds)
-	}
-	if m.kiro_cache_emulation_ratio != nil {
-		fields = append(fields, group.FieldKiroCacheEmulationRatio)
-	}
-	if m.kiro_cache_emulation_mode != nil {
-		fields = append(fields, group.FieldKiroCacheEmulationMode)
-	}
-	if m.kiro_cache_creation_emulation_ratio != nil {
-		fields = append(fields, group.FieldKiroCacheCreationEmulationRatio)
-	}
-	if m.kiro_cache_read_emulation_ratio != nil {
-		fields = append(fields, group.FieldKiroCacheReadEmulationRatio)
 	}
 	if m.kiro_endpoint_mode != nil {
 		fields = append(fields, group.FieldKiroEndpointMode)
@@ -26595,24 +27095,16 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelsListConfig()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
+	case group.FieldCacheStrategyID:
+		return m.CacheStrategyID()
 	case group.FieldMaxReasoningEffort:
 		return m.MaxReasoningEffort()
 	case group.FieldReasoningEffortMappings:
 		return m.ReasoningEffortMappings()
-	case group.FieldKiroCacheEmulationEnabled:
-		return m.KiroCacheEmulationEnabled()
 	case group.FieldKiroAutoStickyEnabled:
 		return m.KiroAutoStickyEnabled()
 	case group.FieldKiroStickySessionTTLSeconds:
 		return m.KiroStickySessionTTLSeconds()
-	case group.FieldKiroCacheEmulationRatio:
-		return m.KiroCacheEmulationRatio()
-	case group.FieldKiroCacheEmulationMode:
-		return m.KiroCacheEmulationMode()
-	case group.FieldKiroCacheCreationEmulationRatio:
-		return m.KiroCacheCreationEmulationRatio()
-	case group.FieldKiroCacheReadEmulationRatio:
-		return m.KiroCacheReadEmulationRatio()
 	case group.FieldKiroEndpointMode:
 		return m.KiroEndpointMode()
 	case group.FieldProfitControlEnabled:
@@ -26744,24 +27236,16 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldModelsListConfig(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case group.FieldCacheStrategyID:
+		return m.OldCacheStrategyID(ctx)
 	case group.FieldMaxReasoningEffort:
 		return m.OldMaxReasoningEffort(ctx)
 	case group.FieldReasoningEffortMappings:
 		return m.OldReasoningEffortMappings(ctx)
-	case group.FieldKiroCacheEmulationEnabled:
-		return m.OldKiroCacheEmulationEnabled(ctx)
 	case group.FieldKiroAutoStickyEnabled:
 		return m.OldKiroAutoStickyEnabled(ctx)
 	case group.FieldKiroStickySessionTTLSeconds:
 		return m.OldKiroStickySessionTTLSeconds(ctx)
-	case group.FieldKiroCacheEmulationRatio:
-		return m.OldKiroCacheEmulationRatio(ctx)
-	case group.FieldKiroCacheEmulationMode:
-		return m.OldKiroCacheEmulationMode(ctx)
-	case group.FieldKiroCacheCreationEmulationRatio:
-		return m.OldKiroCacheCreationEmulationRatio(ctx)
-	case group.FieldKiroCacheReadEmulationRatio:
-		return m.OldKiroCacheReadEmulationRatio(ctx)
 	case group.FieldKiroEndpointMode:
 		return m.OldKiroEndpointMode(ctx)
 	case group.FieldProfitControlEnabled:
@@ -27178,6 +27662,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRpmLimit(v)
 		return nil
+	case group.FieldCacheStrategyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheStrategyID(v)
+		return nil
 	case group.FieldMaxReasoningEffort:
 		v, ok := value.(string)
 		if !ok {
@@ -27192,13 +27683,6 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetReasoningEffortMappings(v)
 		return nil
-	case group.FieldKiroCacheEmulationEnabled:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetKiroCacheEmulationEnabled(v)
-		return nil
 	case group.FieldKiroAutoStickyEnabled:
 		v, ok := value.(bool)
 		if !ok {
@@ -27212,34 +27696,6 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetKiroStickySessionTTLSeconds(v)
-		return nil
-	case group.FieldKiroCacheEmulationRatio:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetKiroCacheEmulationRatio(v)
-		return nil
-	case group.FieldKiroCacheEmulationMode:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetKiroCacheEmulationMode(v)
-		return nil
-	case group.FieldKiroCacheCreationEmulationRatio:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetKiroCacheCreationEmulationRatio(v)
-		return nil
-	case group.FieldKiroCacheReadEmulationRatio:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetKiroCacheReadEmulationRatio(v)
 		return nil
 	case group.FieldKiroEndpointMode:
 		v, ok := value.(string)
@@ -27352,17 +27808,11 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addrpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.addcache_strategy_id != nil {
+		fields = append(fields, group.FieldCacheStrategyID)
+	}
 	if m.addkiro_sticky_session_ttl_seconds != nil {
 		fields = append(fields, group.FieldKiroStickySessionTTLSeconds)
-	}
-	if m.addkiro_cache_emulation_ratio != nil {
-		fields = append(fields, group.FieldKiroCacheEmulationRatio)
-	}
-	if m.addkiro_cache_creation_emulation_ratio != nil {
-		fields = append(fields, group.FieldKiroCacheCreationEmulationRatio)
-	}
-	if m.addkiro_cache_read_emulation_ratio != nil {
-		fields = append(fields, group.FieldKiroCacheReadEmulationRatio)
 	}
 	if m.addprofit_min_margin != nil {
 		fields = append(fields, group.FieldProfitMinMargin)
@@ -27428,14 +27878,10 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedSortOrder()
 	case group.FieldRpmLimit:
 		return m.AddedRpmLimit()
+	case group.FieldCacheStrategyID:
+		return m.AddedCacheStrategyID()
 	case group.FieldKiroStickySessionTTLSeconds:
 		return m.AddedKiroStickySessionTTLSeconds()
-	case group.FieldKiroCacheEmulationRatio:
-		return m.AddedKiroCacheEmulationRatio()
-	case group.FieldKiroCacheCreationEmulationRatio:
-		return m.AddedKiroCacheCreationEmulationRatio()
-	case group.FieldKiroCacheReadEmulationRatio:
-		return m.AddedKiroCacheReadEmulationRatio()
 	case group.FieldProfitMinMargin:
 		return m.AddedProfitMinMargin()
 	case group.FieldProfitSafetyBuffer:
@@ -27624,33 +28070,19 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddRpmLimit(v)
 		return nil
+	case group.FieldCacheStrategyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheStrategyID(v)
+		return nil
 	case group.FieldKiroStickySessionTTLSeconds:
 		v, ok := value.(int)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddKiroStickySessionTTLSeconds(v)
-		return nil
-	case group.FieldKiroCacheEmulationRatio:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddKiroCacheEmulationRatio(v)
-		return nil
-	case group.FieldKiroCacheCreationEmulationRatio:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddKiroCacheCreationEmulationRatio(v)
-		return nil
-	case group.FieldKiroCacheReadEmulationRatio:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddKiroCacheReadEmulationRatio(v)
 		return nil
 	case group.FieldProfitMinMargin:
 		v, ok := value.(float64)
@@ -27740,6 +28172,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldModelRouting) {
 		fields = append(fields, group.FieldModelRouting)
 	}
+	if m.FieldCleared(group.FieldCacheStrategyID) {
+		fields = append(fields, group.FieldCacheStrategyID)
+	}
 	return fields
 }
 
@@ -27819,6 +28254,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldModelRouting:
 		m.ClearModelRouting()
+		return nil
+	case group.FieldCacheStrategyID:
+		m.ClearCacheStrategyID()
 		return nil
 	}
 	return fmt.Errorf("unknown Group nullable field %s", name)
@@ -27999,32 +28437,20 @@ func (m *GroupMutation) ResetField(name string) error {
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()
 		return nil
+	case group.FieldCacheStrategyID:
+		m.ResetCacheStrategyID()
+		return nil
 	case group.FieldMaxReasoningEffort:
 		m.ResetMaxReasoningEffort()
 		return nil
 	case group.FieldReasoningEffortMappings:
 		m.ResetReasoningEffortMappings()
 		return nil
-	case group.FieldKiroCacheEmulationEnabled:
-		m.ResetKiroCacheEmulationEnabled()
-		return nil
 	case group.FieldKiroAutoStickyEnabled:
 		m.ResetKiroAutoStickyEnabled()
 		return nil
 	case group.FieldKiroStickySessionTTLSeconds:
 		m.ResetKiroStickySessionTTLSeconds()
-		return nil
-	case group.FieldKiroCacheEmulationRatio:
-		m.ResetKiroCacheEmulationRatio()
-		return nil
-	case group.FieldKiroCacheEmulationMode:
-		m.ResetKiroCacheEmulationMode()
-		return nil
-	case group.FieldKiroCacheCreationEmulationRatio:
-		m.ResetKiroCacheCreationEmulationRatio()
-		return nil
-	case group.FieldKiroCacheReadEmulationRatio:
-		m.ResetKiroCacheReadEmulationRatio()
 		return nil
 	case group.FieldKiroEndpointMode:
 		m.ResetKiroEndpointMode()
@@ -46057,6 +46483,9 @@ type UsageLogMutation struct {
 	model_mapping_chain          *string
 	billing_tier                 *string
 	billing_mode                 *string
+	cache_strategy_id            *int64
+	addcache_strategy_id         *int64
+	cache_strategy_name          *string
 	input_tokens                 *int
 	addinput_tokens              *int
 	output_tokens                *int
@@ -46863,6 +47292,125 @@ func (m *UsageLogMutation) GroupIDCleared() bool {
 func (m *UsageLogMutation) ResetGroupID() {
 	m.group = nil
 	delete(m.clearedFields, usagelog.FieldGroupID)
+}
+
+// SetCacheStrategyID sets the "cache_strategy_id" field.
+func (m *UsageLogMutation) SetCacheStrategyID(i int64) {
+	m.cache_strategy_id = &i
+	m.addcache_strategy_id = nil
+}
+
+// CacheStrategyID returns the value of the "cache_strategy_id" field in the mutation.
+func (m *UsageLogMutation) CacheStrategyID() (r int64, exists bool) {
+	v := m.cache_strategy_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheStrategyID returns the old "cache_strategy_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheStrategyID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheStrategyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheStrategyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheStrategyID: %w", err)
+	}
+	return oldValue.CacheStrategyID, nil
+}
+
+// AddCacheStrategyID adds i to the "cache_strategy_id" field.
+func (m *UsageLogMutation) AddCacheStrategyID(i int64) {
+	if m.addcache_strategy_id != nil {
+		*m.addcache_strategy_id += i
+	} else {
+		m.addcache_strategy_id = &i
+	}
+}
+
+// AddedCacheStrategyID returns the value that was added to the "cache_strategy_id" field in this mutation.
+func (m *UsageLogMutation) AddedCacheStrategyID() (r int64, exists bool) {
+	v := m.addcache_strategy_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCacheStrategyID clears the value of the "cache_strategy_id" field.
+func (m *UsageLogMutation) ClearCacheStrategyID() {
+	m.cache_strategy_id = nil
+	m.addcache_strategy_id = nil
+	m.clearedFields[usagelog.FieldCacheStrategyID] = struct{}{}
+}
+
+// CacheStrategyIDCleared returns if the "cache_strategy_id" field was cleared in this mutation.
+func (m *UsageLogMutation) CacheStrategyIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCacheStrategyID]
+	return ok
+}
+
+// ResetCacheStrategyID resets all changes to the "cache_strategy_id" field.
+func (m *UsageLogMutation) ResetCacheStrategyID() {
+	m.cache_strategy_id = nil
+	m.addcache_strategy_id = nil
+	delete(m.clearedFields, usagelog.FieldCacheStrategyID)
+}
+
+// SetCacheStrategyName sets the "cache_strategy_name" field.
+func (m *UsageLogMutation) SetCacheStrategyName(s string) {
+	m.cache_strategy_name = &s
+}
+
+// CacheStrategyName returns the value of the "cache_strategy_name" field in the mutation.
+func (m *UsageLogMutation) CacheStrategyName() (r string, exists bool) {
+	v := m.cache_strategy_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheStrategyName returns the old "cache_strategy_name" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheStrategyName(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheStrategyName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheStrategyName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheStrategyName: %w", err)
+	}
+	return oldValue.CacheStrategyName, nil
+}
+
+// ClearCacheStrategyName clears the value of the "cache_strategy_name" field.
+func (m *UsageLogMutation) ClearCacheStrategyName() {
+	m.cache_strategy_name = nil
+	m.clearedFields[usagelog.FieldCacheStrategyName] = struct{}{}
+}
+
+// CacheStrategyNameCleared returns if the "cache_strategy_name" field was cleared in this mutation.
+func (m *UsageLogMutation) CacheStrategyNameCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCacheStrategyName]
+	return ok
+}
+
+// ResetCacheStrategyName resets all changes to the "cache_strategy_name" field.
+func (m *UsageLogMutation) ResetCacheStrategyName() {
+	m.cache_strategy_name = nil
+	delete(m.clearedFields, usagelog.FieldCacheStrategyName)
 }
 
 // SetSubscriptionID sets the "subscription_id" field.
@@ -48795,7 +49343,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 49)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -48837,6 +49385,12 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.group != nil {
 		fields = append(fields, usagelog.FieldGroupID)
+	}
+	if m.cache_strategy_id != nil {
+		fields = append(fields, usagelog.FieldCacheStrategyID)
+	}
+	if m.cache_strategy_name != nil {
+		fields = append(fields, usagelog.FieldCacheStrategyName)
 	}
 	if m.subscription != nil {
 		fields = append(fields, usagelog.FieldSubscriptionID)
@@ -48973,6 +49527,10 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.BillingMode()
 	case usagelog.FieldGroupID:
 		return m.GroupID()
+	case usagelog.FieldCacheStrategyID:
+		return m.CacheStrategyID()
+	case usagelog.FieldCacheStrategyName:
+		return m.CacheStrategyName()
 	case usagelog.FieldSubscriptionID:
 		return m.SubscriptionID()
 	case usagelog.FieldInputTokens:
@@ -49076,6 +49634,10 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldBillingMode(ctx)
 	case usagelog.FieldGroupID:
 		return m.OldGroupID(ctx)
+	case usagelog.FieldCacheStrategyID:
+		return m.OldCacheStrategyID(ctx)
+	case usagelog.FieldCacheStrategyName:
+		return m.OldCacheStrategyName(ctx)
 	case usagelog.FieldSubscriptionID:
 		return m.OldSubscriptionID(ctx)
 	case usagelog.FieldInputTokens:
@@ -49248,6 +49810,20 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGroupID(v)
+		return nil
+	case usagelog.FieldCacheStrategyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheStrategyID(v)
+		return nil
+	case usagelog.FieldCacheStrategyName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheStrategyName(v)
 		return nil
 	case usagelog.FieldSubscriptionID:
 		v, ok := value.(int64)
@@ -49491,6 +50067,9 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addchannel_id != nil {
 		fields = append(fields, usagelog.FieldChannelID)
 	}
+	if m.addcache_strategy_id != nil {
+		fields = append(fields, usagelog.FieldCacheStrategyID)
+	}
 	if m.addinput_tokens != nil {
 		fields = append(fields, usagelog.FieldInputTokens)
 	}
@@ -49561,6 +50140,8 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case usagelog.FieldChannelID:
 		return m.AddedChannelID()
+	case usagelog.FieldCacheStrategyID:
+		return m.AddedCacheStrategyID()
 	case usagelog.FieldInputTokens:
 		return m.AddedInputTokens()
 	case usagelog.FieldOutputTokens:
@@ -49616,6 +50197,13 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddChannelID(v)
+		return nil
+	case usagelog.FieldCacheStrategyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheStrategyID(v)
 		return nil
 	case usagelog.FieldInputTokens:
 		v, ok := value.(int)
@@ -49792,6 +50380,12 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldGroupID) {
 		fields = append(fields, usagelog.FieldGroupID)
 	}
+	if m.FieldCleared(usagelog.FieldCacheStrategyID) {
+		fields = append(fields, usagelog.FieldCacheStrategyID)
+	}
+	if m.FieldCleared(usagelog.FieldCacheStrategyName) {
+		fields = append(fields, usagelog.FieldCacheStrategyName)
+	}
 	if m.FieldCleared(usagelog.FieldSubscriptionID) {
 		fields = append(fields, usagelog.FieldSubscriptionID)
 	}
@@ -49871,6 +50465,12 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldGroupID:
 		m.ClearGroupID()
+		return nil
+	case usagelog.FieldCacheStrategyID:
+		m.ClearCacheStrategyID()
+		return nil
+	case usagelog.FieldCacheStrategyName:
+		m.ClearCacheStrategyName()
 		return nil
 	case usagelog.FieldSubscriptionID:
 		m.ClearSubscriptionID()
@@ -49960,6 +50560,12 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldGroupID:
 		m.ResetGroupID()
+		return nil
+	case usagelog.FieldCacheStrategyID:
+		m.ResetCacheStrategyID()
+		return nil
+	case usagelog.FieldCacheStrategyName:
+		m.ResetCacheStrategyName()
 		return nil
 	case usagelog.FieldSubscriptionID:
 		m.ResetSubscriptionID()

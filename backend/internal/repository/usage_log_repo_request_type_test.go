@@ -51,6 +51,8 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // upstream_response_model
 			sqlmock.AnyArg(), // upstream_model_mismatch
 			sqlmock.AnyArg(), // group_id
+			sqlmock.AnyArg(), // cache_strategy_id
+			sqlmock.AnyArg(), // cache_strategy_name
 			sqlmock.AnyArg(), // subscription_id
 			log.InputTokens,
 			log.OutputTokens,
@@ -144,6 +146,8 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // upstream_response_model
 			sqlmock.AnyArg(), // upstream_model_mismatch
 			sqlmock.AnyArg(), // group_id
+			sqlmock.AnyArg(), // cache_strategy_id
+			sqlmock.AnyArg(), // cache_strategy_name
 			sqlmock.AnyArg(), // subscription_id
 			log.InputTokens,
 			log.OutputTokens,
@@ -279,11 +283,11 @@ func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 		CreatedAt:          time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC),
 	})
 
-	require.Equal(t, sql.NullString{String: imageSize, Valid: true}, prepared.args[38])
-	require.Equal(t, sql.NullString{String: inputSize, Valid: true}, prepared.args[39])
-	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[40])
-	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[41])
-	breakdownJSON, ok := prepared.args[42].(string)
+	require.Equal(t, sql.NullString{String: imageSize, Valid: true}, prepared.args[40])
+	require.Equal(t, sql.NullString{String: inputSize, Valid: true}, prepared.args[41])
+	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[42])
+	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[43])
+	breakdownJSON, ok := prepared.args[44].(string)
 	require.True(t, ok)
 	require.JSONEq(t, `{"1K":1,"4K":1}`, breakdownJSON)
 }
@@ -785,7 +789,15 @@ func (s usageLogScannerStub) Scan(dest ...any) error {
 		if dv.Kind() != reflect.Pointer {
 			return fmt.Errorf("dest[%d] is not pointer", i)
 		}
-		dv.Elem().Set(reflect.ValueOf(s.values[i]))
+		value := reflect.ValueOf(s.values[i])
+		if !value.IsValid() {
+			dv.Elem().Set(reflect.Zero(dv.Elem().Type()))
+			continue
+		}
+		if !value.Type().AssignableTo(dv.Elem().Type()) {
+			return fmt.Errorf("scan type mismatch at %d: got %T want %s", i, s.values[i], dv.Elem().Type())
+		}
+		dv.Elem().Set(value)
 	}
 	return nil
 }
@@ -806,6 +818,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullBool{},
 			sql.NullInt64{},
 			sql.NullInt64{},
+			sql.NullString{}, // cache_strategy_name
+			sql.NullInt64{},  // subscription_id
 			0, 0, 0, 0, 0, 0,
 			0, 0.0, // image_output_tokens, image_output_cost
 			0, 0.0, // image_input_tokens, image_input_cost
@@ -871,6 +885,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // upstream_response_model
 			sql.NullBool{},    // upstream_model_mismatch
 			sql.NullInt64{},   // group_id
+			sql.NullInt64{},   // cache_strategy_id
+			sql.NullString{},  // cache_strategy_name
 			sql.NullInt64{},   // subscription_id
 			1,                 // input_tokens
 			2,                 // output_tokens
@@ -945,6 +961,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullBool{},
 			sql.NullInt64{},
 			sql.NullInt64{},
+			sql.NullString{}, // cache_strategy_name
+			sql.NullInt64{},  // subscription_id
 			1, 2, 3, 4, 5, 6,
 			0, 0.0, // image_output_tokens, image_output_cost
 			0, 0.0, // image_input_tokens, image_input_cost
@@ -1006,6 +1024,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullBool{},
 			sql.NullInt64{},
 			sql.NullInt64{},
+			sql.NullString{}, // cache_strategy_name
+			sql.NullInt64{},  // subscription_id
 			1, 2, 3, 4, 5, 6,
 			0, 0.0, // image_output_tokens, image_output_cost
 			0, 0.0, // image_input_tokens, image_input_cost

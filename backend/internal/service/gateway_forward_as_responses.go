@@ -132,6 +132,15 @@ func (s *GatewayService) ForwardAsResponses(
 		return nil, fmt.Errorf("marshal anthropic request: %w", err)
 	}
 
+	var group *Group
+	if parsed != nil {
+		group = parsed.Group
+	}
+	cachePlan := prepareCachePlanForContext(
+		ctx, c, account, group, body, mappedModel, "openai_responses",
+		estimateOpenAIResponsesInputTokens(ctx, body),
+	)
+
 	// 6. Apply Claude Code mimicry for OAuth accounts (non-Claude-Code endpoints).
 	// OpenAI Responses 协议进来的请求永远不是 Claude Code 客户端，所以对 OAuth 账号
 	// 必须完整执行 /v1/messages 主路径上的伪装链路（system 重写 + normalize + metadata 注入），
@@ -151,11 +160,6 @@ func (s *GatewayService) ForwardAsResponses(
 
 	var resp *http.Response
 	if isKiroDirectModeAccount(account) {
-		var group *Group
-		if parsed != nil {
-			group = parsed.Group
-		}
-		cachePlan := s.prepareKiroResponsesCacheEmulationUsage(ctx, account, group, body, mappedModel, estimateKiroInputTokens(ctx, anthropicBody))
 		resp, _, err = s.openKiroAnthropicStreamResponse(ctx, account, parsed, anthropicBody, mappedModel, originalModel, c.Request.Header, group, cachePlan)
 		if err != nil {
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
@@ -261,7 +265,6 @@ func (s *GatewayService) ForwardAsResponses(
 	} else {
 		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
 	}
-
 	return result, handleErr
 }
 
@@ -477,6 +480,7 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 	// Accumulate the final Anthropic response from streaming events
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
+	sawTerminalEvent := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -520,9 +524,15 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 				mergeAnthropicUsage(&usage, *event.Usage)
 			}
 			mergeKiroCreditsFromAnthropicPayload(&usage, payload)
-			if event.Delta != nil && event.Delta.StopReason != "" && finalResp != nil {
-				finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
+			if event.Delta != nil && event.Delta.StopReason != "" {
+				sawTerminalEvent = true
+				if finalResp != nil {
+					finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
+				}
 			}
+		}
+		if event.Type == "message_stop" {
+			sawTerminalEvent = true
 		}
 
 		// Accumulate content blocks
@@ -552,6 +562,9 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 			)
 		}
 	}
+	if !sawTerminalEvent {
+		return nil, usage
+	}
 	return finalResp, usage
 }
 
@@ -570,6 +583,13 @@ func (s *GatewayService) writeResponsesBufferedResult(
 ) (*ForwardResult, error) {
 	// Update usage from accumulated delta. 无条件赋值：纯缓存命中的响应
 	// （input/output 均为 0 但 cache read/write 非 0）不能被整体丢弃。
+	finalResp.Usage = apicompat.AnthropicUsage{
+		InputTokens:              usage.InputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+		CacheReadInputTokens:     usage.CacheReadInputTokens,
+	}
+	mergeAndCommitCachePlan(c, &usage, true)
 	finalResp.Usage = apicompat.AnthropicUsage{
 		InputTokens:              usage.InputTokens,
 		OutputTokens:             usage.OutputTokens,
@@ -641,6 +661,8 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	sawTerminalEvent := false
+	clientDisconnected := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -678,6 +700,17 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
+		if event.Type == "message_stop" ||
+			(event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason != "") {
+			sawTerminalEvent = true
+			// Populate the converter state before it emits response.completed so
+			// synthetic cache buckets appear in the terminal Responses usage.
+			mergeAndCommitCachePlan(c, &usage, false)
+			state.InputTokens = usage.InputTokens
+			state.CacheReadInputTokens = usage.CacheReadInputTokens
+			state.CacheCreationInputTokens = usage.CacheCreationInputTokens
+			state.OutputTokens = usage.OutputTokens
+		}
 
 		// Convert to Responses events
 		events := apicompat.AnthropicEventToResponsesEvents(event, state)
@@ -705,6 +738,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 					logger.L().Info("forward_as_responses stream: client disconnected",
 						zap.String("request_id", requestID),
 					)
+					clientDisconnected = true
 					return true // client disconnected
 				}
 			}
@@ -716,6 +750,12 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	}
 
 	finalizeStream := func() (*ForwardResult, error) {
+		if !sawTerminalEvent {
+			return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
+		}
+		if !clientDisconnected {
+			commitCachePlan(c)
+		}
 		if finalEvents := apicompat.FinalizeAnthropicResponsesStream(state); len(finalEvents) > 0 {
 			for _, evt := range finalEvents {
 				sse, err := apicompat.ResponsesEventToSSE(evt)

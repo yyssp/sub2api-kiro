@@ -62,6 +62,10 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 		return nil, fmt.Errorf("missing model in request")
 	}
 	clientStream := responsesReq.Stream
+	prepareCachePlanForContext(
+		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
+		"openai_responses", estimateOpenAIResponsesInputTokens(ctx, body),
+	)
 
 	// 3. Convert Responses → Anthropic
 	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
@@ -166,6 +170,7 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
+	sawTerminalEvent := false
 
 	// 读间隔上限：上游挂住 SSE 时中止组装（缓冲路径尚未提交响应头，可回 502）。
 	streamInterval := s.anthropicNativeStreamInterval()
@@ -230,9 +235,15 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 			if event.Usage != nil {
 				mergeAnthropicUsage(&usage, *event.Usage)
 			}
-			if event.Delta != nil && event.Delta.StopReason != "" && finalResp != nil {
-				finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
+			if event.Delta != nil && event.Delta.StopReason != "" {
+				sawTerminalEvent = true
+				if finalResp != nil {
+					finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
+				}
 			}
+		}
+		if event.Type == "message_stop" {
+			sawTerminalEvent = true
 		}
 		if event.Type == "content_block_start" && event.ContentBlock != nil && finalResp != nil {
 			finalResp.Content = append(finalResp.Content, *event.ContentBlock)
@@ -256,14 +267,17 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
 		return nil, fmt.Errorf("upstream stream ended without response")
 	}
+	if !sawTerminalEvent {
+		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without terminal event")
+		return nil, fmt.Errorf("stream usage incomplete: missing terminal event")
+	}
 
-	if usage.InputTokens > 0 || usage.OutputTokens > 0 {
-		finalResp.Usage = apicompat.AnthropicUsage{
-			InputTokens:              usage.InputTokens,
-			OutputTokens:             usage.OutputTokens,
-			CacheCreationInputTokens: usage.CacheCreationInputTokens,
-			CacheReadInputTokens:     usage.CacheReadInputTokens,
-		}
+	mergeAndCommitCachePlan(c, &usage, true)
+	finalResp.Usage = apicompat.AnthropicUsage{
+		InputTokens:              usage.InputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+		CacheReadInputTokens:     usage.CacheReadInputTokens,
 	}
 
 	responsesResp := apicompat.AnthropicToResponsesResponse(finalResp)
@@ -329,6 +343,7 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	sawTerminalEvent := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -393,6 +408,15 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 		}
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
+		}
+		if event.Type == "message_stop" ||
+			(event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason != "") {
+			sawTerminalEvent = true
+			mergeAndCommitCachePlan(c, &usage, false)
+			state.InputTokens = usage.InputTokens
+			state.CacheReadInputTokens = usage.CacheReadInputTokens
+			state.CacheCreationInputTokens = usage.CacheCreationInputTokens
+			state.OutputTokens = usage.OutputTokens
 		}
 
 		events := apicompat.AnthropicEventToResponsesEvents(event, state)
@@ -486,6 +510,9 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 		if wrote {
 			c.Writer.Flush()
 		}
+	}
+	if sawTerminalEvent && !clientDisconnected {
+		commitCachePlan(c)
 	}
 
 	return resultWithUsage(), nil

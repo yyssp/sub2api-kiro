@@ -39,6 +39,10 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 
 	clientStream := responsesReq.Stream
+	prepareCachePlanForContext(
+		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
+		"openai_responses", estimateOpenAIResponsesInputTokens(ctx, body),
+	)
 	// custom 工具（如 codex 的 exec）降级为 function 工具转发，回程需按名字还原为
 	// custom_tool_call 项，先记下名字集合；tool_search 工具同理，回程还原为
 	// tool_search_call 项；namespace 子工具（如 MCP 工具）摊平转发，回程按映射还原
@@ -145,7 +149,17 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	if err != nil {
 		return nil, err
 	}
+	// The upstream Chat Completions response is authoritative when it reports
+	// cache buckets; otherwise merge the group-bound synthetic plan before
+	// converting the response so the Responses wire usage and billing result
+	// stay consistent.
+	mergeAndCommitOpenAICachePlan(c, &usage, true)
 	responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel, customTools, functionTools, toolSearch, namespaceTools)
+	// ChatCompletionsResponseToResponses derives usage from ccResp.Usage. The
+	// extracted OpenAIUsage is the canonical object used by the gateway cache
+	// planner, so explicitly project it back after the merge (including cache
+	// creation/read buckets synthesized by the group policy).
+	responsesResp.Usage = responsesUsageFromOpenAIUsage(&usage)
 	s.cacheReasoningItemsFromOutput(responsesResp.Output)
 
 	if s.responseHeaderFilter != nil {
@@ -251,6 +265,15 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		}, fmt.Errorf("invalid tool call arguments from upstream: %w", err)
 	}
 
+	// A raw Chat Completions fallback is complete only after the upstream emits
+	// its [DONE] sentinel and the downstream is still connected. Merge and
+	// commit only at that point; truncated streams must never populate the
+	// prefix tracker. The final Responses event carries state.Usage, so update
+	// it after applying the cache plan.
+	if scan.SawDone && !clientDisconnected {
+		mergeAndCommitOpenAICachePlan(c, &scan.Usage, true)
+		state.Usage = responsesUsageFromOpenAIUsage(&scan.Usage)
+	}
 	finalEvents := apicompat.FinalizeChatCompletionsResponsesStream(state)
 	s.cacheReasoningItemsFromEvents(finalEvents)
 	writeEvents(finalEvents)

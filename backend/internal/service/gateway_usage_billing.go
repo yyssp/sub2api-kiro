@@ -783,7 +783,8 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
 	// 用于粘性会话切换时的特殊计费处理
-	if input.ForceCacheBilling && result.Usage.InputTokens > 0 {
+	if input.ForceCacheBilling && result.Usage.InputTokens > 0 &&
+		(apiKey == nil || !hasBoundCacheStrategy(apiKey.Group)) {
 		logger.LegacyPrintf("service.gateway", "force_cache_billing: %d input_tokens → cache_read_input_tokens (account=%d)",
 			result.Usage.InputTokens, account.ID)
 		result.Usage.CacheReadInputTokens += result.Usage.InputTokens
@@ -1250,6 +1251,7 @@ func (s *GatewayService) buildRecordUsageLog(
 	durationMs := int(result.Duration.Milliseconds())
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
 	sentModel := upstreamSentModel(result.Model, result.UpstreamModel)
+	cacheStrategyID, cacheStrategyName := cacheStrategySnapshotForAPIKey(apiKey)
 	if result.UpstreamResponseModelConflict {
 		slog.Warn("upstream_response_model_conflict",
 			"platform", account.Platform,
@@ -1300,6 +1302,8 @@ func (s *GatewayService) buildRecordUsageLog(
 		IPAddress:             optionalTrimmedStringPtr(input.IPAddress),
 		SessionID:             optionalTrimmedStringPtr(input.SessionID),
 		GroupID:               apiKey.GroupID,
+		CacheStrategyID:       cacheStrategyID,
+		CacheStrategyName:     cacheStrategyName,
 		SubscriptionID:        optionalSubscriptionID(subscription),
 		CreatedAt:             time.Now(),
 	}

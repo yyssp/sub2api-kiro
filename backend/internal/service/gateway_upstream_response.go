@@ -970,6 +970,18 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		}
 
 		usagePatch := s.extractSSEUsagePatch(event)
+		if usagePatch != nil {
+			// Project the usage carried by this event before writing it to the
+			// client. The accumulated usage is updated by the caller after the
+			// event is emitted, so include the current patch in a candidate copy.
+			if plan := cachePlanFromContext(c); plan != nil {
+				candidate := *usage
+				mergeSSEUsagePatch(&candidate, usagePatch)
+				if rewriteClaudeSSEUsageEvent(event, &candidate, plan) {
+					eventChanged = true
+				}
+			}
+		}
 		if eventType == "message_delta" {
 			if usageObj, ok := event["usage"].(map[string]any); ok {
 				if _, exists := usageObj["_sub2api_kiro_credits"]; exists {
@@ -1017,10 +1029,12 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 				if !sawTerminalEvent {
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
 				}
+				mergeAndCommitCachePlan(c, usage, true)
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
 			}
 			if ev.err != nil {
 				if sawTerminalEvent {
+					mergeAndCommitCachePlan(c, usage, true)
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
 				}
 				// 检测 context 取消（客户端断开会导致 context 取消，进而影响上游读取）
@@ -1165,6 +1179,75 @@ func (s *GatewayService) parseSSEUsage(data string, usage *ClaudeUsage) {
 	if patch := s.extractSSEUsagePatch(event); patch != nil {
 		mergeSSEUsagePatch(usage, patch)
 	}
+}
+
+// rewriteClaudeSSEUsageEvent projects the accumulated usage into the usage
+// object carried by a regular Anthropic SSE event. Unlike the API-key
+// passthrough path, this handler has already decoded each event into a map,
+// so the projection is applied in-place before the event is marshalled back
+// to the client.
+func rewriteClaudeSSEUsageEvent(event map[string]any, accumulated *ClaudeUsage, plan *cacheEmulationPlan) bool {
+	if len(event) == 0 || accumulated == nil || plan == nil {
+		return false
+	}
+
+	eventType, _ := event["type"].(string)
+	var usageObj map[string]any
+	switch eventType {
+	case "message_start":
+		message, ok := event["message"].(map[string]any)
+		if !ok {
+			return false
+		}
+		usageObj, _ = message["usage"].(map[string]any)
+	case "message_delta":
+		usageObj, _ = event["usage"].(map[string]any)
+	default:
+		return false
+	}
+	if usageObj == nil {
+		return false
+	}
+
+	projected := *accumulated
+	upstreamEvidence := claudeUsageHasCacheEvidence(&projected)
+	projectClaudeUsage(&projected, plan.result(), plan.usagePolicy, plan.cacheKey)
+	if plan.result() != nil && !upstreamEvidence {
+		constrainClaudeUsageTotal(&projected, plan.profile.reportedInputTokens, plan.profile.policy.ReportedInputMinTokens)
+	}
+
+	changed := false
+	setInt := func(key string, value int) {
+		if current, ok := parseSSEUsageInt(usageObj[key]); !ok || current != value {
+			usageObj[key] = value
+			changed = true
+		}
+	}
+	setInt("input_tokens", projected.InputTokens)
+	setInt("output_tokens", projected.OutputTokens)
+	setInt("cache_read_input_tokens", projected.CacheReadInputTokens)
+	setInt("cache_creation_input_tokens", projected.CacheCreationInputTokens)
+
+	// Anthropic exposes the cache creation TTL split as a nested object. Keep
+	// the object present whenever the projection has cache creation evidence so
+	// callers receive a protocol-valid, internally consistent breakdown.
+	if projected.CacheCreation5mTokens > 0 || projected.CacheCreation1hTokens > 0 {
+		cacheCreation, ok := usageObj["cache_creation"].(map[string]any)
+		if !ok || cacheCreation == nil {
+			cacheCreation = map[string]any{}
+			usageObj["cache_creation"] = cacheCreation
+			changed = true
+		}
+		if current, ok := parseSSEUsageInt(cacheCreation["ephemeral_5m_input_tokens"]); !ok || current != projected.CacheCreation5mTokens {
+			cacheCreation["ephemeral_5m_input_tokens"] = projected.CacheCreation5mTokens
+			changed = true
+		}
+		if current, ok := parseSSEUsageInt(cacheCreation["ephemeral_1h_input_tokens"]); !ok || current != projected.CacheCreation1hTokens {
+			cacheCreation["ephemeral_1h_input_tokens"] = projected.CacheCreation1hTokens
+			changed = true
+		}
+	}
+	return changed
 }
 
 type sseUsagePatch struct {
@@ -1472,6 +1555,34 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 			if newBody, err := sjson.SetBytes(body, "usage.cache_creation.ephemeral_1h_input_tokens", response.Usage.CacheCreation1hTokens); err == nil {
 				body = newBody
 			}
+		}
+	}
+	// Fill synthetic group-policy cache usage only when the upstream response did
+	// not report authoritative cache buckets. Keep the JSON response and the
+	// returned usage object in sync for non-streaming Messages requests.
+	if plan := cachePlanFromContext(c); plan != nil {
+		upstreamEvidence := claudeUsageHasCacheEvidence(&response.Usage)
+		projectClaudeUsage(&response.Usage, plan.result(), plan.usagePolicy, plan.cacheKey)
+		if plan.result() != nil && !upstreamEvidence {
+			constrainClaudeUsageTotal(&response.Usage, plan.profile.reportedInputTokens, plan.profile.policy.ReportedInputMinTokens)
+		}
+		if next, setErr := sjson.SetBytes(body, "usage.input_tokens", response.Usage.InputTokens); setErr == nil {
+			body = next
+		}
+		if next, setErr := sjson.SetBytes(body, "usage.output_tokens", response.Usage.OutputTokens); setErr == nil {
+			body = next
+		}
+		if next, setErr := sjson.SetBytes(body, "usage.cache_read_input_tokens", response.Usage.CacheReadInputTokens); setErr == nil {
+			body = next
+		}
+		if next, setErr := sjson.SetBytes(body, "usage.cache_creation_input_tokens", response.Usage.CacheCreationInputTokens); setErr == nil {
+			body = next
+		}
+		if next, setErr := sjson.SetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens", response.Usage.CacheCreation5mTokens); setErr == nil {
+			body = next
+		}
+		if next, setErr := sjson.SetBytes(body, "usage.cache_creation.ephemeral_1h_input_tokens", response.Usage.CacheCreation1hTokens); setErr == nil {
+			body = next
 		}
 	}
 

@@ -71,6 +71,16 @@ func (UsageLog) Fields() []ent.Field {
 		field.Int64("group_id").
 			Optional().
 			Nillable(),
+		// CacheStrategyID/Name are immutable snapshots of the effective group
+		// strategy at request time. Keeping the name avoids losing historical
+		// readability when an administrator later renames or deletes a strategy.
+		field.Int64("cache_strategy_id").
+			Optional().
+			Nillable(),
+		field.String("cache_strategy_name").
+			MaxLen(100).
+			Optional().
+			Nillable(),
 		field.Int64("subscription_id").
 			Optional().
 			Nillable(),

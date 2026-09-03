@@ -1,0 +1,230 @@
+export default {
+  cacheStrategies: {
+    title: "缓存策略",
+    description:
+      "为 Claude Code 兼容协议创建可复用的缓存整形策略，并绑定到分组。",
+    create: "新建策略",
+    edit: "编辑策略",
+    duplicate: "复制策略",
+    name: "名称",
+    kind: "策略类型",
+    templateLabel: "策略模板",
+    templateHint: "选择模板会立即载入一套可编辑的完整配置，保存后仍可继续调整。",
+    usageSummary: "用量整形",
+    usageSummaryInput: "输入",
+    usageSummaryOutput: "输出",
+    usageSummaryRead: "读取",
+    usageSummaryCreation: "创建",
+    status: "状态",
+    boundGroups: "绑定分组",
+    revision: "版本",
+    actions: "操作",
+    enabled: "已启用",
+    disabled: "已停用",
+    enable: "启用",
+    disable: "停用",
+    empty: "暂无缓存策略",
+    searchPlaceholder: "搜索策略名称或描述",
+    allKinds: "全部类型",
+    allStatuses: "全部状态",
+    refresh: "刷新",
+    loadFailed: "加载缓存策略失败",
+    saveFailed: "保存缓存策略失败",
+    duplicateFailed: "复制缓存策略失败",
+    toggleFailed: "更新缓存策略状态失败",
+    deleteFailed: "删除缓存策略失败",
+    delete: "删除缓存策略",
+    deleteConfirm: "确定删除“{name}”吗？已绑定分组的策略需要先解绑。",
+    CACHE_STRATEGY_GROUP_CONFLICT:
+      "分组 {group_name}（ID {group_id}）已经绑定缓存策略 {current_strategy_id}，不能再次绑定到策略 {requested_strategy_id}。请先解除原绑定，再重新绑定。",
+    descriptionLabel: "描述",
+    descriptionPlaceholder: "说明该策略适用的分组或场景",
+    form: {
+      basic: "基本信息",
+      basicHint: "策略名称和启停状态会展示在策略列表中。",
+      usagePolicy: "用量上报策略",
+      usagePolicyHint:
+        "这里控制返回给 Claude Code 的 input、output、cache read、cache creation 四个数值。它只整理用量，不改变实际发送给上游的请求内容。",
+      usageFlow:
+        "计算顺序：先读取上游用量，再合并本地缓存命中/创建证据，最后按下方四项策略整形。input 被压低的差值会按设置归入 cache read（有命中证据）或 cache creation（无命中证据），不会凭空丢失。",
+      usageExample:
+        "示例：上游总输入 10,000，命中缓存 7,000，新建缓存 2,000，则 Claude 响应中的 input=1,000、cache_read=7,000、cache_creation=2,000；OpenAI 响应中的总 input=10,000。",
+      usageInput: "输入 Token（input_tokens）",
+      usageInputHint:
+        "Claude 协议中表示未命中缓存的输入部分；OpenAI 兼容协议会将它与 cache read/create 合并为总输入。",
+      usageOutput: "输出 Token（output_tokens）",
+      usageOutputHint:
+        "控制响应中的输出 Token。可按原值、最大值或目标值上报，并可设置阈值放大和最终上限。",
+      usageCacheRead: "读取缓存（cache_read_input_tokens）",
+      usageCacheReadHint:
+        "控制已经命中稳定前缀的 Token 数。它来自本地缓存证据或上游明确返回的 cached tokens。",
+      usageCacheCreation: "创建缓存（cache_creation_input_tokens）",
+      usageCacheCreationHint:
+        "控制本次新写入稳定前缀的 Token 数。创建频率和预算仍由下方 Creation 控制负责。",
+      usageMode: "上报模式",
+      moveInputDelta: "输入减少的差值归入缓存字段",
+      usageMaxTokens: "最大 Token",
+      usageTargetTokens: "目标 Token",
+      usageNormalMaxMultiplier: "目标常规最大倍率",
+      outputUpliftMinTokens: "输出放大阈值（0=关闭）",
+      outputUpliftPercent: "输出放大比例（%）",
+      finalOutputMaxTokens: "输出最终上限（0=关闭）",
+      finalCacheReadMaxTokens: "读取缓存最终上限（0=关闭）",
+      finalCacheCreationMaxTokens: "创建缓存最终上限（0=关闭）",
+      behavior: "缓存命中与创建行为（高级）",
+      behaviorHint:
+        "这些参数决定本地缓存证据如何产生；它们不是最终用量上报值。最终返回的 input/output/read/create 请在上方用量上报策略中设置。",
+      limits: "缓存资源与生命周期（高级）",
+      limitsHint:
+        "控制缓存容量、Token 上限和过期时间；不会替代上方四项用量策略。",
+      segments: "缓存内容范围（高级）",
+      segmentsHint: "选择哪些请求内容可以进入稳定缓存前缀。",
+      creationControl: "创建频率控制（高级）",
+      creationControlHint:
+        "限制连续请求中创建缓存的频率和预算；它只决定是否允许创建，不改变读取缓存。",
+      bindings: "绑定分组",
+      bindingsHint: "同一个策略可以绑定多个分组；分组只使用绑定的通用策略。",
+      cacheNamespaceHint:
+        "缓存按账号、分组、策略版本和协议分别隔离。相同请求换到另一个账号后会重新创建缓存，不会命中原账号缓存。",
+      coverageRatio: "缓存证据覆盖比例",
+      usageRatio: "缓存证据总比例",
+      ratioMode: "缓存证据比例模式",
+      readRatio: "读取证据比例",
+      creationRatio: "创建证据比例",
+      breakpointMode: "断点模式",
+      minCacheableTokens: "最小可缓存 Token",
+      maxCoverageTokens: "最大覆盖 Token",
+      maxCreationTokens: "单次最大 Creation Token",
+      defaultTtlSeconds: "默认 TTL（秒）",
+      hourTtlSeconds: "1 小时 TTL（秒）",
+      tokenScale: "Token 缩放系数",
+      scaleMinInputTokens: "启用缩放的最小输入 Token",
+      maxSimulatedInputTokens: "最大模拟输入 Token",
+      capJitterMinTokens: "上限抖动最小 Token",
+      capJitterMaxTokens: "上限抖动最大 Token",
+      maxEntriesPerScope: "单作用域最大条目数",
+      maxEntriesGlobal: "全局最大条目数",
+      estimatedBytesLimit: "缓存估算字节上限",
+      expireAfterIdleSeconds: "空闲过期时间（秒）",
+      currentUserStablePrefix: "缓存当前用户稳定前缀",
+      currentUserStablePrefixMaxTokens: "用户稳定前缀最大 Token",
+      scopeMode: "缓存作用域",
+      dynamicContentMode: "动态内容处理",
+      allowDerivedSession: "允许从请求派生会话",
+      preserveUpstreamCacheUsage: "优先保留上游缓存 usage",
+      incrementalCreation: "启用增量 Creation",
+      cacheSystem: "缓存 System",
+      cacheTools: "缓存 Tools",
+      cacheHistory: "缓存历史消息",
+      cacheToolResults: "缓存 Tool Results",
+      creationControlEnabled: "启用 Creation 限流",
+      minCreationDeltaTokens: "最小 Creation 增量 Token",
+      minSuccessfulRequestsBetween: "两次 Creation 间成功请求数",
+      minCreationIntervalSeconds: "Creation 最小间隔（秒）",
+      maxCreationTokensPerEvent: "单次事件最大 Creation Token",
+      creationBudgetWindowSeconds: "Creation 预算窗口（秒）",
+      maxCreationTokensPerWindow: "窗口最大 Creation Token",
+    },
+    kinds: {
+      prefix: "前缀缓存",
+      toolAware: "工具感知缓存",
+      disabled: "关闭缓存",
+    },
+    kindDescriptions: {
+      prefix: "按稳定请求前缀建立缓存，适合大多数 Claude Code 兼容分组。",
+      toolAware: "在稳定前缀基础上细分工具、历史和工具结果，适合工具密集型长会话。",
+      disabled: "不读、不写本地缓存，也不补足模拟的 cache usage。",
+    },
+    templates: {
+      blank: {
+        name: "自定义空白策略",
+      },
+      highCache: {
+        name: "高缓存（默认）",
+        description:
+          "对应参考项目的默认高缓存路径：稳定前缀、98% usage 比例、长输入 token 缩放和最终 usage 上限。",
+      },
+      claudeCode: {
+        name: "Claude Code 工具会话",
+        description:
+          "对应 Claude Code 高缓存路径：工具感知前缀、输入压到 96 token 并将差值转入读取缓存，Creation 围绕 3,000 token 整形。",
+      },
+      inputShaping: {
+        name: "输入整形（高缓存）",
+        description:
+          "对应只改写 input 上报的高缓存路径：缓存读写保留计算值，input 使用 96 token 上限并把差值归入读取缓存。",
+      },
+      lowFrequencyCreation: {
+        name: "低频创建",
+        description:
+          "保持已有前缀读取，同时降低新增缓存写入频率：首次允许合法创建，后续由成功请求间隔、单次写入上限和 5 分钟窗口预算控制。",
+      },
+      readPriority: {
+        name: "仅读取优先",
+        description:
+          "工具感知缓存优先复用已经存在的前缀；首次请求仍允许合法创建，命中后不继续写入新增尾部。",
+      },
+      strictClient: {
+        name: "仅客户端断点",
+        description:
+          "只接受请求显式声明的 cache_control 断点，不自动猜测稳定边界，适合需要严格可审计缓存的分组。",
+      },
+      sharedSession: {
+        name: "共享会话缓存",
+        description:
+          "按分组和会话共享缓存状态，读取与创建使用独立比例，适合多个账号承接同一 Claude Code 会话。",
+      },
+      conservativeUsage: {
+        name: "保守用量整形",
+        description:
+          "限制缓存读写和输出的上报上限，并使用小幅目标采样，适合需要平滑、低波动 usage 的分组。",
+      },
+      longContextGuard: {
+        name: "长上下文保护",
+        description:
+          "支持较长稳定前缀但设置 96k 输入保护、48k 读取上限和 8k 单次创建上限，避免超出合理上下文。",
+      },
+      noCache: {
+        name: "完全不缓存",
+        description:
+          "对应 no-cache 路径：关闭本地缓存读写和模拟 usage，响应只保留上游真实 usage。",
+      },
+    },
+    ratioModes: {
+      uniform: "统一比例",
+      independent: "读写独立比例",
+    },
+    usageModes: {
+      raw: "原样上报（上游值）",
+      preserve: "保留计算值（不再整形）",
+      sampleMax: "限制最大值（不超过上限）",
+      sampleTarget: "按目标值采样（确定性）",
+      rawShort: "原样",
+      preserveShort: "保留",
+      sampleMaxShort: "最大值",
+      sampleTargetShort: "目标值",
+    },
+    breakpointModes: {
+      clientOnly: "仅客户端断点",
+      hybrid: "混合断点",
+      auto: "自动断点",
+    },
+    scopeModes: {
+      groupAccountSession: "分组 + 账号 + 会话",
+      groupSession: "分组 + 会话（跨账号共享）",
+    },
+    dynamicContentModes: {
+      exclude: "排除动态内容",
+      allow: "允许动态内容（高风险）",
+    },
+    currentSelection: "已选择 {count} 个分组",
+    noGroups: "暂无可绑定分组",
+    copyName: "{name} 副本",
+    copySuccess: "缓存策略已复制",
+    saveSuccess: "缓存策略已保存",
+    toggleSuccess: "缓存策略状态已更新",
+    deleteSuccess: "缓存策略已删除",
+    unbound: "未绑定分组",
+    groupCount: "{count} 个分组",
+  },
+};

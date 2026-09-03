@@ -2487,6 +2487,35 @@ func TestKiroCacheEmulationUsageInjectedIntoNonStreamingResponse(t *testing.T) {
 	require.Equal(t, 30, int(gjson.GetBytes(result.ResponseBody, "usage.cache_creation.ephemeral_5m_input_tokens").Int()))
 }
 
+func TestParseNonStreamingEventStreamKeepsUsageInSyncAfterMaxOutputTruncation(t *testing.T) {
+	stream := bytes.NewBuffer(nil)
+	_, _ = stream.Write(buildEventStreamFrame(t, "assistantResponseEvent", map[string]any{
+		"assistantResponseEvent": map[string]any{
+			"content": strings.Repeat("token ", 80),
+		},
+	}))
+	_, _ = stream.Write(buildEventStreamFrame(t, "messageMetadataEvent", map[string]any{
+		"messageMetadataEvent": map[string]any{
+			"tokenUsage": map[string]any{
+				"uncachedInputTokens": 40,
+				"outputTokens":        80,
+				"totalTokens":         120,
+			},
+		},
+	}))
+
+	result, err := ParseNonStreamingEventStreamWithContext(stream, "claude-sonnet-4-5", KiroRequestContext{
+		MaxOutputTokens:      12,
+		EstimatedInputTokens: 40,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 12, result.Usage.OutputTokens)
+	require.Equal(t, result.Usage.OutputTokens, int(gjson.GetBytes(result.ResponseBody, "usage.output_tokens").Int()))
+	require.Equal(t, result.Usage.InputTokens, int(gjson.GetBytes(result.ResponseBody, "usage.input_tokens").Int()))
+	require.Equal(t, result.Usage.InputTokens+result.Usage.OutputTokens, result.Usage.TotalTokens)
+	require.Equal(t, "max_tokens", result.StopReason)
+}
+
 func TestKiroCacheEmulationUsageInjectedIntoStreamAndResult(t *testing.T) {
 	stream := bytes.NewBuffer(nil)
 	_, _ = stream.Write(buildEventStreamFrame(t, "messageMetadataEvent", map[string]any{
@@ -2722,6 +2751,35 @@ func TestKiroMaxOutputTokensForOpus5(t *testing.T) {
 
 	require.Equal(t, 128000, kiroMaxOutputTokensForModel("claude-opus-5"))
 	require.Equal(t, 128000, kiroMaxOutputTokensForModel("claude-opus-5-thinking"))
+}
+
+func TestKiroMaxOutputTokensForOpusGenerations(t *testing.T) {
+	t.Parallel()
+
+	for _, model := range []string{
+		"claude-opus-4",
+		"claude-opus-4.0",
+		"claude-opus-4-20250514",
+		"claude-opus-4-1",
+		"claude-opus-4.1",
+		"claude-opus-4-1-20250805",
+	} {
+		require.Equal(t, 32000, kiroMaxOutputTokensForModel(model), model)
+	}
+	for _, model := range []string{
+		"claude-opus-4-5",
+		"claude-opus-4-5-20251101",
+	} {
+		require.Equal(t, 64000, kiroMaxOutputTokensForModel(model), model)
+	}
+	for _, model := range []string{
+		"claude-opus-4-6",
+		"claude-opus-4-6-20260205",
+		"claude-opus-4-7",
+		"claude-opus-4-8",
+	} {
+		require.Equal(t, 128000, kiroMaxOutputTokensForModel(model), model)
+	}
 }
 
 func TestIsOutputConfigPathModelSupportsFutureVersions(t *testing.T) {

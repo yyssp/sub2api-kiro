@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   generateAuthUrl: vi.fn(),
   exchangeCode: vi.fn(),
-  refreshToken: vi.fn()
+  refreshToken: vi.fn(),
+  importToken: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -13,7 +14,7 @@ vi.mock('@/api/admin', () => ({
       generateIDCAuthUrl: vi.fn(),
       exchangeCode: mocks.exchangeCode,
       refreshToken: mocks.refreshToken,
-      importToken: vi.fn()
+      importToken: mocks.importToken
     }
   }
 }))
@@ -37,6 +38,7 @@ describe('useKiroOAuth', () => {
     mocks.generateAuthUrl.mockReset()
     mocks.exchangeCode.mockReset()
     mocks.refreshToken.mockReset()
+    mocks.importToken.mockReset()
   })
 
   it('requests an explicit External IdP authorization session', async () => {
@@ -142,6 +144,7 @@ describe('useKiroOAuth', () => {
       client_secret: undefined,
       start_url: undefined,
       region: undefined,
+      api_region: undefined,
       profile_arn: undefined,
       token_endpoint: 'https://idp.example.com/token',
       issuer_url: 'https://idp.example.com',
@@ -155,6 +158,44 @@ describe('useKiroOAuth', () => {
       token_endpoint: 'https://idp.example.com/token',
       issuer_url: 'https://idp.example.com',
       scopes: 'openid profile email'
+    })
+  })
+
+  it('returns typed mixed imports and builds API key credentials without OAuth fields', async () => {
+    mocks.importToken.mockResolvedValueOnce({
+      entries: [
+        {
+          account_type: 'oauth',
+          access_token: 'synthetic-access',
+          refresh_token: 'synthetic-refresh',
+          auth_method: 'social'
+        },
+        {
+          account_type: 'apikey',
+          api_key: 'ksk_synthetic_key',
+          auth_method: 'api_key',
+          api_region: 'eu-west-1',
+          machine_id: 'synthetic-machine',
+          subscription_title: 'Kiro Pro'
+        }
+      ]
+    })
+
+    const kiroOAuth = useKiroOAuth()
+    const entries = await kiroOAuth.importToken('[{"synthetic":true}]')
+
+    expect(mocks.importToken).toHaveBeenCalledWith({
+      token_json: '[{"synthetic":true}]',
+      device_registration_json: undefined
+    })
+    expect(entries).toHaveLength(2)
+    expect(entries?.[0].account_type).toBe('oauth')
+    expect(entries?.[1].account_type).toBe('apikey')
+    expect(kiroOAuth.buildImportedAPIKeyCredentials(entries![1])).toEqual({
+      api_key: 'ksk_synthetic_key',
+      api_region: 'eu-west-1',
+      machine_id: 'synthetic-machine',
+      subscription_title: 'Kiro Pro'
     })
   })
 })

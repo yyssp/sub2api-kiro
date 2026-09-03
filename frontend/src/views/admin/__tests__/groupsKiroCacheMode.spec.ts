@@ -7,29 +7,17 @@ import { describe, expect, it } from "vitest";
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const groupsViewSource = readFileSync(resolve(currentDir, "../GroupsView.vue"), "utf8");
 
-describe("groups Kiro cache emulation modes", () => {
-  it("exposes uniform and independent ratio controls for create and edit", () => {
-    expect(groupsViewSource).toContain("setCreateKiroCacheMode('uniform')");
-    expect(groupsViewSource).toContain("setCreateKiroCacheMode('independent')");
-    expect(groupsViewSource).toContain("setEditKiroCacheMode('uniform')");
-    expect(groupsViewSource).toContain("setEditKiroCacheMode('independent')");
-    expect(groupsViewSource).toContain("kiro_cache_creation_emulation_ratio");
-    expect(groupsViewSource).toContain("kiro_cache_read_emulation_ratio");
-    expect(groupsViewSource.match(/<KiroCacheRatioField/g)).toHaveLength(6);
-    expect(groupsViewSource).toContain(
-      ":aria-pressed=\"createForm.kiro_cache_emulation_mode === 'uniform'\"",
-    );
-    expect(groupsViewSource).toContain(
-      ":aria-pressed=\"editForm.kiro_cache_emulation_mode === 'independent'\"",
-    );
+describe("groups Kiro cache strategy placement", () => {
+  it("does not expose cache emulation controls in the group form", () => {
+    expect(groupsViewSource).not.toContain("KiroCacheRatioField");
+    expect(groupsViewSource).not.toContain("kiro_cache_emulation");
+    expect(groupsViewSource).not.toContain("setCreateKiroCacheMode");
+    expect(groupsViewSource).not.toContain("setEditKiroCacheMode");
   });
 
-  it("inherits the uniform ratio when switching to independent mode", () => {
-    expect(groupsViewSource).toContain(
-      "createForm.kiro_cache_creation_emulation_ratio = createForm.kiro_cache_emulation_ratio",
-    );
-    expect(groupsViewSource).toContain(
-      "editForm.kiro_cache_read_emulation_ratio = editForm.kiro_cache_emulation_ratio",
-    );
+  it("keeps Kiro routing controls in the group form", () => {
+    expect(groupsViewSource).toContain("kiro_auto_sticky_enabled");
+    expect(groupsViewSource).toContain("kiro_sticky_session_ttl_seconds");
+    expect(groupsViewSource).toContain("kiro_endpoint_mode");
   });
 });

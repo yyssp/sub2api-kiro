@@ -270,6 +270,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 	body = updatedBody
 
+	prepareCachePlanForContext(
+		ctx, c, account, cacheGroupFromContext(c, nil), body, policyModel,
+		"openai_responses", estimateOpenAIResponsesInputTokens(ctx, body),
+	)
+
 	apiKey := getAPIKeyFromContext(c)
 	// 同一 attempt 的最终 model/body 只判定一次，权限检查与后续图片状态设置共用该结果。
 	imageIntent := resolveOpenAIPassthroughImageIntent(
@@ -1038,6 +1043,16 @@ type openaiNonStreamingResultPassthrough struct {
 	imageOutputSizes []string
 }
 
+func rewriteOpenAIPassthroughUsageJSON(body []byte, usage *OpenAIUsage) []byte {
+	if len(body) == 0 || usage == nil {
+		return body
+	}
+	if gjson.GetBytes(body, "choices").Exists() {
+		return rewriteOpenAIChatUsageJSON(body, usage)
+	}
+	return rewriteOpenAIResponsesUsageJSON(body, usage)
+}
+
 const openAIStreamKeepaliveBytesKey = "openai_stream_keepalive_bytes"
 
 func recordOpenAIStreamKeepaliveBytes(c *gin.Context, written int) {
@@ -1725,6 +1740,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	clientDisconnected := false
 	sawDone := false
 	sawTerminalEvent := false
+	sawSuccessfulTerminalEvent := false
 	sawFailedEvent := false
 	sawBareError := false
 	sawResponseFailed := false
@@ -1979,6 +1995,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				firstTokenMs = &ms
 			}
 			s.parseSSEUsageBytesWithType(dataBytes, eventType, usage)
+			if eventType == "response.completed" || eventType == "response.done" {
+				sawSuccessfulTerminalEvent = true
+				mergeAndCommitOpenAICachePlan(c, usage, false)
+				dataBytes = rewriteOpenAIPassthroughUsageJSON(dataBytes, usage)
+				line = "data: " + string(dataBytes)
+			}
 		}
 		if line == "" {
 			pendingSSEEventType = ""
@@ -2018,6 +2040,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	ensureResponseFailedTerminal()
 	if err := documentScanner.Err(); err != nil {
 		if (sawDone || sawTerminalEvent) && !sawFailedEvent {
+			if sawSuccessfulTerminalEvent && !clientDisconnected {
+				mergeAndCommitOpenAICachePlan(c, usage, true)
+			}
 			s.clearOpenAIProxyStreamDisconnect(account)
 			return resultWithUsage(), nil
 		}
@@ -2068,6 +2093,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		return resultWithUsage(), errors.New("stream usage incomplete: missing terminal event")
 	}
 	if (sawDone || sawTerminalEvent) && !sawFailedEvent {
+		if sawSuccessfulTerminalEvent && !clientDisconnected {
+			mergeAndCommitOpenAICachePlan(c, usage, true)
+		}
 		s.clearOpenAIProxyStreamDisconnect(account)
 	}
 	logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, terminalEventType, clientDisconnected)
@@ -2117,8 +2145,6 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		// 兜底：尝试从 SSE 文本中解析 usage
 		usage = s.parseSSEUsageFromBody(string(body))
 	}
-	logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, "json", false)
-
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	contentType := resp.Header.Get("Content-Type")
@@ -2137,6 +2163,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
 	}
+	mergeAndCommitOpenAICachePlan(c, usage, true)
+	body = rewriteOpenAIPassthroughUsageJSON(body, usage)
+	logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, "json", false)
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -2195,6 +2224,8 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		}
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = restoredBody
+		mergeAndCommitOpenAICachePlan(c, usage, true)
+		body = rewriteOpenAIPassthroughUsageJSON(body, usage)
 	} else {
 		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
@@ -2203,7 +2234,6 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 	}
 
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	logOpenAISuccessMissingUsage(c.Request.Context(), c, account, resp, usage, terminalType, false)
 
 	contentType := "application/json; charset=utf-8"
 	if !ok {
@@ -2215,6 +2245,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
+	logOpenAISuccessMissingUsage(c.Request.Context(), c, account, resp, usage, terminalType, false)
 
 	return &openaiNonStreamingResultPassthrough{
 		OpenAIUsage:      usage,

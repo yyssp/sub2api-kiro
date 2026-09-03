@@ -338,6 +338,83 @@ func TestOpenAIGatewayService_Forward_TextResponsesSetsBillingModelToMappedModel
 	require.Equal(t, 0, result.ImageCount)
 }
 
+func TestOpenAIGatewayService_Forward_ResponsesCachePlanUsesResponsesEstimator(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	resetCacheTracker()
+
+	strategyID := int64(99011)
+	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg.MinCacheableTokens = 1
+	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
+		ID:       strategyID,
+		Name:     "responses-estimator",
+		Enabled:  true,
+		Revision: 1,
+		Config:   cfg,
+	})
+	defer GlobalCacheStrategyRegistry().Delete(strategyID)
+
+	group := &Group{ID: 99011, Platform: PlatformOpenAI, CacheStrategyID: &strategyID}
+	body := []byte(`{"model":"gpt-5.4","instructions":"You are a stable coding assistant for cache regression.","input":[{"role":"user","content":"Keep the Responses prefix stable."}],"metadata":{"session_id":"responses-estimator"},"stream":false}`)
+	require.Greater(t, estimateOpenAIResponsesInputTokens(context.Background(), body), estimateKiroInputTokens(context.Background(), body))
+
+	newResp := func(requestID string) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{requestID}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_cache","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":20,"output_tokens":10,"total_tokens":30}}`)),
+		}
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newResp("rid_resp_cache_cold"),
+		newResp("rid_resp_cache_hot"),
+	}}
+	cfg2 := &config.Config{}
+	cfg2.Security.URLAllowlist.Enabled = false
+	svc := &OpenAIGatewayService{cfg: cfg2, httpUpstream: upstream}
+	account := &Account{
+		ID:          4,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://example.com",
+		},
+		Extra: map[string]any{"use_responses_api": true},
+	}
+
+	firstRec := httptest.NewRecorder()
+	firstCtx, _ := gin.CreateTestContext(firstRec)
+	firstCtx.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(string(body)))
+	firstCtx.Request.Header.Set("Content-Type", "application/json")
+	SetOpenAIClientTransport(firstCtx, OpenAIClientTransportHTTP)
+	SetCacheGroupContext(firstCtx, group)
+
+	firstResult, err := svc.Forward(context.Background(), firstCtx, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, firstResult)
+	require.Zero(t, firstResult.Usage.CacheReadInputTokens)
+	require.Greater(t, firstResult.Usage.CacheCreationInputTokens, 0)
+	require.Equal(t, firstResult.Usage.CacheCreationInputTokens, int(gjson.Get(firstRec.Body.String(), "usage.cache_creation_input_tokens").Int()))
+
+	secondRec := httptest.NewRecorder()
+	secondCtx, _ := gin.CreateTestContext(secondRec)
+	secondCtx.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(string(body)))
+	secondCtx.Request.Header.Set("Content-Type", "application/json")
+	SetOpenAIClientTransport(secondCtx, OpenAIClientTransportHTTP)
+	SetCacheGroupContext(secondCtx, group)
+
+	secondResult, err := svc.Forward(context.Background(), secondCtx, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, secondResult)
+	require.Greater(t, secondResult.Usage.CacheReadInputTokens, 0)
+	require.Zero(t, secondResult.Usage.CacheCreationInputTokens)
+	require.Equal(t, secondResult.Usage.CacheReadInputTokens, int(gjson.Get(secondRec.Body.String(), "usage.input_tokens_details.cached_tokens").Int()))
+	require.Equal(t, 0, int(gjson.Get(secondRec.Body.String(), "usage.cache_creation_input_tokens").Int()))
+}
+
 func TestOpenAIGatewayService_Forward_TextResponsesWithoutMappingKeepsRequestedBillingModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{

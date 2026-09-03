@@ -61,24 +61,27 @@ type KiroIDCAuthURLResult struct {
 }
 
 type KiroTokenInfo struct {
-	AuthURL       string `json:"auth_url,omitempty"`
-	SessionID     string `json:"session_id,omitempty"`
-	State         string `json:"state,omitempty"`
-	AccessToken   string `json:"access_token,omitempty"`
-	RefreshToken  string `json:"refresh_token,omitempty"`
-	ProfileArn    string `json:"profile_arn,omitempty"`
-	ExpiresAt     string `json:"expires_at,omitempty"`
-	AuthMethod    string `json:"auth_method,omitempty"`
-	Provider      string `json:"provider,omitempty"`
-	ClientID      string `json:"client_id,omitempty"`
-	ClientSecret  string `json:"client_secret,omitempty"`
-	ClientIDHash  string `json:"client_id_hash,omitempty"`
-	Email         string `json:"email,omitempty"`
-	StartURL      string `json:"start_url,omitempty"`
-	Region        string `json:"region,omitempty"`
-	TokenEndpoint string `json:"token_endpoint,omitempty"`
-	IssuerURL     string `json:"issuer_url,omitempty"`
-	Scopes        string `json:"scopes,omitempty"`
+	AuthURL           string `json:"auth_url,omitempty"`
+	SessionID         string `json:"session_id,omitempty"`
+	State             string `json:"state,omitempty"`
+	AccessToken       string `json:"access_token,omitempty"`
+	RefreshToken      string `json:"refresh_token,omitempty"`
+	ProfileArn        string `json:"profile_arn,omitempty"`
+	ExpiresAt         string `json:"expires_at,omitempty"`
+	AuthMethod        string `json:"auth_method,omitempty"`
+	Provider          string `json:"provider,omitempty"`
+	ClientID          string `json:"client_id,omitempty"`
+	ClientSecret      string `json:"client_secret,omitempty"`
+	ClientIDHash      string `json:"client_id_hash,omitempty"`
+	Email             string `json:"email,omitempty"`
+	StartURL          string `json:"start_url,omitempty"`
+	Region            string `json:"region,omitempty"`
+	APIRegion         string `json:"api_region,omitempty"`
+	MachineID         string `json:"machine_id,omitempty"`
+	SubscriptionTitle string `json:"subscription_title,omitempty"`
+	TokenEndpoint     string `json:"token_endpoint,omitempty"`
+	IssuerURL         string `json:"issuer_url,omitempty"`
+	Scopes            string `json:"scopes,omitempty"`
 }
 
 type KiroGenerateAuthURLInput struct {
@@ -109,6 +112,7 @@ type KiroRefreshTokenInput struct {
 	ClientSecret  string
 	StartURL      string
 	Region        string
+	APIRegion     string
 	ProfileArn    string
 	TokenEndpoint string
 	IssuerURL     string
@@ -121,12 +125,31 @@ type KiroImportTokenInput struct {
 	DeviceRegistrationJSON string
 }
 
+type KiroImportTokenResult struct {
+	Entries []*KiroImportEntry `json:"entries"`
+}
+
+// KiroImportEntry is a validated, immediately creatable account payload.
+// KiroTokenInfo remains embedded for OAuth metadata used by the existing
+// account form. API-key entries keep their secret separate so they cannot be
+// mistaken for access-token credentials.
+type KiroImportEntry struct {
+	AccountType string `json:"account_type"`
+	*KiroTokenInfo
+	APIKey string `json:"api_key,omitempty"`
+}
+
 func (s *KiroOAuthService) GenerateAuthURL(ctx context.Context, input *KiroGenerateAuthURLInput) (*KiroAuthURLResult, error) {
+	if input == nil {
+		return nil, fmt.Errorf("kiro auth url input is required")
+	}
 	provider := strings.TrimSpace(input.Provider)
 	if provider == "" {
-		provider = string(kiropkg.SocialProviderGoogle)
+		provider = kiropkg.ProviderGoogle
 	}
-	if provider != string(kiropkg.SocialProviderGoogle) && provider != string(kiropkg.SocialProviderGitHub) && provider != kiropkg.ProviderExternalIdp {
+	if provider != kiropkg.ProviderGoogle &&
+		provider != kiropkg.ProviderGithub &&
+		provider != kiropkg.ProviderExternalIdp {
 		return nil, fmt.Errorf("unsupported kiro oauth provider: %s", provider)
 	}
 	state, err := kiropkg.GenerateState()
@@ -160,6 +183,9 @@ func (s *KiroOAuthService) GenerateAuthURL(ctx context.Context, input *KiroGener
 }
 
 func (s *KiroOAuthService) ExchangeCode(ctx context.Context, input *KiroExchangeCodeInput) (*KiroTokenInfo, error) {
+	if input == nil {
+		return nil, fmt.Errorf("kiro code exchange input is required")
+	}
 	session, ok := s.sessionStore.Get(input.SessionID)
 	if !ok {
 		return nil, fmt.Errorf("session not found or expired")
@@ -212,8 +238,8 @@ func (s *KiroOAuthService) ExchangeCode(ctx context.Context, input *KiroExchange
 				ProxyID:  input.ProxyID,
 				Credentials: map[string]any{
 					"auth_method": "external_idp",
-					"provider":    kiropkg.ProviderExternalIdp,
 					"client_id":   session.ClientID,
+					"provider":    kiropkg.ProviderExternalIdp,
 				},
 			}
 			if session.Region != "" {
@@ -314,14 +340,13 @@ func (s *KiroOAuthService) prepareExternalIdpAuthorization(ctx context.Context, 
 		State:     state,
 	}, nil
 }
-
 func buildKiroSocialExchangeRedirectURI(baseRedirectURI, provider, callbackPath, loginOption string) string {
 	option := strings.ToLower(strings.TrimSpace(loginOption))
 	if option == "" {
-		switch provider {
-		case string(kiropkg.SocialProviderGitHub):
+		switch strings.TrimSpace(provider) {
+		case kiropkg.ProviderGithub:
 			option = "github"
-		case string(kiropkg.SocialProviderGoogle):
+		case kiropkg.ProviderGoogle:
 			option = "google"
 		}
 	}
@@ -329,6 +354,9 @@ func buildKiroSocialExchangeRedirectURI(baseRedirectURI, provider, callbackPath,
 }
 
 func (s *KiroOAuthService) GenerateIDCAuthURL(ctx context.Context, input *KiroGenerateIDCAuthURLInput) (*KiroIDCAuthURLResult, error) {
+	if input == nil {
+		return nil, fmt.Errorf("kiro idc auth url input is required")
+	}
 	startURL := strings.TrimSpace(input.StartURL)
 	if startURL == "" {
 		startURL = kiropkg.BuilderIDStartURL
@@ -374,15 +402,20 @@ func (s *KiroOAuthService) GenerateIDCAuthURL(ctx context.Context, input *KiroGe
 }
 
 func (s *KiroOAuthService) RefreshToken(ctx context.Context, input *KiroRefreshTokenInput) (*KiroTokenInfo, error) {
+	if input == nil {
+		return nil, fmt.Errorf("kiro refresh token input is required")
+	}
 	proxyURL, _ := s.resolveProxyURL(ctx, input.ProxyID)
 	refreshToken := strings.TrimSpace(input.RefreshToken)
 	if refreshToken == "" {
 		return nil, fmt.Errorf("kiro refresh token is required")
 	}
-	authMethod := resolveKiroRefreshAuthMethod(input.AuthMethod, input.ClientID, input.ClientSecret)
+	authMethod, err := resolveKiroRefreshAuthMethod(input.AuthMethod, input.ClientID, input.ClientSecret, input.TokenEndpoint)
+	if err != nil {
+		return nil, err
+	}
 
 	var token *kiropkg.TokenData
-	var err error
 	switch authMethod {
 	case "external_idp":
 		clientID := strings.TrimSpace(input.ClientID)
@@ -404,6 +437,9 @@ func (s *KiroOAuthService) RefreshToken(ctx context.Context, input *KiroRefreshT
 	if err != nil {
 		return nil, err
 	}
+	if token.Provider == "" {
+		token.Provider = strings.TrimSpace(input.Provider)
+	}
 	if token.ProfileArn == "" {
 		token.ProfileArn = input.ProfileArn
 	}
@@ -419,6 +455,9 @@ func (s *KiroOAuthService) RefreshToken(ctx context.Context, input *KiroRefreshT
 	if token.Region == "" {
 		token.Region = input.Region
 	}
+	if token.APIRegion == "" {
+		token.APIRegion = input.APIRegion
+	}
 	if token.TokenEndpoint == "" {
 		token.TokenEndpoint = input.TokenEndpoint
 	}
@@ -431,18 +470,30 @@ func (s *KiroOAuthService) RefreshToken(ctx context.Context, input *KiroRefreshT
 	return toKiroTokenInfo(token), nil
 }
 
-func resolveKiroRefreshAuthMethod(authMethod, clientID, clientSecret string) string {
+func resolveKiroRefreshAuthMethod(authMethod, clientID, clientSecret, tokenEndpoint string) (string, error) {
 	method := strings.ToLower(strings.TrimSpace(authMethod))
-	if method != "" {
-		return method
+	switch method {
+	case "social", "idc", "external_idp":
+		return method, nil
+	case "api_key", "apikey":
+		return "", fmt.Errorf("kiro api_key accounts do not support refresh_token")
+	case "":
+	default:
+		return "", fmt.Errorf("unsupported kiro auth method: %q", authMethod)
+	}
+	if strings.TrimSpace(tokenEndpoint) != "" {
+		return "external_idp", nil
 	}
 	if strings.TrimSpace(clientID) != "" && strings.TrimSpace(clientSecret) != "" {
-		return "idc"
+		return "idc", nil
 	}
-	return "social"
+	return "social", nil
 }
 
 func (s *KiroOAuthService) RefreshAccountToken(ctx context.Context, account *Account) (*KiroTokenInfo, error) {
+	if account == nil {
+		return nil, fmt.Errorf("kiro account is required")
+	}
 	if account.Platform != PlatformKiro || account.Type != AccountTypeOAuth {
 		return nil, fmt.Errorf("not a kiro oauth account")
 	}
@@ -454,6 +505,7 @@ func (s *KiroOAuthService) RefreshAccountToken(ctx context.Context, account *Acc
 		ClientSecret:  account.GetCredential("client_secret"),
 		StartURL:      account.GetCredential("start_url"),
 		Region:        account.GetCredential("region"),
+		APIRegion:     account.GetCredential("api_region"),
 		ProfileArn:    account.GetCredential("profile_arn"),
 		TokenEndpoint: account.GetCredential("token_endpoint"),
 		IssuerURL:     account.GetCredential("issuer_url"),
@@ -462,12 +514,29 @@ func (s *KiroOAuthService) RefreshAccountToken(ctx context.Context, account *Acc
 	})
 }
 
-func (s *KiroOAuthService) ImportToken(input *KiroImportTokenInput) (*KiroTokenInfo, error) {
-	token, err := kiropkg.ParseImportedToken(input.TokenJSON, input.DeviceRegistrationJSON)
+func (s *KiroOAuthService) ImportToken(input *KiroImportTokenInput) (*KiroImportTokenResult, error) {
+	if input == nil {
+		return nil, fmt.Errorf("kiro import token input is required")
+	}
+	// This is the dedicated Kiro IDE export endpoint. Keep it deliberately
+	// stricter than the internal credential parser so unrelated OAuth/API-key
+	// JSON cannot be imported as a Kiro account.
+	tokens, err := kiropkg.ParseKiroCredentialExport(input.TokenJSON, input.DeviceRegistrationJSON)
 	if err != nil {
 		return nil, err
 	}
-	return toKiroTokenInfo(token), nil
+	result := &KiroImportTokenResult{Entries: make([]*KiroImportEntry, 0, len(tokens))}
+	for _, token := range tokens {
+		entry := &KiroImportEntry{KiroTokenInfo: toKiroTokenInfo(token)}
+		if token.AuthMethod == "api_key" {
+			entry.AccountType = "apikey"
+			entry.APIKey = token.APIKey
+		} else {
+			entry.AccountType = "oauth"
+		}
+		result.Entries = append(result.Entries, entry)
+	}
+	return result, nil
 }
 
 func (s *KiroOAuthService) BuildAccountCredentials(tokenInfo *KiroTokenInfo) map[string]any {
@@ -512,6 +581,15 @@ func (s *KiroOAuthService) BuildAccountCredentials(tokenInfo *KiroTokenInfo) map
 	if tokenInfo.Region != "" {
 		creds["region"] = tokenInfo.Region
 	}
+	if tokenInfo.APIRegion != "" {
+		creds["api_region"] = tokenInfo.APIRegion
+	}
+	if tokenInfo.MachineID != "" {
+		creds["machine_id"] = tokenInfo.MachineID
+	}
+	if tokenInfo.SubscriptionTitle != "" {
+		creds["subscription_title"] = tokenInfo.SubscriptionTitle
+	}
 	if tokenInfo.TokenEndpoint != "" {
 		creds["token_endpoint"] = tokenInfo.TokenEndpoint
 	}
@@ -530,21 +608,24 @@ func toKiroTokenInfo(token *kiropkg.TokenData) *KiroTokenInfo {
 		return nil
 	}
 	return &KiroTokenInfo{
-		AccessToken:   token.AccessToken,
-		RefreshToken:  token.RefreshToken,
-		ProfileArn:    token.ProfileArn,
-		ExpiresAt:     token.ExpiresAt,
-		AuthMethod:    token.AuthMethod,
-		Provider:      token.Provider,
-		ClientID:      token.ClientID,
-		ClientSecret:  token.ClientSecret,
-		ClientIDHash:  token.ClientIDHash,
-		Email:         token.Email,
-		StartURL:      token.StartURL,
-		Region:        token.Region,
-		TokenEndpoint: token.TokenEndpoint,
-		IssuerURL:     token.IssuerURL,
-		Scopes:        token.Scopes,
+		AccessToken:       token.AccessToken,
+		RefreshToken:      token.RefreshToken,
+		ProfileArn:        token.ProfileArn,
+		ExpiresAt:         token.ExpiresAt,
+		AuthMethod:        token.AuthMethod,
+		Provider:          token.Provider,
+		ClientID:          token.ClientID,
+		ClientSecret:      token.ClientSecret,
+		ClientIDHash:      token.ClientIDHash,
+		Email:             token.Email,
+		StartURL:          token.StartURL,
+		Region:            token.Region,
+		APIRegion:         token.APIRegion,
+		MachineID:         token.MachineID,
+		SubscriptionTitle: token.SubscriptionTitle,
+		TokenEndpoint:     token.TokenEndpoint,
+		IssuerURL:         token.IssuerURL,
+		Scopes:            token.Scopes,
 	}
 }
 

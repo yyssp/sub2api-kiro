@@ -1,0 +1,877 @@
+{
+  "summary": [
+    {
+      "label": "anthropic-400000-cold",
+      "status": 200,
+      "request_bytes": 417436,
+      "protocol": "anthropic",
+      "reported_total_input": 100049,
+      "usage": {
+        "input": 8004,
+        "read": 0,
+        "creation": 92045,
+        "creation_5m": 92045,
+        "creation_1h": 0,
+        "output": 749,
+        "total": 100798
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "anthropic-400000-hot",
+      "status": 200,
+      "request_bytes": 417436,
+      "protocol": "anthropic",
+      "reported_total_input": 100049,
+      "usage": {
+        "input": 8004,
+        "read": 92045,
+        "creation": 0,
+        "creation_5m": 0,
+        "creation_1h": 0,
+        "output": 772,
+        "total": 100821
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "anthropic-1400000-cold",
+      "status": 200,
+      "request_bytes": 1460294,
+      "protocol": "anthropic",
+      "reported_total_input": 350048,
+      "usage": {
+        "input": 28004,
+        "read": 0,
+        "creation": 322044,
+        "creation_5m": 322044,
+        "creation_1h": 0,
+        "output": 2884,
+        "total": 352932
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "anthropic-1400000-hot",
+      "status": 200,
+      "request_bytes": 1460294,
+      "protocol": "anthropic",
+      "reported_total_input": 350048,
+      "usage": {
+        "input": 28004,
+        "read": 322044,
+        "creation": 0,
+        "creation_5m": 0,
+        "creation_1h": 0,
+        "output": 2792,
+        "total": 352840
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "anthropic-2600000-cold",
+      "status": 200,
+      "request_bytes": 2711721,
+      "protocol": "anthropic",
+      "reported_total_input": 650049,
+      "usage": {
+        "input": 52004,
+        "read": 0,
+        "creation": 598045,
+        "creation_5m": 598045,
+        "creation_1h": 0,
+        "output": 5600,
+        "total": 655649
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "anthropic-2600000-hot",
+      "status": 200,
+      "request_bytes": 2711721,
+      "protocol": "anthropic",
+      "reported_total_input": 650049,
+      "usage": {
+        "input": 52004,
+        "read": 598045,
+        "creation": 0,
+        "creation_5m": 0,
+        "creation_1h": 0,
+        "output": 5623,
+        "total": 655672
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "anthropic-large-stream",
+      "status": 200,
+      "request_bytes": 1460298,
+      "protocol": "anthropic",
+      "reported_total_input": 350048,
+      "usage": {
+        "input": 28004,
+        "read": 0,
+        "creation": 322044,
+        "creation_5m": 322044,
+        "creation_1h": 0,
+        "output": 2861,
+        "total": 352909
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "chat-500000-cold",
+      "status": 200,
+      "request_bytes": 521862,
+      "protocol": "openai",
+      "reported_total_input": 125057,
+      "usage": {
+        "input": 125057,
+        "read": 0,
+        "creation": 44020,
+        "output": 795,
+        "total": 125852
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "chat-500000-hot",
+      "status": 200,
+      "request_bytes": 521862,
+      "protocol": "openai",
+      "reported_total_input": 125057,
+      "usage": {
+        "input": 125057,
+        "read": 71533,
+        "creation": 0,
+        "output": 703,
+        "total": 125760
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "responses-500000-cold",
+      "status": 200,
+      "request_bytes": 521984,
+      "protocol": "openai",
+      "reported_total_input": 125053,
+      "usage": {
+        "input": 125053,
+        "read": 0,
+        "creation": 44019,
+        "output": 204,
+        "total": 125257
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "responses-500000-hot",
+      "status": 200,
+      "request_bytes": 521984,
+      "protocol": "openai",
+      "reported_total_input": 125053,
+      "usage": {
+        "input": 125053,
+        "read": 71531,
+        "creation": 0,
+        "output": 227,
+        "total": 125280
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "chat-1600000-cold",
+      "status": 200,
+      "request_bytes": 1669400,
+      "protocol": "openai",
+      "reported_total_input": 400125,
+      "usage": {
+        "input": 400125,
+        "read": 0,
+        "creation": 26410,
+        "output": 2861,
+        "total": 402986
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "chat-1600000-hot",
+      "status": 200,
+      "request_bytes": 1669400,
+      "protocol": "openai",
+      "reported_total_input": 400125,
+      "usage": {
+        "input": 400125,
+        "read": 42917,
+        "creation": 26408,
+        "output": 2884,
+        "total": 403009
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "chat-1600000-third",
+      "status": 200,
+      "request_bytes": 1669400,
+      "protocol": "openai",
+      "reported_total_input": 400125,
+      "usage": {
+        "input": 400125,
+        "read": 85829,
+        "creation": 26407,
+        "output": 2792,
+        "total": 402917
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "responses-1600000-cold",
+      "status": 200,
+      "request_bytes": 1669774,
+      "protocol": "openai",
+      "reported_total_input": 400121,
+      "usage": {
+        "input": 400121,
+        "read": 0,
+        "creation": 26410,
+        "output": 204,
+        "total": 400325
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "responses-1600000-hot",
+      "status": 200,
+      "request_bytes": 1669774,
+      "protocol": "openai",
+      "reported_total_input": 400121,
+      "usage": {
+        "input": 400121,
+        "read": 42917,
+        "creation": 26406,
+        "output": 227,
+        "total": 400348
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "responses-1600000-third",
+      "status": 200,
+      "request_bytes": 1669774,
+      "protocol": "openai",
+      "reported_total_input": 400121,
+      "usage": {
+        "input": 400121,
+        "read": 85827,
+        "creation": 26406,
+        "output": 250,
+        "total": 400371
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "chat-2500000-cold",
+      "status": 200,
+      "request_bytes": 2608268,
+      "protocol": "openai",
+      "reported_total_input": 625176,
+      "usage": {
+        "input": 625176,
+        "read": 0,
+        "creation": 26410,
+        "output": 4096,
+        "total": 629272
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "chat-2500000-hot",
+      "status": 200,
+      "request_bytes": 2608268,
+      "protocol": "openai",
+      "reported_total_input": 625176,
+      "usage": {
+        "input": 625176,
+        "read": 42917,
+        "creation": 26406,
+        "output": 4096,
+        "total": 629272
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "chat-2500000-third",
+      "status": 200,
+      "request_bytes": 2608268,
+      "protocol": "openai",
+      "reported_total_input": 625176,
+      "usage": {
+        "input": 625176,
+        "read": 85827,
+        "creation": 26407,
+        "output": 4096,
+        "total": 629272
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "responses-2500000-cold",
+      "status": 200,
+      "request_bytes": 2608831,
+      "protocol": "openai",
+      "reported_total_input": 625172,
+      "usage": {
+        "input": 625172,
+        "read": 0,
+        "creation": 26410,
+        "output": 227,
+        "total": 625399
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "responses-2500000-hot",
+      "status": 200,
+      "request_bytes": 2608831,
+      "protocol": "openai",
+      "reported_total_input": 625172,
+      "usage": {
+        "input": 625172,
+        "read": 42916,
+        "creation": 26406,
+        "output": 250,
+        "total": 625422
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "responses-2500000-third",
+      "status": 200,
+      "request_bytes": 2608831,
+      "protocol": "openai",
+      "reported_total_input": 625172,
+      "usage": {
+        "input": 625172,
+        "read": 85826,
+        "creation": 26406,
+        "output": 256,
+        "total": 625428
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "chat-readonly-1600000-cold",
+      "status": 200,
+      "request_bytes": 1669407,
+      "protocol": "openai",
+      "reported_total_input": 400125,
+      "usage": {
+        "input": 400125,
+        "read": 0,
+        "creation": 67527,
+        "output": 2792,
+        "total": 402917
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "chat-readonly-1600000-hot",
+      "status": 200,
+      "request_bytes": 1669407,
+      "protocol": "openai",
+      "reported_total_input": 400125,
+      "usage": {
+        "input": 400125,
+        "read": 67527,
+        "creation": 0,
+        "output": 2815,
+        "total": 402940
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "responses-readonly-1600000-cold",
+      "status": 200,
+      "request_bytes": 1669781,
+      "protocol": "openai",
+      "reported_total_input": 400121,
+      "usage": {
+        "input": 400121,
+        "read": 0,
+        "creation": 67526,
+        "output": 227,
+        "total": 400348
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "responses-readonly-1600000-hot",
+      "status": 200,
+      "request_bytes": 1669781,
+      "protocol": "openai",
+      "reported_total_input": 400121,
+      "usage": {
+        "input": 400121,
+        "read": 67526,
+        "creation": 0,
+        "output": 250,
+        "total": 400371
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "disabled-large",
+      "status": 200,
+      "request_bytes": 1460291,
+      "protocol": "anthropic",
+      "reported_total_input": 365203,
+      "usage": {
+        "input": 365203,
+        "read": 0,
+        "creation": 0,
+        "creation_5m": 0,
+        "creation_1h": 0,
+        "output": 2884,
+        "total": 368087
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    },
+    {
+      "label": "unbound-large",
+      "status": 200,
+      "request_bytes": 1460290,
+      "protocol": "anthropic",
+      "reported_total_input": 365214,
+      "usage": {
+        "input": 365214,
+        "read": 0,
+        "creation": 0,
+        "creation_5m": 0,
+        "creation_1h": 0,
+        "output": 2792,
+        "total": 368006
+      },
+      "invariants": {
+        "status_200": true,
+        "input_le_1m": true,
+        "policy_input_cap": true,
+        "buckets_nonnegative": true,
+        "output_cap": true,
+        "read_cap": true,
+        "creation_cap": true,
+        "openai_cache_details_within_input": true,
+        "cold_has_no_read": true,
+        "hot_has_read": true,
+        "third_has_read": true,
+        "hot_has_no_creation": true,
+        "stream_starts_cold": true
+      }
+    }
+  ],
+  "final_checks": {
+    "all_requests_200": true,
+    "all_invariants_pass": true,
+    "large_token_usage_observed": true,
+    "usage_varies_by_request": true,
+    "enabled_cold_creation_observed": true,
+    "enabled_hot_read_observed": true,
+    "readonly_hot_is_read_only": true,
+    "incremental_third_round_reads": true,
+    "incremental_third_round_does_not_exceed_event_cap": true,
+    "incremental_read_grows_across_rounds": true,
+    "disabled_unbound_cache_free": true
+  },
+  "result": "PASS"
+}

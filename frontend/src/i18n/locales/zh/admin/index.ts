@@ -8,6 +8,7 @@ import audit from './audit'
 import promptAudit from './promptAudit'
 import promptRules from './promptRules'
 import plugins from './plugins'
+import cacheStrategies from './cacheStrategies'
 
 export default {
   ...overview,
@@ -20,4 +21,5 @@ export default {
   ...promptAudit,
   ...promptRules,
   ...plugins,
+  ...cacheStrategies,
 }

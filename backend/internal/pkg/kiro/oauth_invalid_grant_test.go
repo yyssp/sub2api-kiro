@@ -22,7 +22,7 @@ func TestRefreshSocialTokenInvalidGrantReturnsTypedError(t *testing.T) {
 	socialAuthEndpointURL = server.URL
 	t.Cleanup(func() { socialAuthEndpointURL = previous })
 
-	_, err := RefreshSocialToken(context.Background(), "", "revoked-refresh-token", "Google")
+	_, err := RefreshSocialToken(context.Background(), "", "revoked-refresh-token", "")
 	require.Error(t, err)
 
 	var invalid *RefreshTokenInvalidError
@@ -43,7 +43,7 @@ func TestRefreshIDCTokenInvalidGrantReturnsTypedError(t *testing.T) {
 	oidcEndpointOverride = server.URL
 	t.Cleanup(func() { oidcEndpointOverride = previous })
 
-	_, err := RefreshIDCToken(context.Background(), "", "client-id", "client-secret", "revoked-refresh-token", "us-east-1", BuilderIDStartURL, ProviderBuilderId)
+	_, err := RefreshIDCToken(context.Background(), "", "client-id", "client-secret", "revoked-refresh-token", "us-east-1", BuilderIDStartURL, "")
 	require.Error(t, err)
 
 	var invalid *RefreshTokenInvalidError
@@ -98,15 +98,13 @@ func TestRefreshIDCTokenPreservesProfileArn(t *testing.T) {
 	oidcEndpointOverride = server.URL
 	t.Cleanup(func() { oidcEndpointOverride = previous })
 
-	token, err := RefreshIDCToken(context.Background(), "", "client-id", "client-secret", "refresh-token", "us-east-1", BuilderIDStartURL, ProviderBuilderId)
+	token, err := RefreshIDCToken(context.Background(), "", "client-id", "client-secret", "refresh-token", "us-east-1", BuilderIDStartURL, "")
 	require.NoError(t, err)
 	require.Equal(t, profileArn, token.ProfileArn)
 	require.Equal(t, "kiro@example.com", token.Email)
 }
 
-// TestRefreshIDCTokenPreservesEnterpriseProviderWithoutStartURL 防退化回归:
-// 导入的 Enterprise 账号无 startURL,刷新时必须保留存量 Enterprise,不得退化为 BuilderId。
-func TestRefreshIDCTokenPreservesEnterpriseProviderWithoutStartURL(t *testing.T) {
+func TestRefreshIDCTokenDefaultsProviderFromIDCAuthenticationFacts(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/token":
@@ -125,13 +123,11 @@ func TestRefreshIDCTokenPreservesEnterpriseProviderWithoutStartURL(t *testing.T)
 	oidcEndpointOverride = server.URL
 	t.Cleanup(func() { oidcEndpointOverride = previous })
 
-	// startURL 为空,但存量 provider 为 Enterprise → 必须保留 Enterprise。
-	token, err := RefreshIDCToken(context.Background(), "", "client-id", "client-secret", "refresh-token", "us-east-1", "", ProviderEnterprise)
+	token, err := RefreshIDCToken(context.Background(), "", "client-id", "client-secret", "refresh-token", "us-east-1", "", "")
 	require.NoError(t, err)
-	require.Equal(t, ProviderEnterprise, token.Provider)
-
-	// startURL 与 provider 都为空 → 兜底 BuilderId。
-	token2, err := RefreshIDCToken(context.Background(), "", "client-id", "client-secret", "refresh-token", "us-east-1", "", "")
-	require.NoError(t, err)
-	require.Equal(t, ProviderBuilderId, token2.Provider)
+	require.Equal(t, "idc", token.AuthMethod)
+	require.Equal(t, "client-id", token.ClientID)
+	require.Equal(t, "client-secret", token.ClientSecret)
+	require.Equal(t, "us-east-1", token.Region)
+	require.Equal(t, ProviderBuilderId, token.Provider)
 }

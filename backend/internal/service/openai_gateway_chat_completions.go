@@ -64,6 +64,12 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, err
 	}
+	if model := strings.TrimSpace(gjson.GetBytes(body, "model").String()); model != "" {
+		prepareCachePlanForContext(
+			ctx, c, account, cacheGroupFromContext(c, nil), body, model,
+			"openai_chat_completions", estimateOpenAIChatCompletionsInputTokens(ctx, body),
+		)
+	}
 
 	restrictionResult := s.detectCodexClientRestriction(c, account, body)
 	logCodexCLIOnlyDetection(ctx, c, account, getAPIKeyIDFromContext(c), restrictionResult, body)
@@ -528,6 +534,10 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	if strings.TrimSpace(finalResponse.Status) == "completed" {
 		logOpenAISuccessMissingUsage(c.Request.Context(), c, account, resp, &usage, "response.completed", false)
 	}
+	mergeAndCommitOpenAICachePlan(c, &usage, true)
+	if finalResponse.Usage == nil || usage.CacheReadInputTokens > 0 || usage.CacheCreationInputTokens > 0 {
+		finalResponse.Usage = responsesUsageFromOpenAIUsage(&usage)
+	}
 
 	if requiresBillableGrokChatUsage(account, billingModel, upstreamModel, finalResponse.Model) && !hasBillableGrokChatUsage(usage) {
 		upstreamRequestID := firstNonEmpty(requestID, resp.Header.Get("xai-request-id"))
@@ -723,6 +733,14 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
 			}
 			mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
+			if terminalEventType == "response.completed" || terminalEventType == "response.done" {
+				mergeAndCommitOpenAICachePlan(c, &usage, false)
+				if event.Response != nil {
+					event.Response.Usage = responsesUsageFromOpenAIUsage(&usage)
+				} else {
+					event.Usage = responsesUsageFromOpenAIUsage(&usage)
+				}
+			}
 		}
 		if strings.TrimSpace(event.Type) == "response.failed" || strings.TrimSpace(event.Type) == "error" {
 			payloadBytes := []byte(payload)
@@ -930,6 +948,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		if !clientDisconnected {
 			c.Writer.Flush()
+		}
+		if (terminalEventType == "response.completed" || terminalEventType == "response.done") && !clientDisconnected {
+			commitOpenAICachePlan(c)
 		}
 		logOpenAISuccessMissingUsage(c.Request.Context(), c, account, resp, &usage, terminalEventType, clientDisconnected)
 		return resultWithUsage(), nil

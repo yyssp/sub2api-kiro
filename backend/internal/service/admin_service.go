@@ -277,15 +277,10 @@ type CreateGroupInput struct {
 	MaxReasoningEffort string
 	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。
 	ReasoningEffortMappings []ReasoningEffortMapping
-	// Kiro 模拟缓存配置（仅 kiro 分组生效）
-	KiroCacheEmulationEnabled       bool
-	KiroAutoStickyEnabled           *bool
-	KiroStickySessionTTLSeconds     *int
-	KiroCacheEmulationRatio         *float64
-	KiroCacheEmulationMode          *string
-	KiroCacheCreationEmulationRatio *float64
-	KiroCacheReadEmulationRatio     *float64
-	KiroEndpointMode                *string
+	// Kiro sticky / endpoint configuration (non-cache responsibilities only)
+	KiroAutoStickyEnabled       *bool
+	KiroStickySessionTTLSeconds *int
+	KiroEndpointMode            *string
 	// 分组利润控制（五个 token 平台分组可启用；margin/buffer 为小数，nil 按 0 处理）
 	ProfitControlEnabled bool
 	ProfitMinMargin      *float64
@@ -361,15 +356,10 @@ type UpdateGroupInput struct {
 	MaxReasoningEffort *string
 	// ReasoningEffortMappings nil 表示不修改，空数组表示清空，非空数组表示替换。
 	ReasoningEffortMappings *[]ReasoningEffortMapping
-	// Kiro 模拟缓存配置（仅 kiro 分组生效）
-	KiroCacheEmulationEnabled       *bool
-	KiroAutoStickyEnabled           *bool
-	KiroStickySessionTTLSeconds     *int
-	KiroCacheEmulationRatio         *float64
-	KiroCacheEmulationMode          *string
-	KiroCacheCreationEmulationRatio *float64
-	KiroCacheReadEmulationRatio     *float64
-	KiroEndpointMode                *string
+	// Kiro sticky / endpoint configuration (non-cache responsibilities only)
+	KiroAutoStickyEnabled       *bool
+	KiroStickySessionTTLSeconds *int
+	KiroEndpointMode            *string
 	// 分组利润控制（nil 表示不修改；margin/buffer 为小数）
 	ProfitControlEnabled *bool
 	ProfitMinMargin      *float64

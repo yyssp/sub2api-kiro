@@ -18,8 +18,16 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
+
+func gatewayRequestContext(c *gin.Context) context.Context {
+	if c != nil && c.Request != nil {
+		return c.Request.Context()
+	}
+	return context.Background()
+}
 
 // ForwardAsAnthropic accepts an Anthropic Messages request body, converts it
 // to OpenAI Responses API format, forwards to the OpenAI upstream, and converts
@@ -37,6 +45,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	setCodexToolNameReverse(c, nil)
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, err
+	}
+	if model := strings.TrimSpace(gjson.GetBytes(body, "model").String()); model != "" {
+		prepareCachePlanForContext(
+			ctx, c, account, cacheGroupFromContext(c, nil), body, model,
+			"anthropic_messages", estimateKiroInputTokens(ctx, body),
+		)
 	}
 
 	// 入口分流（国产供应商 Anthropic 协议）：上游为供应商原生 Anthropic 端点时，
@@ -626,7 +640,11 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		return nil, fmt.Errorf("upstream response failed: %s", message)
 	}
 	if strings.TrimSpace(finalResponse.Status) == "completed" {
-		logOpenAISuccessMissingUsage(c.Request.Context(), c, account, resp, &usage, "response.completed", false)
+		logOpenAISuccessMissingUsage(gatewayRequestContext(c), c, account, resp, &usage, "response.completed", false)
+	}
+	mergeAndCommitOpenAICachePlan(c, &usage, true)
+	if finalResponse.Usage == nil || usage.CacheReadInputTokens > 0 || usage.CacheCreationInputTokens > 0 {
+		finalResponse.Usage = responsesUsageFromOpenAIUsage(&usage)
 	}
 
 	// When the terminal event has an empty output array, reconstruct from
@@ -1008,6 +1026,14 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
 			}
 			mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
+			if eventType == "response.completed" || eventType == "response.done" {
+				mergeAndCommitOpenAICachePlan(c, &usage, false)
+				if event.Response != nil {
+					event.Response.Usage = responsesUsageFromOpenAIUsage(&usage)
+				} else {
+					event.Usage = responsesUsageFromOpenAIUsage(&usage)
+				}
+			}
 			// cyber_policy 致命不可重试：标记供 handler 事后记录；以 Anthropic SSE error 事件
 			// 回写让客户端感知并停止重试（F4），丢弃后续转换输出。
 			if eventType == "response.failed" || isBareErrorEvent {
@@ -1112,6 +1138,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		if streamNonFailoverErr != nil {
 			return resultWithUsage(), streamNonFailoverErr
 		}
+		if (terminalEventType == "response.completed" || terminalEventType == "response.done") && !clientDisconnected {
+			commitOpenAICachePlan(c)
+		}
 		if finalEvents := apicompat.FinalizeResponsesAnthropicStream(state); len(finalEvents) > 0 && !clientDisconnected {
 			for _, evt := range finalEvents {
 				sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
@@ -1132,7 +1161,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				c.Writer.Flush()
 			}
 		}
-		logOpenAISuccessMissingUsage(c.Request.Context(), c, account, resp, &usage, terminalEventType, clientDisconnected)
+		logOpenAISuccessMissingUsage(gatewayRequestContext(c), c, account, resp, &usage, terminalEventType, clientDisconnected)
 		return resultWithUsage(), nil
 	}
 
@@ -1354,4 +1383,99 @@ func copyOpenAIUsageFromResponsesUsage(usage *apicompat.ResponsesUsage) OpenAIUs
 		result.CacheReadInputTokens = usage.InputTokensDetails.CachedTokens
 	}
 	return result
+}
+
+func rewriteOpenAIResponsesUsageJSON(body []byte, usage *OpenAIUsage) []byte {
+	if len(body) == 0 || usage == nil {
+		return body
+	}
+	updated := body
+	prefix := "usage"
+	if !gjson.GetBytes(updated, "usage").Exists() &&
+		(gjson.GetBytes(updated, "response").Exists() || gjson.GetBytes(updated, "response.usage").Exists()) {
+		prefix = "response.usage"
+	}
+	if next, err := sjson.SetBytes(updated, prefix+".input_tokens", usage.InputTokens); err == nil {
+		updated = next
+	}
+	if next, err := sjson.SetBytes(updated, prefix+".output_tokens", usage.OutputTokens); err == nil {
+		updated = next
+	}
+	if next, err := sjson.SetBytes(updated, prefix+".total_tokens", usage.InputTokens+usage.OutputTokens); err == nil {
+		updated = next
+	}
+	if usage.CacheReadInputTokens > 0 {
+		if next, err := sjson.SetBytes(updated, prefix+".input_tokens_details.cached_tokens", usage.CacheReadInputTokens); err == nil {
+			updated = next
+		}
+	}
+	if usage.CacheCreationInputTokens > 0 {
+		if next, err := sjson.SetBytes(updated, prefix+".cache_creation_input_tokens", usage.CacheCreationInputTokens); err == nil {
+			updated = next
+		}
+	}
+	return updated
+}
+
+func responsesUsageFromOpenAIUsage(usage *OpenAIUsage) *apicompat.ResponsesUsage {
+	if usage == nil {
+		return nil
+	}
+	out := &apicompat.ResponsesUsage{
+		InputTokens:              usage.InputTokens,
+		OutputTokens:             usage.OutputTokens,
+		TotalTokens:              usage.InputTokens + usage.OutputTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+	}
+	if usage.CacheReadInputTokens > 0 {
+		out.InputTokensDetails = &apicompat.ResponsesInputTokensDetails{CachedTokens: usage.CacheReadInputTokens}
+	}
+	return out
+}
+
+func rewriteOpenAIChatUsageJSON(body []byte, usage *OpenAIUsage) []byte {
+	if len(body) == 0 || usage == nil {
+		return body
+	}
+	updated := body
+	if next, err := sjson.SetBytes(updated, "usage.prompt_tokens", usage.InputTokens); err == nil {
+		updated = next
+	}
+	if next, err := sjson.SetBytes(updated, "usage.completion_tokens", usage.OutputTokens); err == nil {
+		updated = next
+	}
+	if next, err := sjson.SetBytes(updated, "usage.total_tokens", usage.InputTokens+usage.OutputTokens); err == nil {
+		updated = next
+	}
+	if usage.CacheReadInputTokens > 0 {
+		if next, err := sjson.SetBytes(updated, "usage.prompt_tokens_details.cached_tokens", usage.CacheReadInputTokens); err == nil {
+			updated = next
+		}
+	}
+	if usage.CacheCreationInputTokens > 0 {
+		if next, err := sjson.SetBytes(updated, "usage.prompt_tokens_details.cache_creation_tokens", usage.CacheCreationInputTokens); err == nil {
+			updated = next
+		}
+	}
+	return updated
+}
+
+func rewriteClaudeUsageJSON(body []byte, usage *ClaudeUsage) []byte {
+	if len(body) == 0 || usage == nil {
+		return body
+	}
+	updated := body
+	for path, value := range map[string]int{
+		"usage.input_tokens":                             usage.InputTokens,
+		"usage.output_tokens":                            usage.OutputTokens,
+		"usage.cache_read_input_tokens":                  usage.CacheReadInputTokens,
+		"usage.cache_creation_input_tokens":              usage.CacheCreationInputTokens,
+		"usage.cache_creation.ephemeral_5m_input_tokens": usage.CacheCreation5mTokens,
+		"usage.cache_creation.ephemeral_1h_input_tokens": usage.CacheCreation1hTokens,
+	} {
+		if next, err := sjson.SetBytes(updated, path, value); err == nil {
+			updated = next
+		}
+	}
+	return updated
 }

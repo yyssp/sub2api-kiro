@@ -1267,7 +1267,7 @@ export default {
           authModeTitle: 'Kiro 授权方式',
           deviceRegistrationHint: '可选。只有 token 文件里缺少完整客户端信息、只剩 `clientIdHash` 时才需要补充。',
           deviceRegistrationLabel: 'Device Registration JSON',
-          deviceRegistrationRequired: 'BuilderId / Enterprise 账号必须填写 Device Registration JSON。',
+          deviceRegistrationRequired: '该 Token 只有 clientIdHash、缺少完整客户端凭据，必须补充对应的 clientId 和 clientSecret。',
           extIdpAuthCodeDescIdp: '从地址栏复制 M365 登录后的完整链接（形如 http://localhost:3128/oauth/callback?code=...&state=...），粘贴到下方后点“完成授权”。',
           extIdpAuthCodeDescPortal: '从浏览器地址栏复制跳转后的完整链接（形如 http://localhost:49153/signin/callback?login_option=external_idp...），粘贴到下方后点“下一步”。',
           extIdpAuthCodeHintIdp: '系统会自动从链接解析 code/state 完成建号。',
@@ -1301,7 +1301,6 @@ export default {
           idcTitle: 'AWS Builder ID / IDC',
           importAndUpdate: '导入并更新',
           importDialogTitle: '导入 Kiro Token',
-          importProviderLabel: '账号来源',
           importSubtitle: '已在 Kiro IDE 登录时使用',
           importTitle: '从 Kiro IDE 导入',
           importTokenFile: '导入 Token 文件',
@@ -1309,7 +1308,6 @@ export default {
           oauthSubtitle: '浏览器授权，支持 Google 或 GitHub',
           oauthTitle: '社交 OAuth',
           openUrlDesc: '在新标签页中打开授权 URL。浏览器会先进入 app.kiro.dev 的 Kiro 登录页，请在那里选择 Google 或 GitHub。授权后浏览器可能跳转到 http://localhost:49153/oauth/callback 并提示无法访问，这是正常现象。',
-          providerMismatch: '所选来源（{selected}）与 Token JSON 中的 provider（{actual}）不一致，请核对。',
           regionLabel: 'Region',
           regionPlaceholder: 'us-east-1',
           socialSubtitle: 'Google / GitHub 登录',
@@ -1319,10 +1317,14 @@ export default {
           step2OpenUrl: '在浏览器中打开 URL 并完成授权',
           step3EnterCode: '输入回调链接或 Code',
           title: 'Kiro 授权',
-          tokenJsonHint: '先在 Kiro IDE 完成登录，再粘贴 `~/.aws/sso/cache/kiro-auth-token.json` 的内容。',
+          importedAccountName: 'Kiro 账号',
+          oauthOnlyReauthorization: '重新授权只能导入 OAuth 凭据；Kiro API Key 请在账号编辑页单独更新。',
+          tokenJsonHint: '仅接受 Kiro IDE 导出的单个凭据对象或凭据数组，且每条必须包含 Kiro 运行时字段（如 apiRegion、machineId 或 profileArn）。普通 OAuth 或 API Key JSON 不会被当作 Kiro 账号导入。导入会按 authMethod 创建 OAuth 或 API Key 账号；provider 仅为可选来源元数据。',
           tokenJsonInvalid: 'Kiro Token JSON 格式无效，无法解析。',
           tokenJsonLabel: 'Kiro Token JSON',
-          tokenJsonRequired: '请填写 Kiro Token JSON。'
+          tokenJsonPlaceholder: '{"accessToken":"...","refreshToken":"...","authMethod":"social","apiRegion":"us-east-1"}\n或\n{"authMethod":"api_key","kiroApiKey":"ksk_...","machineId":"..."}',
+          tokenJsonRequired: '请填写 Kiro Token JSON。',
+          singleTokenRequired: '重新授权一次只能更新一个账号，请粘贴单个 Token 对象，不要粘贴 Token 数组。'
         },
         // Gemini specific
         gemini: {

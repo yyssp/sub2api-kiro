@@ -211,15 +211,24 @@ func TestHandleCCStreamingFromAnthropic_PreservesMessageStartCacheUsageAndReason
 	require.NotContains(t, rec.Body.String(), "_sub2api_kiro_credits")
 }
 
-func TestForwardAsChatCompletions_KiroCacheEmulation(t *testing.T) {
+func TestForwardAsChatCompletions_CacheEmulation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	resetKiroCacheTracker()
+	resetCacheTracker()
 
 	stable := strings.Repeat("stable chat history chunk ", 700)
 	latestA := strings.Repeat("latest chat turn chunk A ", 180)
+	replyA := strings.Repeat("assistant reply chunk A ", 180)
 	latestB := strings.Repeat("latest chat turn chunk B ", 180)
-	firstBody := kiroChatCompletionsConversationBody([]string{stable, latestA})
-	secondBody := kiroChatCompletionsConversationBody([]string{stable, latestB})
+	firstBody := kiroChatCompletionsConversationBody([]cacheChatCompletionsMessage{
+		{Role: "user", Content: stable},
+		{Role: "user", Content: latestA},
+	})
+	secondBody := kiroChatCompletionsConversationBody([]cacheChatCompletionsMessage{
+		{Role: "user", Content: stable},
+		{Role: "user", Content: latestA},
+		{Role: "assistant", Content: replyA},
+		{Role: "user", Content: latestB},
+	})
 
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
 		{
@@ -249,7 +258,7 @@ func TestForwardAsChatCompletions_KiroCacheEmulation(t *testing.T) {
 			"model_mapping": map[string]any{"gpt-5": "claude-sonnet-4-6"},
 		},
 	}
-	parsed := &ParsedRequest{Group: kiroCacheGroup(1)}
+	parsed := &ParsedRequest{Group: cacheGroup(1)}
 
 	firstRecorder := httptest.NewRecorder()
 	firstCtx, _ := gin.CreateTestContext(firstRecorder)

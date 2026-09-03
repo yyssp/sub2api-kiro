@@ -30,7 +30,7 @@ func TestBuildKiroWebSearchMCPRequest_UsesUnderscoredMetaKeys(t *testing.T) {
 
 func TestWriteAnthropicMessageStart_UsesCacheEmulationUsage(t *testing.T) {
 	var out bytes.Buffer
-	err := writeAnthropicMessageStart(&out, "msg_test", "claude-sonnet-4-6", 100, &kiroCacheEmulationUsage{
+	err := writeAnthropicMessageStart(&out, "msg_test", "claude-sonnet-4-6", 100, &cacheEmulationUsage{
 		InputTokens:              25,
 		CacheCreationInputTokens: 75,
 		CacheReadInputTokens:     0,

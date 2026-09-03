@@ -44,6 +44,74 @@ func openAIClientToolsTestService(upstream *httpUpstreamRecorder) *OpenAIGateway
 	}
 }
 
+func openAIPassthroughCacheStrategyTestSetup(t *testing.T, strategyID int64) func() {
+	t.Helper()
+	resetCacheTracker()
+	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg.RatioMode = CacheRatioModeIndependent
+	cfg.CoverageRatio = 0.9
+	cfg.UsageRatio = 0.9
+	cfg.ReadRatio = 1
+	cfg.CreationRatio = 1
+	cfg.MinCacheableTokens = 1
+	cfg.MaxCoverageTokens = 1500
+	cfg.MaxNewCreationTokensPerRequest = 1500
+	cfg.IncrementalCreateEnabled = true
+	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
+		ID:       strategyID,
+		Name:     "passthrough-cache-test",
+		Enabled:  true,
+		Revision: 1,
+		Config:   cfg,
+	})
+	return func() {
+		GlobalCacheStrategyRegistry().Delete(strategyID)
+		resetCacheTracker()
+	}
+}
+
+func openAIPassthroughCacheStrategyGroup(strategyID, groupID int64) *Group {
+	return &Group{
+		ID:              groupID,
+		Platform:        PlatformOpenAI,
+		CacheStrategyID: &strategyID,
+	}
+}
+
+func openAIPassthroughResponsesBody(stream bool, session string) []byte {
+	streamValue := "false"
+	if stream {
+		streamValue = "true"
+	}
+	return []byte(`{"model":"gpt-5.4","metadata":{"session_id":"` + session + `"},"input":"stable passthrough cache body","stream":` + streamValue + `}`)
+}
+
+func openAIPassthroughResponseCachedTokens(body string) (read, creation int64) {
+	for _, path := range []string{
+		"usage.input_tokens_details.cached_tokens",
+		"response.usage.input_tokens_details.cached_tokens",
+		"usage.prompt_tokens_details.cached_tokens",
+		"response.usage.prompt_tokens_details.cached_tokens",
+	} {
+		if value := gjson.Get(body, path); value.Exists() && value.Int() > 0 {
+			read = value.Int()
+			break
+		}
+	}
+	for _, path := range []string{
+		"usage.cache_creation_input_tokens",
+		"response.usage.cache_creation_input_tokens",
+		"usage.prompt_tokens_details.cache_creation_tokens",
+		"response.usage.prompt_tokens_details.cache_creation_tokens",
+	} {
+		if value := gjson.Get(body, path); value.Exists() && value.Int() > 0 {
+			creation = value.Int()
+			break
+		}
+	}
+	return read, creation
+}
+
 func TestAdaptOpenAIResponsesClientToolsLeavesNamespaceOnlyBodyUnchanged(t *testing.T) {
 	body := []byte(`{
 		"model": "gpt-5.5",
@@ -277,4 +345,144 @@ func TestOpenAIPassthroughAPIKeyRestoresClientToolsStreaming(t *testing.T) {
 	require.Contains(t, output, `"type":"response.custom_tool_call_input.done"`)
 	require.Contains(t, output, `"input":"*** Begin Patch"`)
 	require.NotContains(t, output, `"input":{`)
+}
+
+func TestOpenAIPassthroughResponsesNonStreamingJSONCommitsCacheUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cleanup := openAIPassthroughCacheStrategyTestSetup(t, 77111)
+	defer cleanup()
+
+	group := openAIPassthroughCacheStrategyGroup(77111, 77112)
+	body := openAIPassthroughResponsesBody(false, "passthrough-json-session")
+	makeUpstream := func() *httpUpstreamRecorder {
+		return &httpUpstreamRecorder{resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{"id":"resp_passthrough_json","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":18,"output_tokens":6,"total_tokens":24}}`)),
+		}}
+	}
+	account := &Account{ID: 77113, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	firstRec := httptest.NewRecorder()
+	firstCtx, _ := gin.CreateTestContext(firstRec)
+	firstCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	SetCacheGroupContext(firstCtx, group)
+	firstSvc := openAIClientToolsTestService(makeUpstream())
+	firstResult, err := firstSvc.forwardOpenAIPassthrough(context.Background(), firstCtx, account, body, body, "gpt-5.4", false, nil, false, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, firstResult)
+	require.Greater(t, firstResult.Usage.CacheCreationInputTokens, 0)
+	read, creation := openAIPassthroughResponseCachedTokens(firstRec.Body.String())
+	require.Zero(t, read)
+	require.Greater(t, creation, int64(0))
+
+	secondRec := httptest.NewRecorder()
+	secondCtx, _ := gin.CreateTestContext(secondRec)
+	secondCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	SetCacheGroupContext(secondCtx, group)
+	secondSvc := openAIClientToolsTestService(makeUpstream())
+	secondResult, err := secondSvc.forwardOpenAIPassthrough(context.Background(), secondCtx, account, body, body, "gpt-5.4", false, nil, false, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, secondResult)
+	require.Greater(t, secondResult.Usage.CacheReadInputTokens, 0)
+	require.Zero(t, secondResult.Usage.CacheCreationInputTokens)
+	read, creation = openAIPassthroughResponseCachedTokens(secondRec.Body.String())
+	require.Greater(t, read, int64(0))
+	require.Zero(t, creation)
+}
+
+func TestOpenAIPassthroughResponsesNonStreamingSSECommitsCacheUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cleanup := openAIPassthroughCacheStrategyTestSetup(t, 77121)
+	defer cleanup()
+
+	group := openAIPassthroughCacheStrategyGroup(77121, 77122)
+	body := openAIPassthroughResponsesBody(false, "passthrough-sse-session")
+	sse := strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_passthrough_sse"}}`,
+		``,
+		`data: {"type":"response.output_text.delta","delta":"ok"}`,
+		``,
+		`data: {"type":"response.completed","response":{"id":"resp_passthrough_sse","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":20,"output_tokens":5,"total_tokens":25}}}`,
+		``,
+	}, "\n")
+	makeUpstream := func() *httpUpstreamRecorder {
+		return &httpUpstreamRecorder{resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(sse)),
+		}}
+	}
+	account := &Account{ID: 77123, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	firstRec := httptest.NewRecorder()
+	firstCtx, _ := gin.CreateTestContext(firstRec)
+	firstCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	SetCacheGroupContext(firstCtx, group)
+	firstSvc := openAIClientToolsTestService(makeUpstream())
+	firstResult, err := firstSvc.forwardOpenAIPassthrough(context.Background(), firstCtx, account, body, body, "gpt-5.4", false, nil, false, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, firstResult)
+	require.Greater(t, firstResult.Usage.CacheCreationInputTokens, 0)
+	require.Contains(t, firstRec.Body.String(), "cache_creation_input_tokens")
+
+	secondRec := httptest.NewRecorder()
+	secondCtx, _ := gin.CreateTestContext(secondRec)
+	secondCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	SetCacheGroupContext(secondCtx, group)
+	secondSvc := openAIClientToolsTestService(makeUpstream())
+	secondResult, err := secondSvc.forwardOpenAIPassthrough(context.Background(), secondCtx, account, body, body, "gpt-5.4", false, nil, false, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, secondResult)
+	require.Greater(t, secondResult.Usage.CacheReadInputTokens, 0)
+	require.Zero(t, secondResult.Usage.CacheCreationInputTokens)
+	require.Contains(t, secondRec.Body.String(), "cached_tokens")
+}
+
+func TestOpenAIPassthroughResponsesStreamingCommitsCacheUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cleanup := openAIPassthroughCacheStrategyTestSetup(t, 77131)
+	defer cleanup()
+
+	group := openAIPassthroughCacheStrategyGroup(77131, 77132)
+	body := openAIPassthroughResponsesBody(true, "passthrough-stream-session")
+	sse := strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_passthrough_stream"}}`,
+		``,
+		`data: {"type":"response.output_text.delta","delta":"ok"}`,
+		``,
+		`data: {"type":"response.completed","response":{"id":"resp_passthrough_stream","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":22,"output_tokens":4,"total_tokens":26}}}`,
+		``,
+	}, "\n")
+	makeUpstream := func() *httpUpstreamRecorder {
+		return &httpUpstreamRecorder{resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(sse)),
+		}}
+	}
+	account := &Account{ID: 77133, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	firstRec := httptest.NewRecorder()
+	firstCtx, _ := gin.CreateTestContext(firstRec)
+	firstCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	SetCacheGroupContext(firstCtx, group)
+	firstSvc := openAIClientToolsTestService(makeUpstream())
+	firstResult, err := firstSvc.forwardOpenAIPassthrough(context.Background(), firstCtx, account, body, body, "gpt-5.4", false, nil, true, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, firstResult)
+	require.Greater(t, firstResult.Usage.CacheCreationInputTokens, 0)
+	require.Contains(t, firstRec.Body.String(), "cache_creation_input_tokens")
+
+	secondRec := httptest.NewRecorder()
+	secondCtx, _ := gin.CreateTestContext(secondRec)
+	secondCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	SetCacheGroupContext(secondCtx, group)
+	secondSvc := openAIClientToolsTestService(makeUpstream())
+	secondResult, err := secondSvc.forwardOpenAIPassthrough(context.Background(), secondCtx, account, body, body, "gpt-5.4", false, nil, true, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, secondResult)
+	require.Greater(t, secondResult.Usage.CacheReadInputTokens, 0)
+	require.Zero(t, secondResult.Usage.CacheCreationInputTokens)
+	require.Contains(t, secondRec.Body.String(), "cached_tokens")
 }

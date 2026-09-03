@@ -29,15 +29,16 @@ import (
 )
 
 const (
-	kiroMaxToolDescLen         = 10237
-	kiroMaxToolNameLen         = 63
-	kiroHistoryImageKeepCount  = 5
-	kiroToolResultCompactLimit = 12000
-	kiroToolResultKeepHead     = 4000
-	kiroToolResultKeepTail     = 2000
-	kiroDefaultMaxOutputTokens = 64000
-	kiroRemoteImageMaxBytes    = 10 << 20
-	kiroRemoteImageTimeout     = 8 * time.Second
+	kiroMaxToolDescLen            = 10237
+	kiroMaxToolNameLen            = 63
+	kiroHistoryImageKeepCount     = 5
+	kiroToolResultCompactLimit    = 12000
+	kiroToolResultKeepHead        = 4000
+	kiroToolResultKeepTail        = 2000
+	kiroLegacyOpusMaxOutputTokens = 32000
+	kiroDefaultMaxOutputTokens    = 64000
+	kiroRemoteImageMaxBytes       = 10 << 20
+	kiroRemoteImageTimeout        = 8 * time.Second
 )
 
 // kiroUpstreamTraceEnabled 由环境变量 KIRO_UPSTREAM_TRACE=1 开启，仅用于诊断：
@@ -368,13 +369,19 @@ func IsKiroGPTModel(modelID string) bool {
 func kiroMaxOutputTokensForModel(model string) int {
 	normalized := normalizeModelAlias(model)
 	switch normalized {
-	// Opus 4.7 / 4.8 / 5 与 Kiro GPT-5.6 精确模型上限 128000（对齐 Kiro 官方规格）。
-	case "claude-opus-4-8", "claude-opus-4.8", "claude-opus-4-7", "claude-opus-4.7",
+	// Opus 4.6+ 与 Kiro GPT-5.6 精确模型上限 128000。
+	case "claude-opus-4-8", "claude-opus-4.8",
+		"claude-opus-4-7", "claude-opus-4.7", "claude-opus-4-7-20260416",
+		"claude-opus-4-6", "claude-opus-4.6", "claude-opus-4-6-20260205",
 		"claude-opus-5",
 		"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
 		return 128000
+	// 旧 Opus 4 / 4.1 的 Claude 能力表上限为 32000。
+	case "claude-opus-4", "claude-opus-4.0", "claude-opus-4-20250514",
+		"claude-opus-4-1", "claude-opus-4.1", "claude-opus-4-1-20250805":
+		return kiroLegacyOpusMaxOutputTokens
 	default:
-		// 其余 Kiro 模型（opus-4.6 / sonnet-5 / sonnet-4.6 / 各 4.5 及未知兜底）统一 64000。
+		// Opus 4.5、Sonnet 4.x/5.x 及未知兜底统一按 64000。
 		return kiroDefaultMaxOutputTokens
 	}
 }
@@ -547,10 +554,11 @@ func ParseNonStreamingEventStreamWithContext(body io.Reader, model string, reque
 	if usage.InputTokens == 0 && requestCtx.EstimatedInputTokens > 0 {
 		usage.InputTokens = requestCtx.EstimatedInputTokens
 	}
+	responseBody, finalStopReason := buildClaudeResponse(content, toolUses, model, &usage, stopReason, requestCtx)
 	return &ParseResult{
-		ResponseBody: buildClaudeResponse(content, toolUses, model, usage, stopReason, requestCtx),
+		ResponseBody: responseBody,
 		Usage:        usage,
-		StopReason:   stopReason,
+		StopReason:   finalStopReason,
 	}, nil
 }
 
@@ -3090,7 +3098,7 @@ func parseEventStream(body io.Reader) (string, []KiroToolUse, Usage, string, err
 	return cleanText, toolUses, usage, stopReason, nil
 }
 
-func buildClaudeResponse(content string, toolUses []KiroToolUse, model string, usage Usage, stopReason string, requestCtx KiroRequestContext) []byte {
+func buildClaudeResponse(content string, toolUses []KiroToolUse, model string, usage *Usage, stopReason string, requestCtx KiroRequestContext) ([]byte, string) {
 	msgID := newClaudeMessageID()
 	var blocks []map[string]any
 	blocks = append(blocks, extractThinkingBlocksWithSignature(content, model, msgID)...)
@@ -3105,7 +3113,7 @@ func buildClaudeResponse(content string, toolUses []KiroToolUse, model string, u
 			if nextBlocks, truncated := applyMaxOutputTokensToTextBlocks(blocks, requestCtx.MaxOutputTokens); truncated {
 				blocks = nextBlocks
 				stopReason = "max_tokens"
-				if usage.OutputTokens > requestCtx.MaxOutputTokens {
+				if usage != nil && usage.OutputTokens > requestCtx.MaxOutputTokens {
 					usage.OutputTokens = requestCtx.MaxOutputTokens
 					usage.TotalTokens = usage.InputTokens + usage.OutputTokens
 				}
@@ -3156,11 +3164,18 @@ func buildClaudeResponse(content string, toolUses []KiroToolUse, model string, u
 		"model":       model,
 		"content":     blocks,
 		"stop_reason": stopReason,
-		"usage":       buildKiroClaudeUsageMap(usage),
+		"usage":       buildKiroClaudeUsageMap(derefUsage(usage)),
 	}
 	response["stop_sequence"] = nullableStopSequence(stopSequence)
 	result, _ := json.Marshal(response)
-	return result
+	return result, stopReason
+}
+
+func derefUsage(usage *Usage) Usage {
+	if usage == nil {
+		return Usage{}
+	}
+	return *usage
 }
 
 func nullableStopSequence(stopSequence string) any {

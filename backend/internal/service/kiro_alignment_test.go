@@ -472,7 +472,7 @@ func TestAccountUsageService_GetUsage_KiroEnterpriseUsesCredentialProfileArn(t *
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
 			"access_token": "kiro-access-token",
-			"provider":     "AWS",
+			"provider":     "Enterprise",
 			"auth_method":  "idc",
 			"region":       "us-east-1",
 			"start_url":    "https://d-example.awsapps.com/start",
@@ -518,7 +518,7 @@ func TestAccountUsageService_GetUsage_KiroUsesAPIRegionForUsageRequest(t *testin
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
 			"access_token": "kiro-access-token",
-			"provider":     "AWS",
+			"provider":     "Enterprise",
 			"auth_method":  "idc",
 			"api_region":   "eu-west-1",
 			"region":       "ap-northeast-2",
@@ -567,7 +567,7 @@ func TestAccountUsageService_GetUsage_KiroUsesDefaultBuilderIDProfileArnAndDefau
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
 			"access_token": "kiro-access-token",
-			"provider":     "AWS",
+			"provider":     "Enterprise",
 			"auth_method":  "idc",
 			"region":       "ap-northeast-2",
 			"start_url":    "https://d-example.awsapps.com/start",
@@ -663,7 +663,7 @@ func TestBuildKiroDegradedUsage_ClassifiesProfileError(t *testing.T) {
 	require.False(t, info.NeedsReauth)
 }
 
-func TestAccountUsageService_GetUsage_KiroCachesErrorSnapshotWhenRefreshFailsWithoutPriorSuccess(t *testing.T) {
+func TestAccountUsageService_GetUsage_CachesErrorSnapshotWhenRefreshFailsWithoutPriorSuccess(t *testing.T) {
 	account := Account{
 		ID:       708,
 		Platform: PlatformKiro,

@@ -57,6 +57,19 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// groups: OpenAI Live 默认关闭，管理员显式开启后才可访问。
 	requireColumn(t, tx, "groups", "allow_live", "boolean", 0, false)
+	requireTable(t, tx, "cache_strategies")
+	requireColumn(t, tx, "groups", "cache_strategy_id", "bigint", 0, true)
+	requireIndex(t, tx, "groups", "idx_groups_cache_strategy_id")
+	requireForeignKeyOnDelete(t, tx, "groups", "cache_strategy_id", "cache_strategies", "SET NULL")
+	for _, retiredColumn := range []string{
+		"kiro_cache_emulation_enabled",
+		"kiro_cache_emulation_ratio",
+		"kiro_cache_emulation_mode",
+		"kiro_cache_creation_emulation_ratio",
+		"kiro_cache_read_emulation_ratio",
+	} {
+		requireColumnAbsent(t, tx, "groups", retiredColumn)
+	}
 
 	// api_keys: key length should be 128
 	requireColumn(t, tx, "api_keys", "key", "character varying", 128, false)
@@ -241,6 +254,36 @@ SELECT EXISTS (
 `, table, index).Scan(&exists)
 	require.NoError(t, err, "query pg_indexes for %s.%s", table, index)
 	require.False(t, exists, "expected index %s on %s to be absent", index, table)
+}
+
+func requireTable(t *testing.T, tx *sql.Tx, table string) {
+	t.Helper()
+
+	var regclass sql.NullString
+	err := tx.QueryRowContext(
+		context.Background(),
+		"SELECT to_regclass($1)",
+		"public."+table,
+	).Scan(&regclass)
+	require.NoError(t, err, "query table %s", table)
+	require.True(t, regclass.Valid, "expected table %s to exist", table)
+}
+
+func requireColumnAbsent(t *testing.T, tx *sql.Tx, table, column string) {
+	t.Helper()
+
+	var exists bool
+	err := tx.QueryRowContext(context.Background(), `
+SELECT EXISTS (
+	SELECT 1
+	FROM information_schema.columns
+	WHERE table_schema = 'public'
+	  AND table_name = $1
+	  AND column_name = $2
+)
+`, table, column).Scan(&exists)
+	require.NoError(t, err, "query column %s.%s", table, column)
+	require.False(t, exists, "expected retired column %s.%s to be absent", table, column)
 }
 
 func requirePartialUniqueIndexDefinition(t *testing.T, tx *sql.Tx, table, index string, fragments ...string) {

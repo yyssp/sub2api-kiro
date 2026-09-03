@@ -22,7 +22,7 @@ import (
 
 func TestForwardAsResponsesKiroDirectUsesResponsesCacheProfile(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	resetKiroCacheTracker()
+	resetCacheTracker()
 
 	account := &Account{
 		ID:          301,
@@ -37,7 +37,7 @@ func TestForwardAsResponsesKiroDirectUsesResponsesCacheProfile(t *testing.T) {
 			"profile_arn":  "arn:aws:codewhisperer:us-east-1:123456789012:profile/RESPONSECACHE",
 		},
 	}
-	group := kiroCacheGroup(1)
+	group := cacheGroup(1)
 	body := kiroResponsesCacheRequestBody("gateway", "workspace-gateway", "resp-gateway")
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "responses")
 	require.NoError(t, err)

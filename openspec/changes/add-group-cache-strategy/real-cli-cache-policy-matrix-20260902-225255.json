@@ -1,0 +1,8 @@
+{
+  "started_at": "2026-09-02T22:52:56+0800",
+  "base_url": "http://127.0.0.1:48780",
+  "model": "claude-sonnet-4-5-20250929",
+  "rounds_required": 10,
+  "fixture_root": "/tmp/sub2api-cache-matrix-20260902-225255",
+  "strategies": []
+}

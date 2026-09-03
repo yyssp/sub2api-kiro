@@ -4,6 +4,7 @@ package kiro
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -55,11 +56,10 @@ func TestSessionStoreSetPrunesExpiredSessions(t *testing.T) {
 	}
 }
 
-func TestParseImportedTokenInfersIDCAuthMetadataFromClientCredentials(t *testing.T) {
+func TestParseImportedTokenInfersIDCAuthMetadataAndProviderFromClientCredentials(t *testing.T) {
 	token, err := ParseImportedToken(`{
 		"accessToken": "access-token",
 		"refreshToken": "refresh-token",
-		"provider": "BuilderId",
 		"clientId": "client-id",
 		"clientSecret": "client-secret"
 	}`, "")
@@ -101,53 +101,221 @@ func TestParseImportedTokenInfersIDCAuthMetadataFromDeviceRegistration(t *testin
 	if token.AuthMethod != "idc" {
 		t.Fatalf("AuthMethod = %q, want idc", token.AuthMethod)
 	}
+	if token.Provider != ProviderEnterprise {
+		t.Fatalf("Provider = %q, want %q", token.Provider, ProviderEnterprise)
+	}
 }
 
-func TestParseImportedTokenRejectsMissingOrInvalidProvider(t *testing.T) {
+func TestParseImportedTokenDoesNotRequireProvider(t *testing.T) {
 	cases := []struct {
-		name      string
-		tokenJSON string
+		name           string
+		tokenJSON      string
+		wantProvider   string
+		wantAuthMethod string
 	}{
 		{
-			name:      "missing provider",
-			tokenJSON: `{"accessToken":"access-token","refreshToken":"refresh-token","authMethod":"social"}`,
+			name:           "social IDE export without provider",
+			tokenJSON:      `{"accessToken":"access-token","refreshToken":"refresh-token","authMethod":"social"}`,
+			wantAuthMethod: "social",
 		},
 		{
-			name:      "empty provider",
-			tokenJSON: `{"accessToken":"access-token","provider":"","authMethod":"social"}`,
+			name:           "blank legacy provider",
+			tokenJSON:      `{"accessToken":"access-token","provider":"","authMethod":"social"}`,
+			wantAuthMethod: "social",
 		},
 		{
-			name:      "legacy AWS provider rejected",
-			tokenJSON: `{"accessToken":"access-token","provider":"AWS","clientId":"c","clientSecret":"s"}`,
+			name:           "IDC import infers Builder ID provider",
+			tokenJSON:      `{"accessToken":"access-token","clientId":"c","clientSecret":"s"}`,
+			wantProvider:   ProviderBuilderId,
+			wantAuthMethod: "idc",
 		},
 		{
-			name:      "unknown provider",
-			tokenJSON: `{"accessToken":"access-token","provider":"Gitlab","authMethod":"social"}`,
+			name:           "known provider round trips",
+			tokenJSON:      `{"accessToken":"access-token","provider":"Github","authMethod":"social"}`,
+			wantProvider:   ProviderGithub,
+			wantAuthMethod: "social",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := ParseImportedToken(tc.tokenJSON, ""); err == nil {
-				t.Fatalf("ParseImportedToken() expected error for %s, got nil", tc.name)
+			token, err := ParseImportedToken(tc.tokenJSON, "")
+			if err != nil {
+				t.Fatalf("ParseImportedToken() error for %s: %v", tc.name, err)
+			}
+			if token.Provider != tc.wantProvider {
+				t.Fatalf("Provider = %q, want %q", token.Provider, tc.wantProvider)
+			}
+			if token.AuthMethod != tc.wantAuthMethod {
+				t.Fatalf("AuthMethod = %q, want %q", token.AuthMethod, tc.wantAuthMethod)
 			}
 		})
 	}
 }
 
-func TestParseImportedTokenAcceptsWhitelistedProviders(t *testing.T) {
-	for _, provider := range []string{ProviderGoogle, ProviderGithub} {
-		token, err := ParseImportedToken(`{
-			"accessToken": "access-token",
-			"refreshToken": "refresh-token",
-			"authMethod": "social",
-			"provider": "`+provider+`"
-		}`, "")
-		if err != nil {
-			t.Fatalf("ParseImportedToken(%s) error = %v", provider, err)
+func TestParseImportedTokenRejectsUnknownNonEmptyProvider(t *testing.T) {
+	_, err := ParseImportedToken(`{
+		"accessToken":"access-token",
+		"refreshToken":"refresh-token",
+		"authMethod":"social",
+		"provider":"Gitlab"
+	}`, "")
+	if err == nil {
+		t.Fatal("ParseImportedToken() expected unknown provider error")
+	}
+}
+
+func TestParseImportedTokenRequiresDeviceRegistrationForClientIDHash(t *testing.T) {
+	_, err := ParseImportedToken(`{"accessToken":"access-token","clientIdHash":"hash"}`, "")
+	if err == nil {
+		t.Fatal("ParseImportedToken() expected device registration error")
+	}
+}
+
+func TestParseImportedTokenAcceptsKiroIDEFieldAliases(t *testing.T) {
+	token, err := ParseImportedToken(`{
+		"access_token":"access-token",
+		"refresh_token":"refresh-token",
+		"auth_method":"social",
+		"apiRegion":"eu-central-1",
+		"machineId":"machine-123",
+		"subscriptionTitle":"KIRO PRO"
+	}`, "")
+	if err != nil {
+		t.Fatalf("ParseImportedToken() error = %v", err)
+	}
+	if token.APIRegion != "eu-central-1" {
+		t.Fatalf("APIRegion = %q, want eu-central-1", token.APIRegion)
+	}
+	if token.Region != "" {
+		t.Fatalf("Region = %q, want empty for apiRegion-only social export", token.Region)
+	}
+	if token.MachineID != "machine-123" {
+		t.Fatalf("MachineID = %q, want machine-123", token.MachineID)
+	}
+	if token.SubscriptionTitle != "KIRO PRO" {
+		t.Fatalf("SubscriptionTitle = %q, want KIRO PRO", token.SubscriptionTitle)
+	}
+}
+
+func TestParseImportedTokensAcceptsKiroIDEArray(t *testing.T) {
+	tokens, err := ParseImportedTokens(`[
+		{"accessToken":"access-1","refreshToken":"refresh-1","authMethod":"social","apiRegion":"us-east-1"},
+		{"accessToken":"access-2","refreshToken":"refresh-2","authMethod":"social","apiRegion":"eu-west-1"}
+	]`, "")
+	if err != nil {
+		t.Fatalf("ParseImportedTokens() error = %v", err)
+	}
+	if len(tokens) != 2 {
+		t.Fatalf("len(tokens) = %d, want 2", len(tokens))
+	}
+	if tokens[1].APIRegion != "eu-west-1" {
+		t.Fatalf("second token api region = %q, want eu-west-1", tokens[1].APIRegion)
+	}
+}
+
+func TestParseImportedTokensRejectsGenericOAuthJSON(t *testing.T) {
+	_, err := ParseKiroCredentialExport(`{
+		"access_token":"unrelated-oauth-access",
+		"refresh_token":"unrelated-oauth-refresh",
+		"auth_method":"social"
+	}`, "")
+	if err == nil || !strings.Contains(err.Error(), "not a recognized Kiro credential export") {
+		t.Fatalf("ParseImportedTokens() error = %v, want Kiro format rejection", err)
+	}
+}
+
+func TestParseImportedTokensRejectsGenericAPIKeyJSON(t *testing.T) {
+	_, err := ParseKiroCredentialExport(`{
+		"auth_method":"api_key",
+		"api_key":"sk-unrelated-provider-key"
+	}`, "")
+	if err == nil || !strings.Contains(err.Error(), "not a recognized Kiro credential export") {
+		t.Fatalf("ParseImportedTokens() error = %v, want Kiro format rejection", err)
+	}
+}
+
+func TestParseImportedTokensAcceptsMixedOAuthAndAPIKeyExport(t *testing.T) {
+	tokens, err := ParseImportedTokens(`[
+		{
+			"accessToken":"social-access",
+			"refreshToken":"social-refresh",
+			"authMethod":"social",
+			"apiRegion":"us-east-1",
+			"machineId":"social-machine"
+		},
+		{
+			"accessToken":"idc-access",
+			"refreshToken":"idc-refresh",
+			"authMethod":"idc",
+			"clientId":"idc-client",
+			"clientSecret":"idc-secret",
+			"machineId":"idc-machine"
+		},
+		{
+			"authMethod":"api_key",
+			"kiroApiKey":"ksk_synthetic_key",
+			"endpoint":"cli",
+			"machineId":"key-machine",
+			"subscriptionTitle":"Kiro Pro"
 		}
-		if token.Provider != provider {
-			t.Fatalf("Provider = %q, want %q", token.Provider, provider)
-		}
+	]`, "")
+	if err != nil {
+		t.Fatalf("ParseImportedTokens() error = %v", err)
+	}
+	if len(tokens) != 3 {
+		t.Fatalf("len(tokens) = %d, want 3", len(tokens))
+	}
+	if tokens[0].AuthMethod != "social" || tokens[1].AuthMethod != "idc" {
+		t.Fatalf("unexpected OAuth methods: %q, %q", tokens[0].AuthMethod, tokens[1].AuthMethod)
+	}
+	if tokens[2].AuthMethod != "api_key" {
+		t.Fatalf("API key AuthMethod = %q, want api_key", tokens[2].AuthMethod)
+	}
+	if tokens[2].APIKey != "ksk_synthetic_key" {
+		t.Fatalf("API key = %q, want synthetic key", tokens[2].APIKey)
+	}
+	if tokens[2].AccessToken != "" {
+		t.Fatalf("API key entry access token = %q, want empty", tokens[2].AccessToken)
+	}
+	if tokens[2].MachineID != "key-machine" || tokens[2].SubscriptionTitle != "Kiro Pro" {
+		t.Fatalf("API key metadata was not preserved")
+	}
+}
+
+func TestParseImportedTokenAcceptsAPIKeyAliases(t *testing.T) {
+	cases := []struct {
+		name string
+		key  string
+	}{
+		{name: "Kiro IDE camel case", key: "kiroApiKey"},
+		{name: "normalized snake case", key: "kiro_api_key"},
+		{name: "stored account key", key: "api_key"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			token, err := ParseImportedToken(`{"authMethod":"api_key","`+tc.key+`":"ksk_synthetic_key"}`, "")
+			if err != nil {
+				t.Fatalf("ParseImportedToken() error = %v", err)
+			}
+			if token.AuthMethod != "api_key" {
+				t.Fatalf("AuthMethod = %q, want api_key", token.AuthMethod)
+			}
+			if token.APIKey != "ksk_synthetic_key" {
+				t.Fatalf("APIKey = %q, want synthetic key", token.APIKey)
+			}
+		})
+	}
+}
+
+func TestParseImportedTokenRejectsMissingRequiredCredentialByType(t *testing.T) {
+	_, err := ParseImportedToken(`{"authMethod":"api_key"}`, "")
+	if err == nil || err.Error() != "api key is empty" {
+		t.Fatalf("missing API key error = %v, want api key is empty", err)
+	}
+
+	_, err = ParseImportedToken(`{"authMethod":"social","refreshToken":"synthetic-refresh"}`, "")
+	if err == nil || err.Error() != "access token is empty" {
+		t.Fatalf("missing OAuth access token error = %v, want access token is empty", err)
 	}
 }
 
@@ -166,7 +334,6 @@ func TestParseImportedTokenNormalizesExpiresAt(t *testing.T) {
 			token, err := ParseImportedToken(`{
 				"accessToken": "access-token",
 				"authMethod": "social",
-				"provider": "Google",
 				"expiresAt": "`+tc.expiresAt+`"
 			}`, "")
 			if err != nil {
@@ -188,21 +355,8 @@ func TestParseImportedTokenRejectsInvalidExpiresAt(t *testing.T) {
 	if _, err := ParseImportedToken(`{
 		"accessToken": "access-token",
 		"authMethod": "social",
-		"provider": "Google",
 		"expiresAt": "not-a-time"
 	}`, ""); err == nil {
 		t.Fatalf("ParseImportedToken() expected error for invalid expiresAt, got nil")
-	}
-}
-
-func TestResolveIDCProvider(t *testing.T) {
-	if got := resolveIDCProvider(BuilderIDStartURL); got != ProviderBuilderId {
-		t.Fatalf("resolveIDCProvider(builder) = %q, want %q", got, ProviderBuilderId)
-	}
-	if got := resolveIDCProvider(""); got != ProviderBuilderId {
-		t.Fatalf("resolveIDCProvider(empty) = %q, want %q", got, ProviderBuilderId)
-	}
-	if got := resolveIDCProvider("https://d-9066029b12.awsapps.com/start/"); got != ProviderEnterprise {
-		t.Fatalf("resolveIDCProvider(custom) = %q, want %q", got, ProviderEnterprise)
 	}
 }

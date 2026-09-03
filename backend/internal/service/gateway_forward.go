@@ -121,6 +121,20 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				passthroughModel = mappedModel
 			}
 		}
+		// API-key passthrough still belongs to the same Anthropic-compatible
+		// protocol surface as OAuth/Kiro accounts. Prepare the group-bound
+		// cache plan before returning to the passthrough handler so usage
+		// shaping and state commits cannot be skipped by this fast path.
+		prepareCachePlanForContext(
+			ctx,
+			c,
+			account,
+			parsed.Group,
+			passthroughBody,
+			passthroughModel,
+			"anthropic_messages",
+			estimateKiroInputTokens(ctx, passthroughBody),
+		)
 		return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
 			Body:          passthroughBody,
 			Parsed:        parsed,
@@ -374,6 +388,17 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			}
 			logger.LegacyPrintf("service.gateway", "Account %d: rewrote thinking.type for %s (Anthropic-SDK default 'enabled' -> vendor-specific)", account.ID, reqModel)
 		}
+	}
+
+	// Build the shared cache plan after all request-body normalisation and model
+	// mapping. Prepare only reads local prefix state; commit is deferred until a
+	// complete successful response has been parsed below. This makes native
+	// Anthropic Messages groups use the same group-bound strategy as Kiro and the
+	// OpenAI compatibility adapters.
+	var cachePlan *cacheEmulationPlan
+	if parsed != nil {
+		cachePlan = s.prepareCacheEmulationUsage(ctx, account, parsed.Group, body, reqModel, estimateKiroInputTokens(ctx, body))
+		setCachePlanContext(c, cachePlan)
 	}
 
 	// 重试循环
@@ -884,6 +909,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		if err != nil {
 			return nil, err
 		}
+	}
+	if cachePlan != nil {
+		cachePlan.commit()
 	}
 
 	return &ForwardResult{

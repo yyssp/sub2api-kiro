@@ -289,6 +289,53 @@ func (_u *UsageLogUpdate) ClearGroupID() *UsageLogUpdate {
 	return _u
 }
 
+// SetCacheStrategyID sets the "cache_strategy_id" field.
+func (_u *UsageLogUpdate) SetCacheStrategyID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetCacheStrategyID()
+	_u.mutation.SetCacheStrategyID(v)
+	return _u
+}
+
+// SetNillableCacheStrategyID sets the "cache_strategy_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCacheStrategyID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCacheStrategyID(*v)
+	}
+	return _u
+}
+
+// AddCacheStrategyID adds value to the "cache_strategy_id" field.
+func (_u *UsageLogUpdate) AddCacheStrategyID(v int64) *UsageLogUpdate {
+	_u.mutation.AddCacheStrategyID(v)
+	return _u
+}
+
+// ClearCacheStrategyID clears the value of the "cache_strategy_id" field.
+func (_u *UsageLogUpdate) ClearCacheStrategyID() *UsageLogUpdate {
+	_u.mutation.ClearCacheStrategyID()
+	return _u
+}
+
+// SetCacheStrategyName sets the "cache_strategy_name" field.
+func (_u *UsageLogUpdate) SetCacheStrategyName(v string) *UsageLogUpdate {
+	_u.mutation.SetCacheStrategyName(v)
+	return _u
+}
+
+// SetNillableCacheStrategyName sets the "cache_strategy_name" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCacheStrategyName(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCacheStrategyName(*v)
+	}
+	return _u
+}
+
+// ClearCacheStrategyName clears the value of the "cache_strategy_name" field.
+func (_u *UsageLogUpdate) ClearCacheStrategyName() *UsageLogUpdate {
+	_u.mutation.ClearCacheStrategyName()
+	return _u
+}
+
 // SetSubscriptionID sets the "subscription_id" field.
 func (_u *UsageLogUpdate) SetSubscriptionID(v int64) *UsageLogUpdate {
 	_u.mutation.SetSubscriptionID(v)
@@ -1076,6 +1123,11 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_mode": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CacheStrategyName(); ok {
+		if err := usagelog.CacheStrategyNameValidator(v); err != nil {
+			return &ValidationError{Name: "cache_strategy_name", err: fmt.Errorf(`ent: validator failed for field "UsageLog.cache_strategy_name": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UserAgent(); ok {
 		if err := usagelog.UserAgentValidator(v); err != nil {
 			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "UsageLog.user_agent": %w`, err)}
@@ -1191,6 +1243,21 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.BillingModeCleared() {
 		_spec.ClearField(usagelog.FieldBillingMode, field.TypeString)
+	}
+	if value, ok := _u.mutation.CacheStrategyID(); ok {
+		_spec.SetField(usagelog.FieldCacheStrategyID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCacheStrategyID(); ok {
+		_spec.AddField(usagelog.FieldCacheStrategyID, field.TypeInt64, value)
+	}
+	if _u.mutation.CacheStrategyIDCleared() {
+		_spec.ClearField(usagelog.FieldCacheStrategyID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CacheStrategyName(); ok {
+		_spec.SetField(usagelog.FieldCacheStrategyName, field.TypeString, value)
+	}
+	if _u.mutation.CacheStrategyNameCleared() {
+		_spec.ClearField(usagelog.FieldCacheStrategyName, field.TypeString)
 	}
 	if value, ok := _u.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)
@@ -1800,6 +1867,53 @@ func (_u *UsageLogUpdateOne) SetNillableGroupID(v *int64) *UsageLogUpdateOne {
 // ClearGroupID clears the value of the "group_id" field.
 func (_u *UsageLogUpdateOne) ClearGroupID() *UsageLogUpdateOne {
 	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetCacheStrategyID sets the "cache_strategy_id" field.
+func (_u *UsageLogUpdateOne) SetCacheStrategyID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetCacheStrategyID()
+	_u.mutation.SetCacheStrategyID(v)
+	return _u
+}
+
+// SetNillableCacheStrategyID sets the "cache_strategy_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCacheStrategyID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCacheStrategyID(*v)
+	}
+	return _u
+}
+
+// AddCacheStrategyID adds value to the "cache_strategy_id" field.
+func (_u *UsageLogUpdateOne) AddCacheStrategyID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddCacheStrategyID(v)
+	return _u
+}
+
+// ClearCacheStrategyID clears the value of the "cache_strategy_id" field.
+func (_u *UsageLogUpdateOne) ClearCacheStrategyID() *UsageLogUpdateOne {
+	_u.mutation.ClearCacheStrategyID()
+	return _u
+}
+
+// SetCacheStrategyName sets the "cache_strategy_name" field.
+func (_u *UsageLogUpdateOne) SetCacheStrategyName(v string) *UsageLogUpdateOne {
+	_u.mutation.SetCacheStrategyName(v)
+	return _u
+}
+
+// SetNillableCacheStrategyName sets the "cache_strategy_name" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCacheStrategyName(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCacheStrategyName(*v)
+	}
+	return _u
+}
+
+// ClearCacheStrategyName clears the value of the "cache_strategy_name" field.
+func (_u *UsageLogUpdateOne) ClearCacheStrategyName() *UsageLogUpdateOne {
+	_u.mutation.ClearCacheStrategyName()
 	return _u
 }
 
@@ -2603,6 +2717,11 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_mode": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CacheStrategyName(); ok {
+		if err := usagelog.CacheStrategyNameValidator(v); err != nil {
+			return &ValidationError{Name: "cache_strategy_name", err: fmt.Errorf(`ent: validator failed for field "UsageLog.cache_strategy_name": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UserAgent(); ok {
 		if err := usagelog.UserAgentValidator(v); err != nil {
 			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "UsageLog.user_agent": %w`, err)}
@@ -2735,6 +2854,21 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.BillingModeCleared() {
 		_spec.ClearField(usagelog.FieldBillingMode, field.TypeString)
+	}
+	if value, ok := _u.mutation.CacheStrategyID(); ok {
+		_spec.SetField(usagelog.FieldCacheStrategyID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCacheStrategyID(); ok {
+		_spec.AddField(usagelog.FieldCacheStrategyID, field.TypeInt64, value)
+	}
+	if _u.mutation.CacheStrategyIDCleared() {
+		_spec.ClearField(usagelog.FieldCacheStrategyID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CacheStrategyName(); ok {
+		_spec.SetField(usagelog.FieldCacheStrategyName, field.TypeString, value)
+	}
+	if _u.mutation.CacheStrategyNameCleared() {
+		_spec.ClearField(usagelog.FieldCacheStrategyName, field.TypeString)
 	}
 	if value, ok := _u.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)

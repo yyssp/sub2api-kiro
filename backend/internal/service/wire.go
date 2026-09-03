@@ -18,6 +18,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// ProvideCacheStrategyService creates the shared cache policy service and
+// warms its immutable registry before gateway requests are accepted.
+func ProvideCacheStrategyService(repo CacheStrategyRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *CacheStrategyService {
+	svc := NewCacheStrategyService(repo, authCacheInvalidator)
+	_ = svc.Warmup(context.Background())
+	return svc
+}
+
 func ProvideGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, cfg *config.Config, redisClient *redis.Client) *GrokOAuthService {
 	svc := NewGrokOAuthService(proxyRepo, oauthClient, cfg)
 	// wire.go is depguard-exempt for redis; construct the Redis session store here.
@@ -849,6 +857,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAPIKeyAuthCacheInvalidator,
 	ProvideAuthCacheInvalidationWorker,
 	NewGroupService,
+	ProvideCacheStrategyService,
 	NewCompositeRouteResolver,
 	NewAccountService,
 	NewProxyService,

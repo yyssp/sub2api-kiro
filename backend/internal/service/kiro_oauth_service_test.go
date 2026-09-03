@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -26,7 +27,7 @@ func TestBuildKiroSocialExchangeRedirectURIUsesProviderDefault(t *testing.T) {
 	require.Equal(
 		t,
 		"http://localhost:49153/oauth/callback?login_option=github",
-		buildKiroSocialExchangeRedirectURI("http://localhost:49153", "Github", "", ""),
+		buildKiroSocialExchangeRedirectURI("http://localhost:49153", kiropkg.ProviderGithub, "", ""),
 	)
 }
 
@@ -34,7 +35,7 @@ func TestBuildKiroSocialExchangeRedirectURIPreservesParsedCallbackData(t *testin
 	require.Equal(
 		t,
 		"http://localhost:49153/signin/callback?login_option=google",
-		buildKiroSocialExchangeRedirectURI("http://localhost:49153", "Github", "/signin/callback", "google"),
+		buildKiroSocialExchangeRedirectURI("http://localhost:49153", kiropkg.ProviderGithub, "/signin/callback", "google"),
 	)
 }
 
@@ -78,7 +79,7 @@ func TestKiroOAuthService_ExchangeCodeDoesNotSpecialCaseExternalIdpDescriptorInS
 		CodeVerifier: "verifier",
 		CreatedAt:    time.Now(),
 		AuthType:     "social",
-		Provider:     string(kiropkg.SocialProviderGoogle),
+		Provider:     kiropkg.ProviderGoogle,
 		RedirectURI:  kiroSocialRedirectURI,
 	})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -184,12 +185,38 @@ func TestKiroOAuthService_RefreshTokenRejectsIDCMissingClientCredentials(t *test
 	require.EqualError(t, err, "kiro idc refresh requires client_id and client_secret")
 }
 
-func TestResolveKiroRefreshAuthMethodInfersIDCFromClientCredentials(t *testing.T) {
-	require.Equal(t, "idc", resolveKiroRefreshAuthMethod("", "client-id", "client-secret"))
-	require.Equal(t, "social", resolveKiroRefreshAuthMethod("", "client-id", ""))
-	require.Equal(t, "social", resolveKiroRefreshAuthMethod("", "", "client-secret"))
-	require.Equal(t, "social", resolveKiroRefreshAuthMethod("", "", ""))
-	require.Equal(t, "idc", resolveKiroRefreshAuthMethod("IDC", "", ""))
+func TestResolveKiroRefreshAuthMethodUsesAuthenticationFacts(t *testing.T) {
+	cases := []struct {
+		name          string
+		authMethod    string
+		clientID      string
+		clientSecret  string
+		tokenEndpoint string
+		want          string
+		wantErr       string
+	}{
+		{name: "explicit social", authMethod: "social", want: "social"},
+		{name: "explicit idc", authMethod: "IDC", want: "idc"},
+		{name: "explicit external idp", authMethod: "external_idp", want: "external_idp"},
+		{name: "explicit method overrides field shape", authMethod: "social", clientID: "client-id", clientSecret: "secret", tokenEndpoint: "https://issuer.example/token", want: "social"},
+		{name: "token endpoint and client id infer external idp", clientID: "client-id", tokenEndpoint: "https://issuer.example/token", want: "external_idp"},
+		{name: "client credentials infer idc", clientID: "client-id", clientSecret: "secret", want: "idc"},
+		{name: "incomplete client data infers social", clientID: "client-id", want: "social"},
+		{name: "no authentication facts infers social", want: "social"},
+		{name: "api key rejects refresh", authMethod: "api_key", wantErr: "kiro api_key accounts do not support refresh_token"},
+		{name: "unknown method rejects refresh", authMethod: "other", wantErr: `unsupported kiro auth method: "other"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := resolveKiroRefreshAuthMethod(tc.authMethod, tc.clientID, tc.clientSecret, tc.tokenEndpoint)
+			if tc.wantErr != "" {
+				require.EqualError(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
 }
 
 func TestParseKiroExternalIdpDescriptorFromCallbackURL(t *testing.T) {
@@ -266,6 +293,60 @@ func TestKiroOAuthService_BuildAccountCredentialsPreservesExternalIdpMetadata(t 
 	require.Equal(t, "openid profile offline_access", credentials["scopes"])
 }
 
+func TestKiroOAuthService_ImportTokenClassifiesMixedCredentialEntries(t *testing.T) {
+	svc := NewKiroOAuthService(nil)
+
+	result, err := svc.ImportToken(&KiroImportTokenInput{
+		TokenJSON: `[
+			{
+				"accessToken":"synthetic-social-access",
+				"refreshToken":"synthetic-social-refresh",
+				"authMethod":"social",
+				"apiRegion":"us-east-1"
+			},
+			{
+				"authMethod":"api_key",
+				"kiroApiKey":"ksk_synthetic_key",
+				"endpoint":"cli",
+				"machineId":"synthetic-machine",
+				"subscriptionTitle":"Kiro Pro"
+			}
+		]`,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 2)
+
+	oauthEntry := result.Entries[0]
+	require.Equal(t, "oauth", oauthEntry.AccountType)
+	require.NotNil(t, oauthEntry.KiroTokenInfo)
+	require.Equal(t, "synthetic-social-access", oauthEntry.AccessToken)
+	require.Empty(t, oauthEntry.APIKey)
+
+	apiKeyEntry := result.Entries[1]
+	require.Equal(t, "apikey", apiKeyEntry.AccountType)
+	require.NotNil(t, apiKeyEntry.KiroTokenInfo)
+	require.Equal(t, "api_key", apiKeyEntry.AuthMethod)
+	require.Equal(t, "ksk_synthetic_key", apiKeyEntry.APIKey)
+	require.Empty(t, apiKeyEntry.AccessToken)
+	require.Equal(t, "synthetic-machine", apiKeyEntry.MachineID)
+	require.Equal(t, "Kiro Pro", apiKeyEntry.SubscriptionTitle)
+
+	encoded, err := json.Marshal(result)
+	require.NoError(t, err)
+	var payload struct {
+		Entries []map[string]any `json:"entries"`
+	}
+	require.NoError(t, json.Unmarshal(encoded, &payload))
+	require.Len(t, payload.Entries, 2)
+	require.Equal(t, "oauth", payload.Entries[0]["account_type"])
+	require.Equal(t, "synthetic-social-access", payload.Entries[0]["access_token"])
+	require.NotContains(t, payload.Entries[0], "api_key")
+	require.Equal(t, "apikey", payload.Entries[1]["account_type"])
+	require.Equal(t, "ksk_synthetic_key", payload.Entries[1]["api_key"])
+	require.NotContains(t, payload.Entries[1], "access_token")
+}
+
 func TestKiroOAuthService_RefreshTokenRejectsExternalIdpMissingMetadata(t *testing.T) {
 	svc := NewKiroOAuthService(nil)
 
@@ -276,4 +357,35 @@ func TestKiroOAuthService_RefreshTokenRejectsExternalIdpMissingMetadata(t *testi
 	})
 
 	require.EqualError(t, err, "kiro external_idp refresh requires client_id and token_endpoint")
+}
+
+func TestKiroOAuthServicePublicMethodsRejectNilInput(t *testing.T) {
+	svc := NewKiroOAuthService(nil)
+
+	_, err := svc.GenerateAuthURL(context.Background(), nil)
+	require.EqualError(t, err, "kiro auth url input is required")
+
+	_, err = svc.ExchangeCode(context.Background(), nil)
+	require.EqualError(t, err, "kiro code exchange input is required")
+
+	_, err = svc.GenerateIDCAuthURL(context.Background(), nil)
+	require.EqualError(t, err, "kiro idc auth url input is required")
+
+	_, err = svc.RefreshToken(context.Background(), nil)
+	require.EqualError(t, err, "kiro refresh token input is required")
+
+	_, err = svc.RefreshAccountToken(context.Background(), nil)
+	require.EqualError(t, err, "kiro account is required")
+
+	_, err = svc.ImportToken(nil)
+	require.EqualError(t, err, "kiro import token input is required")
+}
+
+func cloneKiroTestCredentials(base map[string]any, provider string) map[string]any {
+	credentials := make(map[string]any, len(base)+1)
+	for key, value := range base {
+		credentials[key] = value
+	}
+	credentials["provider"] = provider
+	return credentials
 }

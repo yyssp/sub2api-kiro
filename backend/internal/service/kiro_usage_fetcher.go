@@ -230,13 +230,13 @@ func (s *AccountUsageService) getCachedKiroUsage(accountID int64) (*UsageInfo, b
 	if !ok || cache == nil || cache.usageInfo == nil {
 		return nil, false
 	}
-	if time.Since(cache.timestamp) >= kiroCacheTTL(cache.usageInfo) {
+	if time.Since(cache.timestamp) >= cacheTTL(cache.usageInfo) {
 		return nil, false
 	}
 	return cloneUsageInfo(cache.usageInfo), true
 }
 
-func kiroCacheTTL(info *UsageInfo) time.Duration {
+func cacheTTL(info *UsageInfo) time.Duration {
 	if info == nil {
 		return kiroUsageErrorTTL
 	}

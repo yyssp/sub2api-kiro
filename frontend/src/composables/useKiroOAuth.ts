@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { KiroTokenInfo } from '@/api/admin/kiro'
+import type { KiroImportEntry, KiroTokenInfo } from '@/api/admin/kiro'
 
 export function useKiroOAuth() {
   const appStore = useAppStore()
@@ -129,6 +129,7 @@ export function useKiroOAuth() {
     clientSecret?: string
     startUrl?: string
     region?: string
+    apiRegion?: string
     profileArn?: string
     tokenEndpoint?: string
     issuerUrl?: string
@@ -146,6 +147,7 @@ export function useKiroOAuth() {
         client_secret: payload.clientSecret,
         start_url: payload.startUrl,
         region: payload.region,
+        api_region: payload.apiRegion,
         profile_arn: payload.profileArn,
         token_endpoint: payload.tokenEndpoint,
         issuer_url: payload.issuerUrl,
@@ -163,14 +165,15 @@ export function useKiroOAuth() {
   const importToken = async (
     tokenJSON: string,
     deviceRegistrationJSON?: string
-  ): Promise<KiroTokenInfo | null> => {
+  ): Promise<KiroImportEntry[] | null> => {
     loading.value = true
     error.value = ''
     try {
-      return await adminAPI.kiro.importToken({
+      const result = await adminAPI.kiro.importToken({
         token_json: tokenJSON,
         device_registration_json: deviceRegistrationJSON
       })
+      return result.entries
     } catch (err: any) {
       error.value = err.response?.data?.detail || t('admin.accounts.oauth.authFailed')
       appStore.showError(error.value)
@@ -193,10 +196,27 @@ export function useKiroOAuth() {
     email: tokenInfo.email,
     start_url: tokenInfo.start_url,
     region: tokenInfo.region,
+    api_region: tokenInfo.api_region,
+    machine_id: tokenInfo.machine_id,
+    subscription_title: tokenInfo.subscription_title,
     token_endpoint: tokenInfo.token_endpoint,
     issuer_url: tokenInfo.issuer_url,
     scopes: tokenInfo.scopes
   })
+
+  const buildImportedAPIKeyCredentials = (entry: KiroImportEntry): Record<string, unknown> => {
+    const credentials: Record<string, unknown> = {
+      api_key: entry.api_key,
+      api_region: entry.api_region || 'us-east-1'
+    }
+    if (entry.machine_id) {
+      credentials.machine_id = entry.machine_id
+    }
+    if (entry.subscription_title) {
+      credentials.subscription_title = entry.subscription_title
+    }
+    return credentials
+  }
 
   return {
     authUrl,
@@ -211,6 +231,7 @@ export function useKiroOAuth() {
     exchangeAuthCode,
     validateRefreshToken,
     importToken,
-    buildCredentials
+    buildCredentials,
+    buildImportedAPIKeyCredentials
   }
 }

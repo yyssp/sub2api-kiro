@@ -30,7 +30,7 @@ func TestWriteSSEMessageStart_IncludesCacheUsageFields(t *testing.T) {
 }
 
 func TestBuildWebSearchClaudeUsage_UsesCacheEmulationUsage(t *testing.T) {
-	usage := buildWebSearchClaudeUsage(100, 5, &kiroCacheEmulationUsage{
+	usage := buildWebSearchClaudeUsage(100, 5, &cacheEmulationUsage{
 		InputTokens:                40,
 		CacheReadInputTokens:       20,
 		CacheCreationInputTokens:   40,

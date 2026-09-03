@@ -47,6 +47,10 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 		return nil, fmt.Errorf("missing model in request")
 	}
 	clientStream := gjson.GetBytes(body, "stream").Bool()
+	prepareCachePlanForContext(
+		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
+		"anthropic_messages", estimateKiroInputTokens(ctx, body),
+	)
 
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
@@ -226,7 +230,10 @@ func (s *OpenAIGatewayService) handleNativeAnthropicBufferedResponse(
 	}
 
 	usage := parseClaudeUsageFromResponseBody(body)
-	if IsForceCacheBilling(ctx) && usage.InputTokens > 0 {
+	mergeAndCommitCachePlan(c, usage, true)
+	body = rewriteClaudeUsageJSON(body, usage)
+	if IsForceCacheBilling(ctx) && usage.InputTokens > 0 &&
+		!hasBoundCacheStrategy(cacheGroupFromContext(c, account)) {
 		body, err = classifyAnthropicResponseInputAsCacheRead(body, usage)
 		if err != nil {
 			return nil, err
@@ -397,10 +404,16 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 					return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime),
 						fmt.Errorf("stream usage incomplete: missing terminal event")
 				}
+				if sawTerminalEvent && !clientDisconnected {
+					mergeAndCommitCachePlan(c, usage, true)
+				}
 				return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime), nil
 			}
 			if ev.err != nil {
 				if sawTerminalEvent {
+					if !clientDisconnected {
+						mergeAndCommitCachePlan(c, usage, true)
+					}
 					return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime), nil
 				}
 				if clientDisconnected {

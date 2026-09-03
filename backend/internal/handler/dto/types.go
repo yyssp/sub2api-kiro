@@ -153,15 +153,9 @@ type Group struct {
 	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。
 	ReasoningEffortMappings []domain.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 
-	// Kiro 模拟缓存配置（仅 Kiro 平台生效）
-	KiroCacheEmulationEnabled       bool    `json:"kiro_cache_emulation_enabled"`
-	KiroAutoStickyEnabled           bool    `json:"kiro_auto_sticky_enabled"`
-	KiroStickySessionTTLSeconds     int     `json:"kiro_sticky_session_ttl_seconds"`
-	KiroCacheEmulationRatio         float64 `json:"kiro_cache_emulation_ratio"`
-	KiroCacheEmulationMode          string  `json:"kiro_cache_emulation_mode"`
-	KiroCacheCreationEmulationRatio float64 `json:"kiro_cache_creation_emulation_ratio"`
-	KiroCacheReadEmulationRatio     float64 `json:"kiro_cache_read_emulation_ratio"`
-	KiroEndpointMode                string  `json:"kiro_endpoint_mode"`
+	KiroAutoStickyEnabled       bool   `json:"kiro_auto_sticky_enabled"`
+	KiroStickySessionTTLSeconds int    `json:"kiro_sticky_session_ttl_seconds"`
+	KiroEndpointMode            string `json:"kiro_endpoint_mode"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -200,7 +194,8 @@ type AdminGroup struct {
 	RateLimitedAccountCount int64          `json:"rate_limited_account_count,omitempty"`
 
 	// 分组排序
-	SortOrder int `json:"sort_order"`
+	SortOrder       int    `json:"sort_order"`
+	CacheStrategyID *int64 `json:"cache_strategy_id,omitempty"`
 }
 
 type Account struct {
@@ -510,8 +505,10 @@ type UsageLog struct {
 	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.
 	UpstreamEndpoint *string `json:"upstream_endpoint,omitempty"`
 
-	GroupID        *int64 `json:"group_id"`
-	SubscriptionID *int64 `json:"subscription_id"`
+	GroupID           *int64  `json:"group_id"`
+	CacheStrategyID   *int64  `json:"cache_strategy_id,omitempty"`
+	CacheStrategyName *string `json:"cache_strategy_name,omitempty"`
+	SubscriptionID    *int64  `json:"subscription_id"`
 
 	InputTokens         int `json:"input_tokens"`
 	OutputTokens        int `json:"output_tokens"`

@@ -1,0 +1,124 @@
+{
+  "started_at": "2026-09-02T22:58:10+0800",
+  "base_url": "http://127.0.0.1:48780",
+  "model": "claude-sonnet-4-5-20250929",
+  "rounds_required": 10,
+  "fixture_root": "/tmp/sub2api-cache-matrix-20260902-225809",
+  "strategies": [
+    {
+      "name": "验收-无缓存基线",
+      "strategy_id": 25,
+      "group_id": 17,
+      "api_key_id": 18,
+      "api_key": "sk-matrix---b5c4a744b01f42c6a8d311edcc7248ec",
+      "strategy_config": {
+        "kind": "disabled",
+        "ratio_mode": "uniform",
+        "coverage_ratio": 0,
+        "usage_ratio": 0,
+        "read_ratio": 0,
+        "creation_ratio": 0,
+        "cache_system": false,
+        "cache_tools": false,
+        "cache_history": false,
+        "cache_tool_results": false,
+        "cache_current_user_stable_prefix": false,
+        "current_user_stable_prefix_max_tokens": 0,
+        "breakpoint_mode": "auto",
+        "allow_derived_session": false,
+        "dynamic_content_mode": "exclude",
+        "scope_mode": "group_account_session",
+        "max_coverage_tokens": 0,
+        "max_new_creation_tokens_per_request": 0,
+        "incremental_create_enabled": false,
+        "min_cacheable_tokens": 1024,
+        "reported_input_min_tokens": 0,
+        "reported_input_max_tokens": 0,
+        "token_scale": 1,
+        "scale_min_input_tokens": 20000,
+        "max_simulated_input_tokens": 0,
+        "default_ttl_seconds": 300,
+        "hour_ttl_seconds": 3600,
+        "max_entries_per_scope": 128,
+        "max_entries_global": 10000,
+        "estimated_bytes_limit": 67108864,
+        "expire_after_idle_seconds": 0,
+        "cap_jitter_min_tokens": 0,
+        "cap_jitter_max_tokens": 0,
+        "preserve_upstream_cache_usage": false,
+        "creation_control": {
+          "enabled": false,
+          "min_creation_delta_tokens": 0,
+          "min_successful_requests_between": 0,
+          "min_creation_interval_seconds": 0,
+          "max_creation_tokens_per_event": 0,
+          "creation_budget_window_seconds": 0,
+          "max_creation_tokens_per_window": 0
+        },
+        "usage": {
+          "enabled": false,
+          "preserve_upstream_cache_usage": false,
+          "input": {
+            "mode": "raw",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "output": {
+            "mode": "raw",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "cache_read": {
+            "mode": "preserve",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "cache_creation": {
+            "mode": "preserve",
+            "max_tokens": 0,
+            "target_tokens": 0,
+            "normal_max_multiplier": 1.1,
+            "move_delta_to_cache_read": false
+          },
+          "final_cache_read_max_tokens": 0,
+          "final_cache_creation_max_tokens": 0,
+          "output_uplift_min_tokens": 0,
+          "output_uplift_percent": 0,
+          "final_output_max_tokens": 0
+        }
+      },
+      "session_id": "766aa1d1-0646-45ae-bcf1-42b2cb6b3de8",
+      "rounds": [
+        {
+          "round": 1,
+          "returncode": 1,
+          "stderr_tail": "",
+          "status": "error",
+          "subtype": "success",
+          "stop_reason": "stop_sequence",
+          "duration_ms": 354544,
+          "usage": {
+            "input": 0,
+            "read": 0,
+            "creation": 0,
+            "creation_5m": 0,
+            "creation_1h": 0,
+            "output": 0
+          },
+          "tools": [],
+          "tool_call_count": 0,
+          "assistant_events": 1,
+          "result_chars": 84,
+          "errors": [],
+          "error": "required Read+Bash tool calls were not observed"
+        }
+      ]
+    }
+  ]
+}
