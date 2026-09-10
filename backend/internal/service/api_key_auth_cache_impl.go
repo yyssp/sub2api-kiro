@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 23 // v23: group-bound cache strategy ID plus Kiro, profit, and OpenAI Fast fields
+const apiKeyAuthSnapshotVersion = 25 // v25: group model_allowlist + codex manifest config alongside cache strategy ID, Kiro, profit, and OpenAI Fast fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -427,7 +427,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			AllowLive:                       groupForSnapshot.AllowLive,
 			DefaultMappedModel:              groupForSnapshot.DefaultMappedModel,
 			MessagesDispatchModelConfig:     groupForSnapshot.MessagesDispatchModelConfig,
-			ModelsListConfig:                groupForSnapshot.ModelsListConfig,
+			ModelAllowlist:                  groupForSnapshot.ModelAllowlist,
+			CodexModelsManifestConfig:       groupForSnapshot.CodexModelsManifestConfig,
 			RPMLimit:                        groupForSnapshot.RPMLimit,
 			MaxReasoningEffort:              groupForSnapshot.MaxReasoningEffort,
 			ReasoningEffortMappings:         groupForSnapshot.ReasoningEffortMappings,
@@ -534,7 +535,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			FreeOpenAIFast:                  snapshot.Group.FreeOpenAIFast,
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
-			ModelsListConfig:                snapshot.Group.ModelsListConfig,
+			ModelAllowlist:                  snapshot.Group.ModelAllowlist,
+			CodexModelsManifestConfig:       snapshot.Group.CodexModelsManifestConfig,
 			RPMLimit:                        snapshot.Group.RPMLimit,
 			MaxReasoningEffort:              snapshot.Group.MaxReasoningEffort,
 			MaxReasoningEffortOverLimit:     snapshot.Group.MaxReasoningEffortOverLimit,

@@ -10,13 +10,15 @@ import (
 )
 
 // expectedChannelMonitorProviders 是渠道监控 provider 允许的集合，需与
-// service.monitorProviders（internal/service/channel_monitor_validate.go）及
 // ent/schema/channel_monitor.go、channel_monitor_request_template.go 的
-// provider enum 同步。
+// provider enum 同步——enum 是持久化层权威，CHECK 约束必须是它的等价集合。
+// service.monitorProviders（internal/service/channel_monitor_validate.go）是
+// 它的子集：minimax 已进 enum 但上游尚未把它接进 service 校验表，因此暂时只能
+// 写库不能建监控；约束取超集不会漏放行，反之则会让 provider 无法落库。
 // 此处硬编码而非 import service：migrations 是叶子包，被 repository 依赖，
 // 反向 import 会成环。
 var expectedChannelMonitorProviders = []string{
-	"anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
+	"anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "kiro", "minimax", "openai", "zhipu",
 }
 
 // channelMonitorProviderConstraints 是承载 provider CHECK 的两个约束名。

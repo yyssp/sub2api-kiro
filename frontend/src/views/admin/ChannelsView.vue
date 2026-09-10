@@ -772,10 +772,10 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek']
+const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax']
 // composite 分组覆盖所有可调度的主平台（与后端 isConcreteRequestPlatform 及迁移 229
 // 重建的 composite_model_routes_target_platform_check 一致，已含 kiro 与国产供应商）。
-const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek']
+const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax']
 
 // ── Helpers ──
 function formatDate(value: string): string {
@@ -881,11 +881,7 @@ function createTokenPricingEntry(models: string[], defaults: Partial<PricingForm
     image_input_price: defaults.image_input_price ?? null,
     image_output_price: defaults.image_output_price ?? null,
     cache_write_1h_price: null,
-    cache_read_price: defaults.cache_read_price ?? null,
-    fast_multiplier: defaults.fast_multiplier ?? null,
-    flex_multiplier: defaults.flex_multiplier ?? null,
-    image_input_price: defaults.image_input_price ?? null,
-    image_output_price: defaults.image_output_price ?? null,
+    max_reasoning_effort_multiplier: defaults.max_reasoning_effort_multiplier ?? null,
     per_request_price: null,
     intervals: [],
     time_pricing: createDefaultTimePricingForm()
@@ -1199,6 +1195,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         cache_read_price: mTokToPerToken(entry.cache_read_price),
         fast_multiplier: entry.fast_multiplier != null && entry.fast_multiplier !== '' ? Number(entry.fast_multiplier) : null,
         flex_multiplier: entry.flex_multiplier != null && entry.flex_multiplier !== '' ? Number(entry.flex_multiplier) : null,
+        max_reasoning_effort_multiplier: entry.max_reasoning_effort_multiplier != null && entry.max_reasoning_effort_multiplier !== '' ? Number(entry.max_reasoning_effort_multiplier) : null,
         image_input_price: mTokToPerToken(entry.image_input_price),
         image_output_price: mTokToPerToken(entry.image_output_price),
         per_request_price: entry.per_request_price != null && entry.per_request_price !== '' ? Number(entry.per_request_price) : null,
@@ -1301,6 +1298,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
         cache_read_price: perTokenToMTok(p.cache_read_price),
         fast_multiplier: p.fast_multiplier,
         flex_multiplier: p.flex_multiplier,
+        max_reasoning_effort_multiplier: p.max_reasoning_effort_multiplier,
         image_input_price: perTokenToMTok(p.image_input_price),
         image_output_price: perTokenToMTok(p.image_output_price),
         per_request_price: p.per_request_price,
@@ -1608,7 +1606,8 @@ async function handleSubmit() {
   for (const section of form.platforms.filter(s => s.enabled)) {
     for (const entry of section.model_pricing) {
       if (!isValidPositiveMultiplier(entry.fast_multiplier) ||
-          !isValidPositiveMultiplier(entry.flex_multiplier)) {
+          !isValidPositiveMultiplier(entry.flex_multiplier) ||
+          !isValidPositiveMultiplier(entry.max_reasoning_effort_multiplier)) {
         const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
         const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
         appStore.showError(`${platformLabel} - ${modelLabel}: ${t('admin.channels.form.multiplierPositive')}`)

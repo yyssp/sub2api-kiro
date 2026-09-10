@@ -206,6 +206,10 @@ export default {
       preserve: "Preserve calculated value",
       sampleMax: "Limit to maximum",
       sampleTarget: "Sample around target",
+      rawShort: "Raw",
+      preserveShort: "Preserve",
+      sampleMaxShort: "Max",
+      sampleTargetShort: "Target",
     },
     breakpointModes: {
       clientOnly: "Client breakpoints only",

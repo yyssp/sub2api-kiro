@@ -618,7 +618,9 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 				}
 				// 这两个事件是本地合成的，不走 switch 出口的 restoreNamespaceEvent；
 				// .done 携带 call.name（摊平名），必须显式还原成 namespace 子工具名。
-				emit(r.restoreNamespaceEvent(ResponsesStreamEvent{Type: "response.custom_tool_call_input.done", OutputIndex: call.outputIdx, ItemID: call.itemID, CallID: call.callID, Name: call.name, Input: input}))
+				// ItemID 必须用 clientItemID（ctc_ 前缀）与 .added/.delta 保持同一
+				// item 身份，用上游的 fc_ 会让客户端把 .done 当成陌生 item 丢弃。
+				emit(r.restoreNamespaceEvent(ResponsesStreamEvent{Type: "response.custom_tool_call_input.done", OutputIndex: call.outputIdx, ItemID: call.clientItemID, CallID: call.callID, Name: call.name, Input: input}))
 			}
 			return out
 		}

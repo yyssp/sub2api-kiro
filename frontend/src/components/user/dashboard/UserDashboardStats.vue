@@ -253,7 +253,11 @@ const PLATFORM_LABELS: Record<string, string> = {
   gemini: 'Gemini',
   antigravity: 'Antigravity',
   kiro: 'Kiro',
-  grok: 'Grok'
+  grok: 'Grok',
+  kimi: 'Kimi',
+  zhipu: 'Zhipu GLM',
+  deepseek: 'DeepSeek',
+  minimax: 'MiniMax',
 }
 
 const platformLabel = (p: string) => PLATFORM_LABELS[p] ?? p
