@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -62,7 +63,10 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		log.Printf("Sub2API %s (commit: %s, built: %s)\n", Version, Commit, Date)
+		// 直接写 stdout，不能走 log/slog：InitBootstrap 已把标准库 log 接到 zap 上，
+		// 版本号会被包成带时间戳和 legacy_stdlog 字段的结构化日志，既难读，也让
+		// deploy/install.sh 这类调用方难以解析。--version 属于 CLI 输出而非日志。
+		fmt.Printf("Sub2API %s (commit: %s, built: %s)\n", Version, Commit, Date)
 		return
 	}
 

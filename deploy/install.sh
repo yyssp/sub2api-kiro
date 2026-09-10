@@ -609,8 +609,11 @@ validate_version() {
 # Get current installed version
 get_current_version() {
     if [ -f "$INSTALL_DIR/sub2api" ]; then
+        # 必须带上预发布后缀：本 fork 的版本号形如 0.2.4-kiro-001，只截三段数字
+        # 会得到 0.2.4，和上游基线版本撞车，升级检查会误判成“已是最新”。
         # Use grep -E for better compatibility (works on macOS and Linux)
-        "$INSTALL_DIR/sub2api" --version 2>/dev/null | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown"
+        "$INSTALL_DIR/sub2api" --version 2>/dev/null \
+            | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' | head -1 || echo "unknown"
     else
         echo "not_installed"
     fi
@@ -866,7 +869,7 @@ upgrade() {
     print_info "$(msg 'upgrading')"
 
     # Get current version
-    CURRENT_VERSION=$("$INSTALL_DIR/sub2api" --version 2>/dev/null | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+    CURRENT_VERSION=$(get_current_version)
     print_info "$(msg 'current_version'): $CURRENT_VERSION"
 
     # Stop service
