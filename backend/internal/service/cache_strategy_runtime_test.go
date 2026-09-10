@@ -121,7 +121,7 @@ func TestCacheStrategyBindingAppliesToAnthropicMessagesProfile(t *testing.T) {
 		Enabled:  true,
 		Revision: 1,
 		Config: func() CacheStrategyConfig {
-			cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+			cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 			cfg.CoverageRatio = 0.5
 			cfg.UsageRatio = 1
 			return cfg
@@ -230,7 +230,7 @@ func TestCacheStrategyReplaceGroupsAllowsExistingOwnerAndPreservesConflictChecks
 func TestBoundCacheStrategyIsolatesCacheByAccount(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900003)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
 		ID:       strategyID,
@@ -273,7 +273,7 @@ func TestBoundCacheStrategyIsolatesCacheByAccount(t *testing.T) {
 func TestCacheTrackerFallsBackToOlderBreakpointWhenCreationIsCapped(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900004)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	cfg.CoverageRatio = 1
 	cfg.MaxNewCreationTokensPerRequest = 1500
@@ -345,7 +345,7 @@ func TestCacheTrackerFallsBackToOlderBreakpointWhenCreationIsCapped(t *testing.T
 func TestCacheStrategyDisabledBindingSkipsReadAndWrite(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900002)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindDisabled)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindDisabled)
 	GlobalCacheStrategyRegistry().Put(&CacheStrategy{ID: strategyID, Name: "disabled", Enabled: true, Revision: 1, Config: cfg})
 	group := &Group{ID: 9003, Platform: PlatformKiro, CacheStrategyID: &strategyID}
 	account := &Account{ID: 9004, Platform: PlatformKiro}
@@ -354,7 +354,7 @@ func TestCacheStrategyDisabledBindingSkipsReadAndWrite(t *testing.T) {
 
 func TestCacheStrategySnapshotKeepsExplicitDisabledBinding(t *testing.T) {
 	strategyID := int64(900003)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindDisabled)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindDisabled)
 	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
 		ID:       strategyID,
 		Name:     "显式关闭缓存",
@@ -429,7 +429,7 @@ func TestCacheUsagePolicySampleTargetIsDeterministic(t *testing.T) {
 }
 
 func TestNormalizeCacheStrategyConfigUsageDefaultsAndValidation(t *testing.T) {
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.Usage.Input = CacheUsageFieldPolicy{Mode: CacheUsageFieldSampleMax}
 	_, err := NormalizeCacheStrategyConfig(cfg)
 	require.Error(t, err)
@@ -448,7 +448,7 @@ func TestNormalizeCacheStrategyConfigUsageDefaultsAndValidation(t *testing.T) {
 func TestBoundCacheStrategySeparatesModelAndSessionScopes(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900004)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
 		ID: strategyID, Name: "scope isolation", Enabled: true, Revision: 1, Config: cfg,
@@ -484,7 +484,7 @@ func TestBoundCacheStrategySeparatesModelAndSessionScopes(t *testing.T) {
 func TestBoundCacheStrategyGroupSessionSharesCacheAcrossAccounts(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900006)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	cfg.ScopeMode = CacheScopeModeGroupSession
 	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
@@ -524,7 +524,7 @@ func TestBoundCacheStrategyGroupSessionSharesCacheAcrossAccounts(t *testing.T) {
 func TestCreationCapAlsoLimitsCommittedBreakpoints(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900005)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	cfg.MaxNewCreationTokensPerRequest = 2500
 	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
@@ -552,7 +552,7 @@ func TestCreationCapAlsoLimitsCommittedBreakpoints(t *testing.T) {
 func TestCreationCapBelowCompleteBreakpointDoesNotFabricateUsageOrState(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900007)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindToolAware)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindToolAware)
 	cfg.MinCacheableTokens = 1
 	cfg.MaxNewCreationTokensPerRequest = 90
 	cfg.Usage.Input = CacheUsageFieldPolicy{
@@ -592,7 +592,7 @@ func TestCreationCapBelowCompleteBreakpointDoesNotFabricateUsageOrState(t *testi
 func TestAutoBreakpointsExcludeCurrentUserWithoutExplicitClientBreakpoint(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900010)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	cfg.BreakpointMode = CacheBreakpointAuto
 	cfg.CacheCurrentUserStablePrefix = false
@@ -623,7 +623,7 @@ func TestAutoBreakpointsExcludeCurrentUserWithoutExplicitClientBreakpoint(t *tes
 func TestExplicitClientBreakpointCanIncludeCurrentUser(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900011)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	cfg.BreakpointMode = CacheBreakpointHybrid
 	cfg.CacheCurrentUserStablePrefix = false
@@ -652,7 +652,7 @@ func TestExplicitClientBreakpointCanIncludeCurrentUser(t *testing.T) {
 func TestZeroProjectedCacheUsageDoesNotCommitHiddenProfile(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900008)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	cfg.RatioMode = CacheRatioModeIndependent
 	cfg.ReadRatio = 0
@@ -695,7 +695,7 @@ func TestReportedInputCapJitterIsDeterministicAndBounded(t *testing.T) {
 func TestReportedInputMinimumRemainsUncachedWhenFeasible(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900009)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	cfg.ReportedInputMinTokens = 64
 	cfg.ReportedInputMaxTokens = 120
@@ -739,7 +739,7 @@ func TestReportedInputMinimumRemainsUncachedWhenFeasible(t *testing.T) {
 func TestReportedInputCapAppliesWhenNoCacheBucketIsReportable(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900010)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	cfg.RatioMode = CacheRatioModeIndependent
 	cfg.ReadRatio = 0
@@ -769,7 +769,7 @@ func TestReportedInputCapAppliesWhenNoCacheBucketIsReportable(t *testing.T) {
 }
 
 func TestNormalizeCacheStrategyConfigAcceptsToolAwareKind(t *testing.T) {
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindToolAware)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindToolAware)
 	normalized, err := NormalizeCacheStrategyConfig(cfg)
 	require.NoError(t, err)
 	require.Equal(t, CacheStrategyKindToolAware, normalized.Kind)

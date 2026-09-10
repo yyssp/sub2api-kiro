@@ -18,7 +18,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/anthropictokenizer"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 const (
@@ -424,11 +426,21 @@ func cachePlanForProtocol(ctx context.Context, account *Account, group *Group, b
 	}
 }
 
-func prepareCachePlanForContext(ctx context.Context, c *gin.Context, account *Account, group *Group, body []byte, model, protocol string, inputTokens int) *cacheEmulationPlan {
+func prepareCachePlanForContext(ctx context.Context, c *gin.Context, account *Account, group *Group, body []byte, model, protocol string, inputTokens int) (plan *cacheEmulationPlan) {
 	if existing := cachePlanFromContext(c); existing != nil {
 		return existing
 	}
-	plan := cachePlanForProtocol(ctx, account, group, body, model, protocol, inputTokens)
+	// 缓存是旁路能力：策略配置再离谱、请求体再畸形，都不能让用户的请求失败。
+	// 出问题就降级成「这次不用缓存」，正常转发。
+	defer func() {
+		if r := recover(); r != nil {
+			logger.L().Error("cache plan panicked; forwarding without cache",
+				zap.Any("panic", r), zap.String("model", model), zap.String("protocol", protocol))
+			plan = nil
+			setCachePlanContext(c, nil)
+		}
+	}()
+	plan = cachePlanForProtocol(ctx, account, group, body, model, protocol, inputTokens)
 	setCachePlanContext(c, plan)
 	return plan
 }
@@ -443,6 +455,14 @@ func mergeAndCommitCachePlan(c *gin.Context, usage *ClaudeUsage, success bool) {
 	if plan == nil {
 		return
 	}
+	// usage 改写发生在响应即将返回给客户端时，此处 panic 会毁掉一个本已成功的请求。
+	// 宁可这次不上报缓存字段，也不能让请求失败。
+	defer func() {
+		if r := recover(); r != nil {
+			logger.L().Error("cache usage merge panicked; returning upstream usage as-is",
+				zap.Any("panic", r))
+		}
+	}()
 	if usage != nil {
 		upstreamEvidence := claudeUsageHasCacheEvidence(usage)
 		projectClaudeUsage(usage, plan.result(), plan.usagePolicy, plan.cacheKey)
@@ -450,7 +470,7 @@ func mergeAndCommitCachePlan(c *gin.Context, usage *ClaudeUsage, success bool) {
 			if plan.result() == nil {
 				applyReportedInputWithoutCacheClaude(usage, plan)
 			} else {
-				constrainClaudeUsageTotal(usage, plan.profile.reportedInputTokens, plan.profile.policy.ReportedInputMinTokens)
+				constrainClaudeUsageTotal(usage, plan.profile.reportedInputTokens, uncachedInputFloor(plan.profile.policy).min)
 			}
 		}
 	}
@@ -477,7 +497,7 @@ func mergeAndCommitOpenAICachePlan(c *gin.Context, usage *OpenAIUsage, success b
 			if plan.result() == nil {
 				applyReportedInputWithoutCacheOpenAI(usage, plan)
 			} else {
-				constrainOpenAIUsageTotal(usage, plan.profile.reportedInputTokens, plan.profile.policy.ReportedInputMinTokens)
+				constrainOpenAIUsageTotal(usage, plan.profile.reportedInputTokens, uncachedInputFloor(plan.profile.policy).min)
 			}
 		}
 	}
@@ -715,22 +735,36 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(account *Account, 
 	}
 	rawReadTokens := result.CacheReadInputTokens
 	rawCreationTokens := result.CacheCreationInputTokens
-	// Creation controls govern the actual state transition, not only the
-	// projected usage. Apply them in runtime token space before any reporting
-	// ratio is applied, then trim the commit profile to the same boundary.
+	// Hard per-request limits govern the actual state transition: they decide how
+	// much of the prefix may be written at all, so the commit profile is trimmed
+	// to the same boundary.
 	if policy.MaxNewCreationTokensPerRequest > 0 && rawCreationTokens > policy.MaxNewCreationTokensPerRequest {
 		rawCreationTokens = policy.MaxNewCreationTokensPerRequest
 	}
 	if !policy.IncrementalCreateEnabled && rawReadTokens > 0 {
 		rawCreationTokens = 0
 	}
+	// The write set is chosen from the full candidate, *before* creation control
+	// runs. Creation control shapes what gets reported, not whether the prefix
+	// advances — the same split 2ue_kiro.rs makes in with_allowed_creation().
+	//
+	// Doing it the other way round deadlocks. Auto-derived breakpoints move to a
+	// new position every turn, so a suppressed creation leaves the turn with no
+	// committed breakpoint at all; the next turn finds nothing to read, produces
+	// another suppressed creation, and cache_read stays 0 for the whole
+	// conversation. Both the minimum interval and the per-event cap trigger this.
+	committedCreationTokens := limitCacheProfileWriteSet(profile, rawReadTokens, rawCreationTokens)
 	controlUsage := &cacheEmulationUsage{
 		CacheReadInputTokens:       rawReadTokens,
-		CacheCreationInputTokens:   rawCreationTokens,
+		CacheCreationInputTokens:   committedCreationTokens,
 		CacheCreation5mInputTokens: result.CacheCreation5mInputTokens,
 		CacheCreation1hInputTokens: result.CacheCreation1hInputTokens,
 	}
-	if policy.CreationControl.MinCreationDeltaTokens > 0 && controlUsage.CacheCreationInputTokens < policy.CreationControl.MinCreationDeltaTokens {
+	// 增量下限属于创建控制的一部分，控制整体关掉时它也必须失效。
+	// 之前这里漏判 Enabled，只是因为默认值是 0 才没暴露。
+	if policy.CreationControl.Enabled &&
+		policy.CreationControl.MinCreationDeltaTokens > 0 &&
+		controlUsage.CacheCreationInputTokens < policy.CreationControl.MinCreationDeltaTokens {
 		controlUsage.CacheCreationInputTokens = 0
 		controlUsage.CacheCreation5mInputTokens = 0
 		controlUsage.CacheCreation1hInputTokens = 0
@@ -741,8 +775,9 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(account *Account, 
 		controlUsage.CacheCreation5mInputTokens = 0
 		controlUsage.CacheCreation1hInputTokens = 0
 	}
-	rawCreationTokens = limitCacheProfileWriteSet(profile, rawReadTokens, rawCreationTokens)
-	controlUsage.CacheCreationInputTokens = rawCreationTokens
+	// Creation suppressed for reporting is not lost: input_tokens is derived as
+	// total - read - creation in constrainReportedCacheUsage, so it flows back
+	// into uncached input exactly like 2ue_kiro.rs's saturating_add.
 	controlUsage.CacheCreation5mInputTokens, controlUsage.CacheCreation1hInputTokens =
 		scaleCacheCreationTTLToTotal(
 			controlUsage.CacheCreation5mInputTokens,
@@ -774,11 +809,11 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(account *Account, 
 	if reportedTotal <= 0 {
 		reportedTotal = inputTokens
 	}
-	constrainReportedCacheUsage(result, reportedTotal, policy.ReportedInputMinTokens)
-	if result.CacheReadInputTokens == 0 && result.CacheCreationInputTokens == 0 {
-		// No cache usage is reportable after creation/read controls and ratios
-		// have been applied. Do not commit a profile that would make hidden
-		// entries readable on a later request.
+	constrainReportedCacheUsage(result, reportedTotal, uncachedInputFloor(policy), profileJitterSeed(profile))
+	if result.CacheReadInputTokens == 0 && result.CacheCreationInputTokens == 0 &&
+		!creationControlSuppressedReportableWrite(policy, committedCreationTokens) {
+		// Nothing is reportable and nothing was written. Do not commit a profile
+		// that would make hidden entries readable on a later request.
 		profile.breakpoints = nil
 		result = nil
 	}
@@ -787,11 +822,43 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(account *Account, 
 	}
 }
 
+// uncachedInputBand describes the range the reported uncached input_tokens is
+// restored into when the cache buckets would otherwise swallow the whole
+// prompt. min == 0 disables the floor entirely.
+type uncachedInputBand struct {
+	min int
+	max int
+}
+
+// uncachedInputFloor resolves the effective band. reported_input_min_tokens is
+// honoured as a legacy fallback: before the dedicated uncached_input_* fields
+// existed it doubled as this floor, and strategies stored in the database still
+// carry the old shape.
+func uncachedInputFloor(policy CacheStrategyConfig) uncachedInputBand {
+	band := uncachedInputBand{min: policy.UncachedInputMinTokens, max: policy.UncachedInputMaxTokens}
+	if band.min <= 0 {
+		band.min = policy.ReportedInputMinTokens
+	}
+	if band.min < 0 {
+		band.min = 0
+	}
+	if band.max < band.min {
+		band.max = band.min
+	}
+	return band
+}
+
 // constrainReportedCacheUsage keeps the reported buckets within the projected
 // total and preserves the configured uncached-input floor whenever feasible.
 // Cache creation is trimmed before cache reads because writes are optional
 // state transitions, while a hit is evidence of an already-existing prefix.
-func constrainReportedCacheUsage(result *cacheEmulationUsage, reportedTotal, minInput int) {
+//
+// The restored value is jittered inside [band.min, band.max] and derived from
+// the request fingerprint, so a capped conversation does not report the exact
+// same input_tokens on every turn while retries stay stable. Input that is
+// already above the floor is left alone — pushing it back down into
+// cache_creation would reclassify cheap tokens as more expensive ones.
+func constrainReportedCacheUsage(result *cacheEmulationUsage, reportedTotal int, band uncachedInputBand, seed uint64) {
 	if result == nil {
 		return
 	}
@@ -805,10 +872,11 @@ func constrainReportedCacheUsage(result *cacheEmulationUsage, reportedTotal, min
 		result.CacheCreationInputTokens,
 	)
 
-	minInput = min(max(minInput, 0), reportedTotal)
+	minInput := min(max(band.min, 0), reportedTotal)
 	input := reportedTotal - result.CacheReadInputTokens - result.CacheCreationInputTokens
-	if input < minInput {
-		deficit := minInput - input
+	if minInput > 0 && input < minInput {
+		target := jitterWithin(minInput, min(max(band.max, minInput), reportedTotal), seed)
+		deficit := target - input
 		reduceCreation := min(deficit, result.CacheCreationInputTokens)
 		result.CacheCreationInputTokens -= reduceCreation
 		deficit -= reduceCreation
@@ -824,6 +892,58 @@ func constrainReportedCacheUsage(result *cacheEmulationUsage, reportedTotal, min
 		input = reportedTotal - result.CacheReadInputTokens - result.CacheCreationInputTokens
 	}
 	result.InputTokens = max(input, 0)
+}
+
+// minViableCreationTokens returns the smallest creation amount that still lets
+// limitCacheProfileWriteSet commit at least one breakpoint, or 0 when no
+// breakpoint is committable at all.
+func minViableCreationTokens(profile *cacheProfile, readTokens int) int {
+	if profile == nil {
+		return 0
+	}
+	readTokens = max(readTokens, 0)
+	best := 0
+	for _, breakpoint := range profile.breakpoints {
+		if breakpoint.blockIndex < 0 || breakpoint.blockIndex >= len(profile.blocks) {
+			continue
+		}
+		tokens := profile.cacheTokensForBreakpoint(profile.blocks[breakpoint.blockIndex].cumulativeTokens)
+		need := tokens - readTokens
+		if need <= 0 {
+			continue
+		}
+		if best == 0 || need < best {
+			best = need
+		}
+	}
+	return best
+}
+
+// creationControlSuppressedReportableWrite reports whether a write really
+// happened this turn and only creation control kept it out of the response.
+//
+// Both cases end with zero reported cache usage, but they must not be treated
+// alike:
+//
+//   - The ratios zeroed it out (read_ratio/creation_ratio = 0, usage disabled).
+//     Nothing is ever reportable for this strategy, so committing the profile
+//     would create cache state the client can never see — hidden entries that
+//     silently become readable later. Drop it.
+//   - Creation control smoothed it away (per-event cap, minimum interval,
+//     window budget). The prefix write is legitimate and the suppressed tokens
+//     reflow into input_tokens; dropping the commit here is what used to stall
+//     the cache for an entire conversation.
+func creationControlSuppressedReportableWrite(policy CacheStrategyConfig, committedCreationTokens int) bool {
+	if committedCreationTokens <= 0 || !policy.CreationControl.Enabled {
+		return false
+	}
+	creationRatio := policy.UsageRatio
+	if policy.RatioMode == CacheRatioModeIndependent {
+		creationRatio = policy.CreationRatio
+	}
+	// A zero ratio means this strategy never reports creation at all, so the
+	// suppression cannot be attributed to creation control.
+	return creationRatio > 0 && scaleCacheTokens(committedCreationTokens, creationRatio) > 0
 }
 
 // limitCacheProfileWriteSet keeps only complete breakpoints that can be
@@ -842,6 +962,11 @@ func limitCacheProfileWriteSet(profile *cacheProfile, readTokens, creationTokens
 	filtered := make([]cacheBreakpoint, 0, len(profile.breakpoints))
 	actualTarget := 0
 	for _, breakpoint := range profile.breakpoints {
+		// 这里遍历的是未经 cacheableBreakpoints() 过滤的原始断点，blockIndex 可能越界。
+		// 缓存是旁路能力，任何情况下都不能让请求 panic。
+		if breakpoint.blockIndex < 0 || breakpoint.blockIndex >= len(profile.blocks) {
+			continue
+		}
 		tokens := profile.cacheTokensForBreakpoint(profile.blocks[breakpoint.blockIndex].cumulativeTokens)
 		if tokens <= 0 || tokens > limit {
 			continue
@@ -994,12 +1119,32 @@ func applyReportedInputJitter(capped, minJitter, maxJitter int, seed uint64, low
 	if maxJitter < minJitter {
 		maxJitter = minJitter
 	}
+	// 抖动只是给触顶值加一点噪声，不能把它整体拉低一个量级。
+	// cap_jitter 的默认值（12k~24k）是按 kiro.rs 30 万的模拟上限定的；
+	// 用户把 reported_input_max_tokens 设成 3 万时照搬会砍掉八成，
+	// 上报出来根本不是"触顶"该有的样子。统一限制在触顶值的 25% 以内。
+	//
+	// 注意 min 要按同比例缩放而不是一起夹到 ceiling：两端都取 ceiling 会让区间塌成
+	// 一个点，每条记录又变成同一个数字 —— 正是这个抖动要解决的问题。
+	if ceiling := capped / 4; ceiling > 0 && maxJitter > ceiling {
+		minJitter = int(int64(minJitter) * int64(ceiling) / int64(maxJitter))
+		maxJitter = ceiling
+	}
 	span := maxJitter - minJitter + 1
 	jitter := minJitter
 	if span > 1 {
 		jitter += int(splitmix64(seed) % uint64(span))
 	}
 	return max(capped-jitter, max(lowerBound, 0))
+}
+
+// jitterWithin picks a deterministic value inside [low, high]. The same seed
+// always yields the same value so retries of one request stay consistent.
+func jitterWithin(low, high int, seed uint64) int {
+	if high <= low {
+		return low
+	}
+	return low + int(splitmix64(seed)%uint64(high-low+1))
 }
 
 func profileJitterSeed(profile *cacheProfile) uint64 {

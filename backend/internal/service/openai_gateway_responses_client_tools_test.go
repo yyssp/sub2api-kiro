@@ -47,7 +47,7 @@ func openAIClientToolsTestService(upstream *httpUpstreamRecorder) *OpenAIGateway
 func openAIPassthroughCacheStrategyTestSetup(t *testing.T, strategyID int64) func() {
 	t.Helper()
 	resetCacheTracker()
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.RatioMode = CacheRatioModeIndependent
 	cfg.CoverageRatio = 0.9
 	cfg.UsageRatio = 0.9

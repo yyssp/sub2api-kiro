@@ -117,6 +117,15 @@ type CacheStrategyConfig struct {
 	ModelMinCacheableOverrides       map[string]int       `json:"model_min_cacheable_overrides,omitempty"`
 	ReportedInputMinTokens           int                  `json:"reported_input_min_tokens"`
 	ReportedInputMaxTokens           int                  `json:"reported_input_max_tokens"`
+	// UncachedInput* 约束的是上报 usage 里那份「未命中缓存」的 input_tokens，
+	// 与 ReportedInput*（约束的是 input 总量）不是一回事。缓存把整个前缀吃光时
+	// input 会掉到 0，而真实 API 不存在 input=0 且 cache_read>0 的组合，
+	// 所以低于下限时要从 creation/read 里退还一部分。
+	// 退还目标在 [min, max] 内按请求指纹抖动，避免每条都是同一个数字。
+	// 注意：input 已经高于下限时不做任何处理 —— 不会把 input 反向塞进 creation，
+	// 那会把便宜的 input 计成更贵的 creation。
+	UncachedInputMinTokens int `json:"uncached_input_min_tokens"`
+	UncachedInputMaxTokens int `json:"uncached_input_max_tokens"`
 	TokenScale                       float64              `json:"token_scale"`
 	ScaleMinInputTokens              int                  `json:"scale_min_input_tokens"`
 	MaxSimulatedInputTokens          int                  `json:"max_simulated_input_tokens"`
@@ -157,12 +166,40 @@ func DefaultCacheStrategyConfig(kind string) CacheStrategyConfig {
 		IncrementalCreateEnabled:   true, MinCacheableTokens: 1024, TokenScale: 1,
 		ScaleMinInputTokens: 20000, DefaultTTLSeconds: 300, HourTTLSeconds: 3600, MaxEntriesPerScope: 128,
 		MaxEntriesGlobal: 10000, EstimatedBytesLimit: 64 << 20,
+		// 触顶抖动。留 0 的话所有触顶请求会上报同一个数值，一眼看去就是伪造的。
+		CapJitterMinTokens: 12000, CapJitterMaxTokens: 24000,
+		UncachedInputMinTokens: 1024, UncachedInputMaxTokens: 4096,
+		// 创建控制的默认限额。全留 0 等于不限流，缓存会无节制增长；
+		// 数值取自 kiro.rs 的 PromptCacheCreationControlConfig 默认值
+		// （5 分钟窗口 12 万、单次 3 万、增量下限 1.2 万、最小间隔 60 秒）。
+		CreationControl: CacheCreationControl{
+			Enabled:                     true,
+			MinCreationDeltaTokens:      12000,
+			MinCreationIntervalSeconds:  60,
+			MaxCreationTokensPerEvent:   30000,
+			CreationBudgetWindowSeconds: 300,
+			MaxCreationTokensPerWindow:  120000,
+		},
 		Usage: DefaultCacheUsagePolicy(),
+	}
+	if kind == CacheStrategyKindToolAware {
+		// tool_aware 对齐 kiro.rs 的 KiroRsTool 模板：那条路径把「本地模拟」整组关掉
+		// （token_scale / 触顶抖动 / 模拟上限全部归零）、创建控制也关掉，
+		// 只靠 KiroRsToolCachePolicy 的几个值工作 —— 全量覆盖 + 一个很小的未缓存 input 区间。
+		// 与 prefix（对应 CurrentHighCache，模拟与限流都开）是两套互斥的参数，不是叠加。
+		c.CoverageRatio = 1
+		c.TokenScale, c.ScaleMinInputTokens, c.MaxSimulatedInputTokens = 1, 0, 0
+		c.CapJitterMinTokens, c.CapJitterMaxTokens = 0, 0
+		c.UncachedInputMinTokens, c.UncachedInputMaxTokens = 32, 4096
+		c.CreationControl = CacheCreationControl{}
 	}
 	if kind == CacheStrategyKindDisabled {
 		c.CacheSystem, c.CacheTools, c.CacheHistory, c.CacheToolResults = false, false, false, false
 		c.CoverageRatio, c.UsageRatio, c.ReadRatio, c.CreationRatio = 0, 0, 0, 0
 		c.IncrementalCreateEnabled = false
+		c.CapJitterMinTokens, c.CapJitterMaxTokens = 0, 0
+		c.UncachedInputMinTokens, c.UncachedInputMaxTokens = 0, 0
+		c.CreationControl = CacheCreationControl{}
 		c.Usage = DefaultCacheUsagePolicy()
 		c.Usage.Enabled = false
 		c.PreserveUpstreamCacheUsage = false
@@ -178,6 +215,14 @@ func NormalizeCacheStrategyConfig(in CacheStrategyConfig) (CacheStrategyConfig, 
 	case CacheStrategyKindDisabled, CacheStrategyKindPrefix, CacheStrategyKindToolAware:
 	default:
 		return in, fmt.Errorf("config.kind must be disabled, prefix or tool_aware")
+	}
+	// cache_history 与 cache_current_user_stable_prefix 同时关闭时，历史消息被过滤掉，
+	// 只剩当前用户消息，而它在没有显式 cache_control 时按设计不作为断点 —— 结果是
+	// 没有任何内容可缓存，策略静默失效（表现为缓存恒为 0）。这种组合只可能是误配。
+	if in.Kind != CacheStrategyKindDisabled && !in.CacheHistory && !in.CacheCurrentUserStablePrefix {
+		return in, fmt.Errorf(
+			"config.cache_history 与 config.cache_current_user_stable_prefix 不能同时为 false：" +
+				"两者都关闭后没有任何内容可缓存，策略会静默失效")
 	}
 	if in.RatioMode == "" {
 		in.RatioMode = CacheRatioModeUniform
@@ -232,6 +277,12 @@ func NormalizeCacheStrategyConfig(in CacheStrategyConfig) (CacheStrategyConfig, 
 	if in.CapJitterMinTokens > in.CapJitterMaxTokens && in.CapJitterMaxTokens > 0 {
 		return in, errors.New("config.cap_jitter_min_tokens must be <= cap_jitter_max_tokens")
 	}
+	if in.UncachedInputMinTokens < 0 || in.UncachedInputMaxTokens < 0 {
+		return in, errors.New("config.uncached_input_* tokens must be non-negative")
+	}
+	if in.UncachedInputMaxTokens > 0 && in.UncachedInputMinTokens > in.UncachedInputMaxTokens {
+		return in, errors.New("config.uncached_input_min_tokens must be <= uncached_input_max_tokens")
+	}
 	if in.HourTTLSeconds < in.DefaultTTLSeconds {
 		return in, errors.New("config.hour_ttl_seconds must be >= default_ttl_seconds")
 	}
@@ -242,6 +293,16 @@ func NormalizeCacheStrategyConfig(in CacheStrategyConfig) (CacheStrategyConfig, 
 		in.CreationControl.CreationBudgetWindowSeconds < 0 ||
 		in.CreationControl.MaxCreationTokensPerWindow < 0 {
 		return in, errors.New("config.creation_control values must be non-negative")
+	}
+	// 增量下限高于单次创建上限时，任何一次创建都无法同时满足两者：小于下限的被丢弃，
+	// 剩下的又会被上限截断。结果是缓存几乎永远建不起来（缓存恒为 0）。
+	if in.CreationControl.Enabled &&
+		in.CreationControl.MinCreationDeltaTokens > 0 &&
+		in.CreationControl.MaxCreationTokensPerEvent > 0 &&
+		in.CreationControl.MinCreationDeltaTokens > in.CreationControl.MaxCreationTokensPerEvent {
+		return in, errors.New(
+			"config.creation_control.min_creation_delta_tokens 不能大于 max_creation_tokens_per_event：" +
+				"两者冲突会导致缓存几乎无法创建")
 	}
 	in.Usage = normalizeCacheUsagePolicy(in.Usage)
 	in.Usage.PreserveUpstreamCacheUsage = in.PreserveUpstreamCacheUsage

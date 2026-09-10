@@ -311,6 +311,9 @@ func (u *routeCacheUpstream) setFailAll(value bool) {
 
 func newRouteCacheStrategy() (int64, service.CacheStrategyConfig) {
 	cfg := service.DefaultCacheStrategyConfig(service.CacheStrategyKindPrefix)
+	// 玩具级负载：关掉对齐 kiro.rs 的创建增量下限与未缓存 input 下限，否则永远建不起缓存。
+	cfg.CreationControl = service.CacheCreationControl{}
+	cfg.UncachedInputMinTokens, cfg.UncachedInputMaxTokens = 0, 0
 	cfg.MinCacheableTokens = 1
 	cfg.DefaultTTLSeconds = 300
 	cfg.HourTTLSeconds = 3600
@@ -345,6 +348,9 @@ func newRouteCacheStrategyWithConfig(strategyID int64, name string, cfg service.
 
 func highCacheUsageRouteConfig() service.CacheStrategyConfig {
 	cfg := service.DefaultCacheStrategyConfig(service.CacheStrategyKindPrefix)
+	// 玩具级负载：关掉对齐 kiro.rs 的创建增量下限与未缓存 input 下限，否则永远建不起缓存。
+	cfg.CreationControl = service.CacheCreationControl{}
+	cfg.UncachedInputMinTokens, cfg.UncachedInputMaxTokens = 0, 0
 	cfg.UsageRatio = 0.98
 	cfg.ReadRatio = 0.98
 	cfg.CreationRatio = 0.98
@@ -361,6 +367,9 @@ func highCacheUsageRouteConfig() service.CacheStrategyConfig {
 
 func claudeCodeUsageRouteConfig() service.CacheStrategyConfig {
 	cfg := service.DefaultCacheStrategyConfig(service.CacheStrategyKindToolAware)
+	// 玩具级负载：关掉对齐 kiro.rs 的创建增量下限与未缓存 input 下限，否则永远建不起缓存。
+	cfg.CreationControl = service.CacheCreationControl{}
+	cfg.UncachedInputMinTokens, cfg.UncachedInputMaxTokens = 0, 0
 	cfg.TokenScale = 1.12
 	cfg.ScaleMinInputTokens = 20000
 	cfg.MaxSimulatedInputTokens = 128000
@@ -399,6 +408,9 @@ func inputShapingUsageRouteConfig() service.CacheStrategyConfig {
 
 func lowFrequencyCreationUsageRouteConfig() service.CacheStrategyConfig {
 	cfg := service.DefaultCacheStrategyConfig(service.CacheStrategyKindPrefix)
+	// 玩具级负载：关掉对齐 kiro.rs 的创建增量下限与未缓存 input 下限，否则永远建不起缓存。
+	cfg.CreationControl = service.CacheCreationControl{}
+	cfg.UncachedInputMinTokens, cfg.UncachedInputMaxTokens = 0, 0
 	cfg.RatioMode = service.CacheRatioModeIndependent
 	cfg.CoverageRatio = 0.78
 	cfg.UsageRatio = 0.75
@@ -431,6 +443,9 @@ func lowFrequencyCreationUsageRouteConfig() service.CacheStrategyConfig {
 
 func readPriorityUsageRouteConfig() service.CacheStrategyConfig {
 	cfg := service.DefaultCacheStrategyConfig(service.CacheStrategyKindToolAware)
+	// 玩具级负载：关掉对齐 kiro.rs 的创建增量下限与未缓存 input 下限，否则永远建不起缓存。
+	cfg.CreationControl = service.CacheCreationControl{}
+	cfg.UncachedInputMinTokens, cfg.UncachedInputMaxTokens = 0, 0
 	cfg.RatioMode = service.CacheRatioModeIndependent
 	cfg.CoverageRatio = 0.9
 	cfg.UsageRatio = 0.9
@@ -464,6 +479,9 @@ func readPriorityUsageRouteConfig() service.CacheStrategyConfig {
 
 func noCacheUsageRouteConfig() service.CacheStrategyConfig {
 	cfg := service.DefaultCacheStrategyConfig(service.CacheStrategyKindDisabled)
+	// 玩具级负载：关掉对齐 kiro.rs 的创建增量下限与未缓存 input 下限，否则永远建不起缓存。
+	cfg.CreationControl = service.CacheCreationControl{}
+	cfg.UncachedInputMinTokens, cfg.UncachedInputMaxTokens = 0, 0
 	return cfg
 }
 

@@ -72,7 +72,7 @@ func newGroupCacheTestService(t *testing.T) (*GatewayService, *cacheProtocolMock
 	t.Helper()
 	resetCacheTracker()
 	strategyID := int64(99001)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	cfg.DefaultTTLSeconds = 300
 	cfg.HourTTLSeconds = 3600

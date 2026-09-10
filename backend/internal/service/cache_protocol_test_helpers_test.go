@@ -23,7 +23,7 @@ var cacheProtocolTestStrategyOnce sync.Once
 // that do not send an explicit session key.
 func cacheGroup(id int64) *Group {
 	cacheProtocolTestStrategyOnce.Do(func() {
-		cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+		cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 		cfg.MinCacheableTokens = 1
 		cfg.AllowDerivedSession = true
 		cfg.DefaultTTLSeconds = 300

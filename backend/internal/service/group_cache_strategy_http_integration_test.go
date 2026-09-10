@@ -147,7 +147,7 @@ func TestGroupCacheStrategyHTTPMultiAccountAndRevisionIsolation(t *testing.T) {
 	resetCacheTracker()
 
 	strategyID := int64(99101)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	cfg.DefaultTTLSeconds = 300
 	cfg.HourTTLSeconds = 3600
@@ -244,7 +244,7 @@ func TestGroupCacheStrategyHTTPUsagePolicyShapesUpstreamCacheBuckets(t *testing.
 	resetCacheTracker()
 
 	strategyID := int64(99151)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	cfg.Usage = DefaultCacheUsagePolicy()
 	cfg.Usage.Input = CacheUsageFieldPolicy{Mode: CacheUsageFieldRaw}
@@ -304,7 +304,7 @@ func TestGroupCacheStrategyHTTPMultipleStrategyProfiles(t *testing.T) {
 	t.Run("prefix high cache policy", func(t *testing.T) {
 		resetCacheTracker()
 		strategyID := int64(99201)
-		cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+		cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 		cfg.MinCacheableTokens = 1
 		cfg.CoverageRatio = 0.72
 		cfg.UsageRatio = 0.95
@@ -387,7 +387,7 @@ func TestGroupCacheStrategyHTTPMultipleStrategyProfiles(t *testing.T) {
 	t.Run("tool aware group session shared across accounts", func(t *testing.T) {
 		resetCacheTracker()
 		strategyID := int64(99202)
-		cfg := DefaultCacheStrategyConfig(CacheStrategyKindToolAware)
+		cfg := smallPayloadCacheConfig(CacheStrategyKindToolAware)
 		cfg.MinCacheableTokens = 1
 		cfg.RatioMode = CacheRatioModeIndependent
 		cfg.ReadRatio = 0.64
@@ -456,7 +456,7 @@ func TestGroupCacheStrategyHTTPMultipleStrategyProfiles(t *testing.T) {
 	t.Run("disabled strategy keeps upstream usage untouched", func(t *testing.T) {
 		resetCacheTracker()
 		strategyID := int64(99203)
-		cfg := DefaultCacheStrategyConfig(CacheStrategyKindDisabled)
+		cfg := smallPayloadCacheConfig(CacheStrategyKindDisabled)
 		registerCacheStrategyProfile(t, strategyID, "disabled-cache", cfg)
 
 		server, _ := newCacheStrategyHTTPServer(t, anthropicCacheStreamResponse(10, 0, 0, 5))

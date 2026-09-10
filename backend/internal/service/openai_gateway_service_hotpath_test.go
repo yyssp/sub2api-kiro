@@ -341,7 +341,7 @@ func TestOpenAIGatewayService_Forward_ResponsesCachePlanUsesResponsesEstimator(t
 	resetCacheTracker()
 
 	strategyID := int64(99011)
-	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
 	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
 		ID:       strategyID,
