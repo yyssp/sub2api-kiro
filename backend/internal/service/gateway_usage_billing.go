@@ -596,15 +596,13 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 	}
 }
 
-// recordUsageOpts 内部选项，参数化普通计费与长上下文计费的差异点。
+// recordUsageOpts 内部选项，承载计费主干需要但函数签名不便逐个透传的差异点。
+// 长上下文阶梯计价已由价格目录数据驱动（见 BillingService 阶梯单价表），故不再在此参数化。
 type recordUsageOpts struct {
-	// 长上下文计费（仅 Gemini 路径需要）
-	LongContextThreshold  int
-	LongContextMultiplier float64
-
 	// Kiro 账号在上游返回 auto 等无法定价模型时使用保守计费兜底。
 	IsKiroAccount bool
 }
+
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
 func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
 	return s.recordUsageCore(ctx, &recordUsageCoreInput{
@@ -625,53 +623,6 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		QuotaPlatform:      input.QuotaPlatform,
 		ChannelUsageFields: input.ChannelUsageFields,
 	}, &recordUsageOpts{})
-}
-
-// RecordUsageLongContextInput 记录使用量的输入参数（支持长上下文双倍计费）
-type RecordUsageLongContextInput struct {
-	Result                *ForwardResult
-	APIKey                *APIKey
-	User                  *User
-	Account               *Account
-	Subscription          *UserSubscription
-	PricingAt             time.Time
-	InboundEndpoint       string
-	UpstreamEndpoint      string
-	UserAgent             string
-	IPAddress             string
-	SessionID             string
-	RequestPayloadHash    string
-	LongContextThreshold  int
-	LongContextMultiplier float64
-	ForceCacheBilling     bool
-	APIKeyService         APIKeyQuotaUpdater
-	QuotaPlatform         string
-	ChannelUsageFields
-}
-
-// RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）
-func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *RecordUsageLongContextInput) error {
-	return s.recordUsageCore(ctx, &recordUsageCoreInput{
-		Result:             input.Result,
-		APIKey:             input.APIKey,
-		User:               input.User,
-		Account:            input.Account,
-		Subscription:       input.Subscription,
-		PricingAt:          input.PricingAt,
-		InboundEndpoint:    input.InboundEndpoint,
-		UpstreamEndpoint:   input.UpstreamEndpoint,
-		UserAgent:          input.UserAgent,
-		IPAddress:          input.IPAddress,
-		SessionID:          input.SessionID,
-		RequestPayloadHash: input.RequestPayloadHash,
-		ForceCacheBilling:  input.ForceCacheBilling,
-		APIKeyService:      input.APIKeyService,
-		QuotaPlatform:      input.QuotaPlatform,
-		ChannelUsageFields: input.ChannelUsageFields,
-	}, &recordUsageOpts{
-		LongContextThreshold:  input.LongContextThreshold,
-		LongContextMultiplier: input.LongContextMultiplier,
-	})
 }
 
 // recordUsageCoreInput 是 recordUsageCore 的公共输入字段，从两种输入结构体中提取。
@@ -768,7 +719,7 @@ func logResponseModelBillingApplied(component string, account *Account, requestI
 	slog.Info("billing.response_model_applied", attrs...)
 }
 
-// recordUsageCore 是 RecordUsage 和 RecordUsageWithLongContext 的统一实现。
+// recordUsageCore 是 RecordUsage 的核心实现。
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
 	if opts == nil {
 		opts = &recordUsageOpts{}
@@ -1163,7 +1114,7 @@ func (s *GatewayService) calculateImageCost(
 	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
 }
 
-// calculateTokenCost 计算 Token 计费：路径选择（分组/渠道定价 → 旧长上下文规则 → 内置定价）
+// calculateTokenCost 计算 Token 计费：路径选择（分组/渠道定价 → 内置定价）
 // 统一交给 BillingService.CalculateTokenCostForRequest，与模型广场的阶梯表查询同源。
 func (s *GatewayService) calculateTokenCost(
 	ctx context.Context,
@@ -1189,10 +1140,6 @@ func (s *GatewayService) calculateTokenCost(
 		gid := apiKey.Group.ID
 		resolved = s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid, Group: apiKey.Group})
 	}
-	var legacy *LegacyLongContextRule
-	if opts != nil && opts.LongContextThreshold > 0 {
-		legacy = &LegacyLongContextRule{Threshold: opts.LongContextThreshold, Multiplier: opts.LongContextMultiplier}
-	}
 
 	cost, err := s.billingService.CalculateTokenCostForRequest(TokenCostRequest{
 		Ctx:               ctx,
@@ -1205,7 +1152,6 @@ func (s *GatewayService) calculateTokenCost(
 		ReasoningEffort:   optionalStringValue(result.ReasoningEffort),
 		Resolver:          s.resolver,
 		Resolved:          resolved,
-		LegacyLongContext: legacy,
 	})
 	if err != nil {
 		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
@@ -1221,14 +1167,6 @@ func (s *GatewayService) calculateTokenCost(
 		cost.BillingMode = string(BillingModeToken)
 	}
 	return cost
-}
-
-// LegacyLongContextRule 透传 BillingService 的平台旧长上下文规则，供入口 handler 取用。
-func (s *GatewayService) LegacyLongContextRule(platform string) *LegacyLongContextRule {
-	if s == nil || s.billingService == nil {
-		return nil
-	}
-	return s.billingService.LegacyLongContextRule(platform)
 }
 
 // buildRecordUsageLog 构建使用日志并设置计费模式。

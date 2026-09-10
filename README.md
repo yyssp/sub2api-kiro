@@ -27,52 +27,6 @@ Please read the following carefully before using this project:
 - **📖 Disclaimer**: This project is provided for technical learning and research purposes only. The authors assume no liability for account bans, service interruptions, data loss, or any other direct or indirect damages resulting from the use of this project.
 - **🚫 No Commercial Authorization**: The developers of this project have never authorized any individual or organization to conduct any form of commercial operation based on this project. Any commercial activity conducted in the name of or based on this project is unrelated to this project and its developers, and all resulting disputes, losses, and legal liabilities shall be borne solely by the party conducting such activity.
 
-## Community
-
-- **Telegram**: [Join the group](https://t.me/+Pv3T6ncordwxOTZl)
-- **WeChat**: scan the QR code below
-
-<img src="https://github.com/user-attachments/assets/8f2542ce-eda7-49d4-9520-e5f46d9d4bda" alt="WeChat group QR code" width="280">
-
-## Overview
-
-Sub2API is an AI API gateway platform designed to distribute and manage API quotas from AI product subscriptions. Users can access upstream AI services through platform-generated API Keys, while the platform handles authentication, billing, load balancing, and request forwarding.
-
-## Kiro Support Fork
-
-The official upstream project currently has limited maintenance focus on the Kiro channel, so this repository is maintained as a long-term Kiro-support fork that keeps stable merges from the official branch.
-
-Additional Kiro-focused features in this fork:
-
-- Kiro channel support, including OAuth / AWS Builder ID / token import and API-key-compatible upstream access.
-- Anthropic Prompt Cache usage emulation for Kiro traffic.
-- Per-group Kiro cache emulation controls, including an adjustable emulation ratio.
-
-## Kiro Screenshots
-
-<p align="center">
-  <img src="assets/screenshots/kiro-add-account.png" alt="Add Kiro account" width="58%">
-  <img src="assets/screenshots/kiro-cache-emulation.png" alt="Kiro cache emulation group settings" width="35%">
-</p>
-
-<p align="center">
-  <img src="assets/screenshots/kiro-account-management.png" alt="Kiro account management" width="100%">
-</p>
-
-## Features
-
-- **Multi-Account Management** - Support multiple upstream account types (OAuth, API Key)
-- **API Key Distribution** - Generate and manage API Keys for users
-- **Precise Billing** - Token-level usage tracking and cost calculation
-- **Smart Scheduling** - Intelligent account selection with sticky sessions
-- **Concurrency Control** - Per-user and per-account concurrency limits
-- **Rate Limiting** - Configurable request and token rate limits
-- **Kiro Channel Support** - Long-term Kiro support fork with stable upstream merges
-- **Kiro Cache Emulation** - Simulate Anthropic Prompt Cache usage for Kiro groups with adjustable per-group emulation ratio
-- **Built-in Payment System** - Supports EasyPay, Alipay, WeChat Pay, and Stripe for user self-service top-up, no separate payment service needed ([Configuration Guide](docs/PAYMENT.md))
-- **Admin Dashboard** - Web interface for monitoring and management
-- **External System Integration** - Embed external systems (e.g. ticketing) via iframe to extend the admin dashboard
-
 ## ❤️ Sponsors
 
 > [Want to appear here?](mailto:support@sub2api.org)
@@ -364,8 +318,6 @@ Deploy with Docker Compose, including PostgreSQL and Redis containers.
 
 - Docker 20.10+
 - Docker Compose v2+
-
-The Compose files use the upstream `weishaw/sub2api:latest` image by default. For production, pin a release with `SUB2API_IMAGE=weishaw/sub2api:<version>` in `.env`.
 
 #### Quick Start (One-Click Deployment)
 

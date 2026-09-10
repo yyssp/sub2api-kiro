@@ -572,6 +572,7 @@ export default {
       vertexSaJsonInvalid: 'Service Account JSON format is invalid',
       vertexSaJsonRequired: 'Please upload a Service Account JSON',
       oauthSetupToken: 'OAuth / Setup Token',
+      add: 'Add',
       addMethod: 'Add Method',
       setupTokenLongLived: 'Setup Token (Long-lived)',
       baseUrl: 'Base URL',

@@ -488,7 +488,6 @@ export default {
     quota: {
       unavailable: 'Quota unavailable',
       resetSoon: 'resetting',
-      // Group aggregation summary: monitors bound to a group show how many accounts still have quota
       accountsHealthy: '{healthy}/{total} accounts with quota',
       accountsExhausted: '{count} exhausted',
       accountsUnknown: '{count} unknown',
@@ -507,7 +506,20 @@ export default {
         tokens: 'Tokens',
         shared: 'Shared',
         pro: 'Pro',
-        flash: 'Flash'
+        flash: 'Flash',
+        credits: 'Credits',
+        bonus: 'Bonus'
+      },
+      // 后端 message 是固定英文格式且已落库，展示层按格式解析后本地化（见 localizeMonitorMessage）
+      messages: {
+        noQuotaLeft: 'No quota left: {exhausted}/{total} accounts exhausted',
+        allUnavailable: 'Quota unavailable for all {total} accounts',
+        quotaHigh: 'Quota high: {name} at {percent}%',
+        balanceLow: 'Balance low: {amount} {currency}',
+        balanceLowNoAmount: 'Balance low ({currency})',
+        accountNotFound: 'Linked account not found',
+        groupNotFound: 'Linked group not found',
+        groupNoAccounts: 'Linked group has no accounts'
       }
     },
     extraModelsHeader: 'Extra Models',

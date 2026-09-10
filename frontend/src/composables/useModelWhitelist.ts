@@ -45,8 +45,8 @@ export const claudeModels = [
   'claude-sonnet-4-6-thinking',
   'claude-sonnet-4-6',
   'claude-sonnet-5',
-  'claude-fable-5',
   'claude-fable-5-1',
+  'claude-fable-5',
   'claude-2.1', 'claude-2.0', 'claude-instant-1.2'
 ]
 

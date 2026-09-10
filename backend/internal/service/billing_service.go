@@ -405,6 +405,7 @@ func (s *BillingService) initFallbackPricing() {
 
 	// Claude Haiku 4.5 当前与 Claude 3.5 Haiku 同价
 	s.fallbackPrices["claude-haiku-4.5"] = s.fallbackPrices["claude-3-5-haiku"]
+
 	// Claude Fable 5.x uses the same input/output and cache-write prices, while
 	// Fable 5.1 reduces cache reads from $1 to $0.25 per MTok.
 	s.fallbackPrices["claude-fable-5"] = &ModelPricing{

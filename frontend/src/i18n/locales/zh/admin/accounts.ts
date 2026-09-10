@@ -664,6 +664,7 @@ export default {
       vertexSaJsonInvalid: 'Service Account JSON 格式无效',
       vertexSaJsonRequired: '请上传 Service Account JSON',
       oauthSetupToken: 'OAuth / Setup Token',
+      add: '添加',
       addMethod: '添加方式',
       setupTokenLongLived: 'Setup Token（长期有效）',
       baseUrl: 'Base URL',

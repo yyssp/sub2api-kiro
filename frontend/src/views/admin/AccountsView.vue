@@ -513,15 +513,6 @@
       @confirm="handleBulkResetStatus"
       @cancel="showBulkResetConfirm = false"
     />
-    <ConfirmDialog
-      :show="showBulkRefreshConfirm"
-      :title="t('admin.accounts.bulkRefreshTokenTitle')"
-      :message="t('admin.accounts.bulkRefreshTokenConfirm', { count: selIds.length })"
-      :confirm-text="t('common.confirm')"
-      :cancel-text="t('common.cancel')"
-      @confirm="handleBulkRefreshToken"
-      @cancel="showBulkRefreshConfirm = false"
-    />
   </AppLayout>
 </template>
 
@@ -637,7 +628,6 @@ const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
 const showBulkDeleteConfirm = ref(false)
 const showBulkResetConfirm = ref(false)
-const showBulkRefreshConfirm = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)

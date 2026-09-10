@@ -2790,6 +2790,31 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
+// mappedOpenAIModels 把账号的 model_mapping 键渲染成测试弹窗可用的模型条目，
+// 命中内置目录时沿用其展示名，未收录的自定义模型以模型 ID 作为展示名。
+func mappedOpenAIModels(mapping map[string]string) []openai.Model {
+	models := make([]openai.Model, 0, len(mapping))
+	for requestedModel := range mapping {
+		var found bool
+		for _, dm := range openai.DefaultModels {
+			if dm.ID == requestedModel {
+				models = append(models, dm)
+				found = true
+				break
+			}
+		}
+		if !found {
+			models = append(models, openai.Model{
+				ID:          requestedModel,
+				Object:      "model",
+				Type:        "model",
+				DisplayName: requestedModel,
+			})
+		}
+	}
+	return models
+}
+
 // GetAvailableModels handles getting available models for an account
 // GET /api/v1/admin/accounts/:id/models
 func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
@@ -2807,47 +2832,26 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 
 	// Handle OpenAI accounts
 	if account.IsOpenAI() {
-		// Prefer the shared, account-keyed upstream catalog. If discovery fails,
-		// retain the legacy local catalog below so the test dialog remains usable.
-		if h.accountTestService != nil {
-			if models, fetchErr := h.accountTestService.FetchOpenAIAccountModels(c.Request.Context(), account); fetchErr == nil {
+		// 账号显式配置的 model_mapping 优先：测试弹窗要反映这个账号实际会服务的模型集合。
+		// OpenAI 自动透传绕过常规模型改写，mapping 不生效，因此跳过这一步。
+		if !account.IsOpenAIPassthroughEnabled() {
+			if models := mappedOpenAIModels(account.GetModelMapping()); len(models) > 0 {
 				response.Success(c, models)
 				return
 			}
 		}
-		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
-		if account.IsOpenAIPassthroughEnabled() {
-			response.Success(c, openai.DefaultModels)
-			return
-		}
 
-		mapping := account.GetModelMapping()
-		if len(mapping) == 0 {
-			response.Success(c, openai.DefaultModels)
-			return
-		}
-
-		// Return mapped models
-		var models []openai.Model
-		for requestedModel := range mapping {
-			var found bool
-			for _, dm := range openai.DefaultModels {
-				if dm.ID == requestedModel {
-					models = append(models, dm)
-					found = true
-					break
-				}
-			}
-			if !found {
-				models = append(models, openai.Model{
-					ID:          requestedModel,
-					Object:      "model",
-					Type:        "model",
-					DisplayName: requestedModel,
-				})
+		// 未配置 mapping（或透传）时改用账号维度的上游实时目录，比硬编码默认集更贴近
+		// 账号真实能力。发现失败或目录为空（上游可能无错返回 {"models":[]}）时继续回落，
+		// 避免测试弹窗渲染出空的模型选择器。
+		if h.accountTestService != nil {
+			if models, fetchErr := h.accountTestService.FetchOpenAIAccountModels(c.Request.Context(), account); fetchErr == nil && len(models) > 0 {
+				response.Success(c, models)
+				return
 			}
 		}
-		response.Success(c, models)
+
+		response.Success(c, openai.DefaultModels)
 		return
 	}
 

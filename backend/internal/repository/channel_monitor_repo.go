@@ -311,9 +311,11 @@ func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID in
 // ListLatestPerModel 用 DISTINCT ON 取每个 (monitor_id, model) 的最近一条记录。
 // 借助 (monitor_id, model, checked_at DESC) 索引可走 Index Scan。
 func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monitorID int64) ([]*service.ChannelMonitorLatest, error) {
+	// quota 列与 ListLatestForMonitorIDs 保持一致：配额模式的快照挂在主模型行上，
+	// 漏选会让单监控详情路径的 LatestQuota 恒为 nil（列表页走批量版反而正常）。
 	const q = `
 		SELECT DISTINCT ON (model)
-		    model, status, latency_ms, ping_latency_ms, checked_at
+		    model, status, latency_ms, ping_latency_ms, checked_at, quota
 		FROM channel_monitor_histories
 		WHERE monitor_id = $1
 		ORDER BY model, checked_at DESC
@@ -328,11 +330,13 @@ func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monit
 	for rows.Next() {
 		l := &service.ChannelMonitorLatest{}
 		var latency, ping sql.NullInt64
-		if err := rows.Scan(&l.Model, &l.Status, &latency, &ping, &l.CheckedAt); err != nil {
+		var quota []byte
+		if err := rows.Scan(&l.Model, &l.Status, &latency, &ping, &l.CheckedAt, &quota); err != nil {
 			return nil, fmt.Errorf("scan latest row: %w", err)
 		}
 		assignNullInt(&l.LatencyMs, latency)
 		assignNullInt(&l.PingLatencyMs, ping)
+		l.Quota = scanMonitorQuota(quota)
 		out = append(out, l)
 	}
 	return out, rows.Err()

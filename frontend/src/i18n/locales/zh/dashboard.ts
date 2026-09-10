@@ -493,7 +493,6 @@ export default {
     quota: {
       unavailable: '配额信息不可用',
       resetSoon: '即将重置',
-      // 组级聚合摘要：绑定分组的监控展示「还有几个号有额度」
       accountsHealthy: '{healthy}/{total} 账号有额度',
       accountsExhausted: '{count} 个已耗尽',
       accountsUnknown: '{count} 个未知',
@@ -512,7 +511,20 @@ export default {
         tokens: 'Token',
         shared: '共享',
         pro: 'Pro',
-        flash: 'Flash'
+        flash: 'Flash',
+        credits: '额度',
+        bonus: '赠额'
+      },
+      // 后端 message 是固定英文格式且已落库，展示层按格式解析后本地化（见 localizeMonitorMessage）
+      messages: {
+        noQuotaLeft: '额度已耗尽：{exhausted}/{total} 个账号无额度',
+        allUnavailable: '全部 {total} 个账号均无法获取额度',
+        quotaHigh: '额度紧张：{name} 已用 {percent}%',
+        balanceLow: '余额不足：{amount} {currency}',
+        balanceLowNoAmount: '余额不足（{currency}）',
+        accountNotFound: '关联账号不存在',
+        groupNotFound: '关联分组不存在',
+        groupNoAccounts: '关联分组内没有账号'
       }
     },
     extraModelsHeader: '附加模型',

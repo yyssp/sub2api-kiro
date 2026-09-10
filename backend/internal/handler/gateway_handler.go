@@ -1472,9 +1472,17 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 
 // modelListingSource 汇总模型列表过滤的候选来源：账号映射键（availableModels）
 // 与平台默认列表（fallbackModels）。账号映射为空时回落默认列表；Anthropic
-// 平台两者取并集，其余平台（含 kiro、openai、gemini 等）以账号映射键为准——
-// 它们的 model_mapping 是严格白名单，未映射的模型本就无法服务，合并默认模型
-// 会让已移除的模型被兜底塞回，导致 /v1/models 与账号实际可服务集合不一致。
+// 平台两者取并集，其余平台以账号映射键为准。
+//
+// 仅 anthropic 平台需要合并平台默认模型：其 OAuth 账号可能完全没有 model_mapping，
+// 却能服务整个 claude 默认模型族；当分组内混用「无 mapping 的 OAuth 账号」与
+// 「带 mapping 的 APIKey 账号」时，GetAvailableModels 只会返回后者的 mapping keys，
+// 需要 merge 默认模型把 OAuth 能服务的 claude 模型补回来。
+//
+// 其它平台（含 kiro、openai、gemini 等）的 model_mapping 是严格白名单，明确限定了账号
+// 可调度/可转发的模型集合（kiro 未显式配置时也会套用 DefaultKiroModelMapping），未映射
+// 的模型本就无法服务，因此只返回账号可用模型、不合并默认模型——否则从账号 mapping 中移除
+// 某模型后，仍会被默认模型兜底塞回，导致 /v1/models 与账号实际可服务集合不一致。
 func modelListingSource(platform string, availableModels, fallbackModels []string) []string {
 	if len(availableModels) == 0 {
 		return fallbackModels
