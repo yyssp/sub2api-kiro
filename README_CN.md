@@ -134,6 +134,10 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 <td width="180"><a href="https://ylscode.com/"><img src="assets/partners/logos/ylscode.png" alt="ylscode" width="150"></a></td>
 <td>感谢 伊莉思Code 赞助了本项目！ <a href="https://ylscode.com/">伊莉思Code</a> 致力于构建安全的企业级Coding Agent生产力服务，提供稳定快速的 Codex / Claude / Gemini 订阅服务与即用即付API多种方案灵活选择，限时注册赠送 3 天 Codex 试用福利！</td>
 </tr>
+<tr>
+<td width="180"><a href="https://codex-everywhere.com"><img src="assets/partners/logos/codex-everywhere.jpg" alt="CodexEverywhere" width="150"></a></td>
+<td>Real GPT-5.6 series at 3% of OpenAI pricing — <a href="https://codex-everywhere.com">CodexEverywhere</a> is democratizing access to frontier models for developers worldwide. We believe in transparency and honesty, with model quality verified by active community oversight for months. USD and crypto friendly. Start with a free $20 trial at <a href="https://codex-everywhere.com">codex-everywhere.com</a>.</td>
+</tr>
 
 <tr>
 <td width="180"><a href="https://shop.bmoplus.com/?utm_source=github"><img src="assets/partners/logos/bmoplus.jpg" alt="bmoplus" width="150"></a></td>
@@ -279,6 +283,11 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 <tr>
 <td width="180"><a href="https://go.apimart.ai/gh-sub2api"><img src="assets/partners/logos/apimart.jpg" alt="APIMart" width="150"></a></td>
 <td>感谢 APIMart 赞助了本项目！<a href="https://go.apimart.ai/gh-sub2api">APIMart</a> 是专注于 AI 图片/视频生成的低价 API 平台，GPT-Image-2 低至 $0.006/张，1 美元可生成 160+ 张图片。图片、视频一套异步 API 通吃：提交任务获取 ID，通过轮询或回调获取结果；批量生成上万张图片也不会超时，切换模型无需修改代码。按量付费、无月费，通过<a href="https://go.apimart.ai/gh-sub2api">此注册链接</a>注册即可开始使用。</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://www.axisnow.io/"><img src="assets/partners/logos/axisnow.jpg" alt="AxisNow" width="150"></a></td>
+<td>感谢 AxisNow 赞助了本项目！<a href="https://www.axisnow.io/">AxisNow</a> 保护并加速网站与 API，兼顾中国大陆及全球的访问体验，并通过客户端 SDK，将加速与安全能力延伸至原生/移动 App — <strong>自建私有部署 CDN</strong>｜<strong>订阅式高防 CDN</strong>｜<strong>自主可控、灵活组合的 CDN 网络</strong>。</td>
 </tr>
 
 </table>

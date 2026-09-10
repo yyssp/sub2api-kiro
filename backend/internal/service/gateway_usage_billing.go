@@ -605,7 +605,6 @@ type recordUsageOpts struct {
 	// Kiro 账号在上游返回 auto 等无法定价模型时使用保守计费兜底。
 	IsKiroAccount bool
 }
-
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
 func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
 	return s.recordUsageCore(ctx, &recordUsageCoreInput{
@@ -634,21 +633,20 @@ type RecordUsageLongContextInput struct {
 	APIKey                *APIKey
 	User                  *User
 	Account               *Account
-	Subscription          *UserSubscription  // 可选：订阅信息
-	PricingAt             time.Time          // token 售价固定时刻；零值保持既有的记录时刻语义
-	InboundEndpoint       string             // 入站端点（客户端请求路径）
-	UpstreamEndpoint      string             // 上游端点（标准化后的上游路径）
-	UserAgent             string             // 请求的 User-Agent
-	IPAddress             string             // 请求的客户端 IP 地址
-	SessionID             string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
-	RequestPayloadHash    string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
-	LongContextThreshold  int                // 长上下文阈值（如 200000）
-	LongContextMultiplier float64            // 超出阈值部分的倍率（如 2.0）
-	ForceCacheBilling     bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
-	APIKeyService         APIKeyQuotaUpdater // API Key 配额服务（可选）
-	QuotaPlatform         string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
-
-	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
+	Subscription          *UserSubscription
+	PricingAt             time.Time
+	InboundEndpoint       string
+	UpstreamEndpoint      string
+	UserAgent             string
+	IPAddress             string
+	SessionID             string
+	RequestPayloadHash    string
+	LongContextThreshold  int
+	LongContextMultiplier float64
+	ForceCacheBilling     bool
+	APIKeyService         APIKeyQuotaUpdater
+	QuotaPlatform         string
+	ChannelUsageFields
 }
 
 // RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）
@@ -771,8 +769,10 @@ func logResponseModelBillingApplied(component string, account *Account, requestI
 }
 
 // recordUsageCore 是 RecordUsage 和 RecordUsageWithLongContext 的统一实现。
-// LongContextThreshold > 0 时 Token 计费回退走 CalculateCostWithLongContext。
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
+	if opts == nil {
+		opts = &recordUsageOpts{}
+	}
 	result := input.Result
 	apiKey := input.APIKey
 	user := input.User
@@ -1190,7 +1190,7 @@ func (s *GatewayService) calculateTokenCost(
 		resolved = s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid, Group: apiKey.Group})
 	}
 	var legacy *LegacyLongContextRule
-	if opts.LongContextThreshold > 0 {
+	if opts != nil && opts.LongContextThreshold > 0 {
 		legacy = &LegacyLongContextRule{Threshold: opts.LongContextThreshold, Multiplier: opts.LongContextMultiplier}
 	}
 
@@ -1273,6 +1273,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		UpstreamModelMismatch: upstreamModelMismatch(sentModel, result.UpstreamResponseModel),
 		ServiceTier:           result.ServiceTier,
 		ReasoningEffort:       result.ReasoningEffort,
+		RequestedReasoningEffort: coalesceRequestedReasoningEffort(result.RequestedReasoningEffort, result.ReasoningEffort),
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
 		InputTokens:           result.Usage.InputTokens,

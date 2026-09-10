@@ -242,6 +242,12 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_live").
 			Default(false).
 			Comment("是否允许此 OpenAI 分组访问 Live 接口"),
+		field.Bool("force_openai_fast").
+			Default(false).
+			Comment("是否强制此 OpenAI/Composite 分组请求使用 service_tier=priority"),
+		field.Bool("free_openai_fast").
+			Default(false).
+			Comment("是否让此 OpenAI/Composite 分组的 Fast 请求按 Standard 价格计费"),
 		field.Bool("require_oauth_only").
 			Default(false).
 			Comment("仅允许非 apikey 类型账号关联到此分组"),
@@ -271,26 +277,30 @@ func (Group) Fields() []ent.Field {
 			Comment("绑定的通用缓存策略 ID；为空表示关闭缓存整形"),
 
 		// OpenAI/Codex 请求的推理强度上限（空字符串表示不限制）。
-			field.String("max_reasoning_effort").
-				MaxLen(20).
-				Default("").
-				Comment("OpenAI reasoning effort 上限；可选 minimal/low/medium/high/xhigh/max"),
-			field.JSON("reasoning_effort_mappings", []domain.ReasoningEffortMapping{}).
-				Default([]domain.ReasoningEffortMapping{}).
-				SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
-				Comment("OpenAI reasoning effort 自定义精确映射；先映射再应用上限"),
+		field.String("max_reasoning_effort").
+			MaxLen(20).
+			Default("").
+			Comment("OpenAI reasoning effort 上限；可选 minimal/low/medium/high/xhigh/max"),
+		field.String("max_reasoning_effort_over_limit").
+			MaxLen(20).
+			Default("downgrade").
+			Comment("超过推理强度上限时的访问控制：downgrade 自动降档，deny 拒绝访问"),
+		field.JSON("reasoning_effort_mappings", []domain.ReasoningEffortMapping{}).
+			Default([]domain.ReasoningEffortMapping{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("OpenAI reasoning effort 自定义映射；可按模型精确名、前缀或后缀限定，先映射再应用上限"),
 
-			// Kiro sticky routing configuration (non-cache responsibility)
-			field.Bool("kiro_auto_sticky_enabled").
-				Default(true).
-				Comment("是否启用 Kiro 自动会话粘性路由（仅 kiro 分组生效）"),
-			field.Int("kiro_sticky_session_ttl_seconds").
-				Default(3600).
-				Comment("Kiro 自动会话粘性绑定 TTL（秒，仅 kiro 分组生效）"),
-			field.String("kiro_endpoint_mode").
-				MaxLen(8).
-				Default("q").
-				Comment("Kiro 推理 endpoint：q=AWS Q (q.{region}.amazonaws.com), krs=Kiro Runtime Service (runtime.us-east-1.kiro.dev)"),
+		// Kiro sticky routing configuration (non-cache responsibility)
+		field.Bool("kiro_auto_sticky_enabled").
+			Default(true).
+			Comment("是否启用 Kiro 自动会话粘性路由（仅 kiro 分组生效）"),
+		field.Int("kiro_sticky_session_ttl_seconds").
+			Default(3600).
+			Comment("Kiro 自动会话粘性绑定 TTL（秒，仅 kiro 分组生效）"),
+		field.String("kiro_endpoint_mode").
+			MaxLen(8).
+			Default("q").
+			Comment("Kiro 推理 endpoint：q=AWS Q (q.{region}.amazonaws.com), krs=Kiro Runtime Service (runtime.us-east-1.kiro.dev)"),
 		// 分组利润控制（migration 192/193）：openai/anthropic/gemini/grok/antigravity
 		// 的 token 分组可启用，composite 分组不能直接启用。
 		field.Bool("profit_control_enabled").
