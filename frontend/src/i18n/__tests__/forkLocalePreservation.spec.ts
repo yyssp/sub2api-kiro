@@ -5,6 +5,15 @@ import { describe, expect, it } from 'vitest'
 import en from '@/i18n/locales/en'
 import zh from '@/i18n/locales/zh'
 
+// 本清单原本还包含 admin.accounts.oauth.kiro.importProviderLabel /
+// providerMismatch,对应“先选账号来源 radio、再校验 Token JSON 里的 provider
+// 是否一致”的导入界面。本仓库的 Kiro 导入已改为批量:importToken 返回
+// KiroImportEntry[],支持粘贴凭据数组、按 authMethod 自动区分 oauth / apikey、
+// 并按 clientIdHash 自行判断是否需要 Device Registration。单选 radio 无法描述
+// 数组里 N 条不同来源的凭据,api_key 条目更是完全没有 provider 字段,所以这两个
+// 键在新设计下已无调用方,从清单中移除而不是恢复旧界面(恢复会退回单对象导入)。
+// 同理,deviceRegistrationRequired / tokenJsonHint 的下方哈希取的是本仓库的文案:
+// 上游文案说“BuilderId / Enterprise 才需要 Device Registration”,在新逻辑下是错的。
 const preservedForkKeys = `
 admin.accounts.baseUrlOptional
 admin.accounts.bulkRefreshTokenConfirm
@@ -66,7 +75,6 @@ admin.accounts.oauth.kiro.idcSubtitle
 admin.accounts.oauth.kiro.idcTitle
 admin.accounts.oauth.kiro.importAndUpdate
 admin.accounts.oauth.kiro.importDialogTitle
-admin.accounts.oauth.kiro.importProviderLabel
 admin.accounts.oauth.kiro.importSubtitle
 admin.accounts.oauth.kiro.importTitle
 admin.accounts.oauth.kiro.importTokenFile
@@ -74,7 +82,6 @@ admin.accounts.oauth.kiro.oauthProviderTitle
 admin.accounts.oauth.kiro.oauthSubtitle
 admin.accounts.oauth.kiro.oauthTitle
 admin.accounts.oauth.kiro.openUrlDesc
-admin.accounts.oauth.kiro.providerMismatch
 admin.accounts.oauth.kiro.regionLabel
 admin.accounts.oauth.kiro.regionPlaceholder
 admin.accounts.oauth.kiro.socialSubtitle
@@ -128,8 +135,8 @@ home.providers.kiro
 `.trim().split(/\s+/)
 
 const expectedHashes = {
-  en: '644f5a0a96f5861af65705b2aed46d97e9b242a7cebdfc8cedb325efb6e57ef1',
-  zh: 'fb0b532d1fd2f4fcaf18bcfc0055eafd832a05538b1c0c8b204399e021a73e4e',
+  en: 'd5a28c03831b675911a146891e06ce3ca7e14a91054cc5d3901789140060ed63',
+  zh: '6d7240d976b3d7e841ef971970c362ad65d9428232ea840bdf9c7d497291facd',
 }
 
 function localeValue(locale: Record<string, unknown>, key: string): unknown {
@@ -152,7 +159,7 @@ describe.each([
   ['zh', zh, expectedHashes.zh],
 ] as const)('fork locale preservation: %s', (_name, locale, expectedHash) => {
   it('keeps every fork-added key', () => {
-    expect(preservedForkKeys).toHaveLength(119)
+    expect(preservedForkKeys).toHaveLength(117)
     expect(preservedForkKeys.filter((key) => localeValue(locale, key) === undefined)).toEqual([])
   })
 

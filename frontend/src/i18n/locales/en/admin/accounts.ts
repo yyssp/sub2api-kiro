@@ -778,7 +778,6 @@ export default {
       actualModel: 'Actual model',
       fromModel: 'Source model',
       toModel: 'Target model',
-      add: 'Add',
       addMapping: 'Add Mapping',
       mappingExists: 'Mapping for {model} already exists',
       wildcardOnlyAtEnd: 'Wildcard * can only be at the end',
@@ -1310,7 +1309,8 @@ export default {
           tokenJsonHint: 'Only a Kiro IDE credential object or credential array is accepted. Each entry must include Kiro runtime metadata such as apiRegion, machineId, or profileArn; generic OAuth or API Key JSON is rejected. The importer creates OAuth or API Key accounts from authMethod, and provider remains optional source metadata.',
           tokenJsonInvalid: 'Kiro Token JSON is invalid and cannot be parsed.',
           tokenJsonLabel: 'Kiro Token JSON',
-          tokenJsonPlaceholder: '{"accessToken":"...","refreshToken":"...","authMethod":"social","apiRegion":"us-east-1"}\nor\n{"authMethod":"api_key","kiroApiKey":"ksk_...","machineId":"..."}',
+          // JSON 示例见 utils/kiroAccount.ts:未转义花括号会让 vue-i18n 编译报错。
+          tokenJsonPlaceholderOr: 'or',
           tokenJsonRequired: 'Please provide the Kiro Token JSON.',
           singleTokenRequired: 'Reauthorization updates one account at a time. Paste exactly one token object instead of a token array.'
         },

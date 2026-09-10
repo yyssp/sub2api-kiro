@@ -423,6 +423,7 @@ import { useAppStore } from '@/stores/app'
 import type { Account, AccountPlatform } from '@/types'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
 import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
+import { kiroTokenJsonPlaceholder } from '@/utils/kiroAccount'
 
 interface OAuthFlowExposed {
   authCode: string
@@ -487,7 +488,7 @@ const kiroImportNeedsDeviceRegistration = computed(() => {
   }
 })
 const kiroImportTokenPlaceholder = computed(
-  () => t('admin.accounts.oauth.kiro.tokenJsonPlaceholder')
+  () => kiroTokenJsonPlaceholder(t('admin.accounts.oauth.kiro.tokenJsonPlaceholderOr'))
 )
 
 const isOpenAI = computed(() => props.account?.platform === 'openai')

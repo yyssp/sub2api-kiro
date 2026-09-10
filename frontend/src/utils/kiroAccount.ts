@@ -1,6 +1,26 @@
 import type { Account } from '@/types'
 
 /**
+ * Kiro Token JSON 导入框的示例文本。
+ *
+ * 刻意不放进 i18n:JSON 示例与语言无关,而 vue-i18n 在运行时才编译消息,
+ * 未转义的花括号会被当成插值语法并抛 "Invalid token in placeholder",
+ * 渲染时直接炸掉整个组件树(见 i18n/__tests__/localesMessageCompile.spec.ts)。
+ * 连接词由调用方用 i18n 拼接。
+ */
+export const KIRO_TOKEN_JSON_EXAMPLES = [
+  '{"accessToken":"...","refreshToken":"...","authMethod":"social","apiRegion":"us-east-1"}',
+  '{"authMethod":"api_key","kiroApiKey":"ksk_...","machineId":"..."}'
+] as const
+
+/**
+ * 拼出 Token JSON 输入框的 placeholder:两个示例之间插入本地化连接词。
+ */
+export function kiroTokenJsonPlaceholder(orWord: string): string {
+  return KIRO_TOKEN_JSON_EXAMPLES.join(`\n${orWord}\n`)
+}
+
+/**
  * 读取账号 credentials 中的 base_url(去空白)。
  */
 function readBaseUrl(account: Pick<Account, 'credentials'> | null | undefined): string {

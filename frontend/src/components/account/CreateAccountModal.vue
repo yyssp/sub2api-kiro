@@ -4421,6 +4421,7 @@ import {
   parseDateTimeLocalInput
 } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import { kiroTokenJsonPlaceholder } from '@/utils/kiroAccount'
 import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
 import { VERTEX_LOCATION_SELECT_OPTIONS, BEDROCK_REGION_SELECT_OPTIONS } from '@/constants/account'
 import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
@@ -4931,7 +4932,7 @@ const kiroImportNeedsDeviceRegistration = computed(() => {
   }
 })
 const kiroImportTokenPlaceholder = computed(
-  () => t('admin.accounts.oauth.kiro.tokenJsonPlaceholder')
+  () => kiroTokenJsonPlaceholder(t('admin.accounts.oauth.kiro.tokenJsonPlaceholderOr'))
 )
 const kiroModelMappings = ref<ModelMapping[]>([])
 const kiroCreditUnitPriceUsd = ref(0)

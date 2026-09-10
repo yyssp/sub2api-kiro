@@ -861,7 +861,6 @@ export default {
       actualModel: '实际模型',
       fromModel: '源模型',
       toModel: '目标模型',
-      add: '添加',
       addMapping: '添加映射',
       mappingExists: '模型 {model} 的映射已存在',
       wildcardOnlyAtEnd: '通配符 * 只能放在末尾',
@@ -1380,7 +1379,8 @@ export default {
           tokenJsonHint: '仅接受 Kiro IDE 导出的单个凭据对象或凭据数组，且每条必须包含 Kiro 运行时字段（如 apiRegion、machineId 或 profileArn）。普通 OAuth 或 API Key JSON 不会被当作 Kiro 账号导入。导入会按 authMethod 创建 OAuth 或 API Key 账号；provider 仅为可选来源元数据。',
           tokenJsonInvalid: 'Kiro Token JSON 格式无效，无法解析。',
           tokenJsonLabel: 'Kiro Token JSON',
-          tokenJsonPlaceholder: '{"accessToken":"...","refreshToken":"...","authMethod":"social","apiRegion":"us-east-1"}\n或\n{"authMethod":"api_key","kiroApiKey":"ksk_...","machineId":"..."}',
+          // JSON 示例见 utils/kiroAccount.ts:未转义花括号会让 vue-i18n 编译报错。
+          tokenJsonPlaceholderOr: '或',
           tokenJsonRequired: '请填写 Kiro Token JSON。',
           singleTokenRequired: '重新授权一次只能更新一个账号，请粘贴单个 Token 对象，不要粘贴 Token 数组。'
         },
