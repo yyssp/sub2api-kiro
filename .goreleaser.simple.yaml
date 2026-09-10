@@ -22,6 +22,8 @@ builds:
       - amd64
     ldflags:
       - -s -w
+      # 见 .goreleaser.yaml 同处注释：fork 不回写 VERSION 文件，版本号只能注入。
+      - -X main.Version={{.Version}}
       - -X main.Commit={{.Commit}}
       - -X main.Date={{.Date}}
       - -X main.BuildType=release
@@ -64,7 +66,8 @@ release:
     owner: "{{ .Env.GITHUB_REPO_OWNER }}"
     name: "{{ .Env.GITHUB_REPO_NAME }}"
   draft: false
-  prerelease: auto
+  # 见 .goreleaser.yaml 同处注释：fork 版本号带 -kiro-NNN 后缀，auto 会误判预发布。
+  prerelease: false
   name_template: "Sub2API {{.Version}} (Simple)"
   # 跳过上传二进制包
   skip_upload: true

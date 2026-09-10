@@ -1,0 +1,144 @@
+name: Fork Tag & Release
+
+# 本 fork 的发布入口：在选定分支（通常是 2ue）上手动触发，自动算出下一个
+# fork 版本号、打 annotated tag、并触发 release.yml 完成构建与镜像推送。
+#
+# 版本号格式：v<上游基线版本>-<渠道词>-<三位序号>，例如 v0.2.4-kiro-001
+#   - 上游基线版本取自 backend/cmd/server/VERSION（上游 release 时同步写入），
+#     表明本次二次开发基于上游哪个版本，便于对齐上游变更。
+#   - 渠道词来自仓库变量 vars.FORK_CHANNEL（未配置则用 kiro），用于区分不同
+#     的二次开发线；同一基线下换词等于开一条新序列，序号从 001 重新开始。
+#   - 序号在「基线+渠道」这一组内自增，同一基线上迭代发布不必动 VERSION 文件。
+#
+# semver 上 kiro-001 是一个「含字母的预发布标识符」，允许前导零，合法。
+# 注意必须用连字符而非点号：v0.2.4-kiro.001 里的 001 会被当成纯数字标识符，
+# semver 禁止前导零，GoReleaser 解析会直接失败。
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: '渠道词，留空则用仓库变量 FORK_CHANNEL（默认 kiro）'
+        required: false
+        type: string
+      base_version:
+        description: '上游基线版本，留空则读 backend/cmd/server/VERSION'
+        required: false
+        type: string
+      notes:
+        description: '发布说明（写入 tag message，会成为 Release 正文）'
+        required: false
+        type: string
+      simple_release:
+        description: '精简发布：只出 x86_64 GHCR 镜像'
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: '只计算版本号，不打 tag、不发布'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Resolve next fork version
+        id: version
+        env:
+          INPUT_CHANNEL: ${{ github.event.inputs.channel }}
+          INPUT_BASE: ${{ github.event.inputs.base_version }}
+          VAR_CHANNEL: ${{ vars.FORK_CHANNEL }}
+        run: |
+          set -euo pipefail
+
+          CHANNEL="${INPUT_CHANNEL:-${VAR_CHANNEL:-kiro}}"
+          # 必须字母开头的小写字母数字串：纯数字段会让 semver 预发布标识符
+          # 触发前导零禁令，大写字母则无法用作 Docker tag。
+          if ! printf '%s' "$CHANNEL" | grep -Eq '^[a-z][a-z0-9]*$'; then
+            echo "::error::渠道词 '$CHANNEL' 非法，只允许小写字母开头的字母数字串（如 kiro）"
+            exit 1
+          fi
+
+          BASE="${INPUT_BASE:-$(tr -d ' \n\r\t' < backend/cmd/server/VERSION)}"
+          if ! printf '%s' "$BASE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::基线版本 '$BASE' 不是 x.y.z 形式"
+            exit 1
+          fi
+
+          # 在「基线+渠道」这一组内取已用过的最大序号。用 sort -n 而不是字典序，
+          # 否则 010 之后跳到 100 时会算错。
+          PREFIX="v${BASE}-${CHANNEL}-"
+          LAST=$(git tag -l "${PREFIX}*" \
+                 | sed -n "s/^${PREFIX}\([0-9]\{1,\}\)$/\1/p" \
+                 | sed 's/^0*//' \
+                 | sed 's/^$/0/' \
+                 | sort -n | tail -1)
+          NEXT=$(( ${LAST:-0} + 1 ))
+          TAG=$(printf '%s%03d' "$PREFIX" "$NEXT")
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::tag ${TAG} 已存在"
+            exit 1
+          fi
+
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "### 下一个版本：\`${TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 上游基线：\`${BASE}\`（来自 backend/cmd/server/VERSION）" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 渠道：\`${CHANNEL}\`，上一个序号：\`${LAST:-0}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 提交：\`${GITHUB_SHA}\`（分支 \`${GITHUB_REF_NAME}\`）" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create and push tag
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          BASE: ${{ steps.version.outputs.base }}
+          NOTES: ${{ github.event.inputs.notes }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # release.yml 用 %(contents:body)（即标题之后的部分）当 Release 正文，
+          # 所以标题和正文之间必须留空行，否则正文为空。
+          {
+            printf '%s\n\n' "$TAG"
+            if [ -n "${NOTES:-}" ]; then
+              printf '%s\n\n' "$NOTES"
+            fi
+            printf '基于上游 %s 的二次开发版本，构建自 %s。\n' "$BASE" "$GITHUB_SHA"
+          } > /tmp/tag-message.txt
+
+          git tag -a "$TAG" -F /tmp/tag-message.txt
+          git push origin "refs/tags/$TAG"
+
+      - name: Trigger release workflow
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          SIMPLE: ${{ github.event.inputs.simple_release }}
+        run: |
+          set -euo pipefail
+          # 用 GITHUB_TOKEN 推的 tag 不会触发 release.yml 的 push 事件（GitHub
+          # 防递归机制），必须显式 dispatch，否则打完 tag 就没有下文了。
+          gh workflow run release.yml \
+            --ref "$TAG" \
+            -f tag="$TAG" \
+            -f simple_release="$SIMPLE"
+          echo "已触发 release.yml：$TAG" >> "$GITHUB_STEP_SUMMARY"

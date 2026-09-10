@@ -31,7 +31,10 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration
-GITHUB_REPO="nianzs/sub2api"
+# 发布产物挂在本 fork 自己的 Release 上，默认必须指向本仓库；沿用上游/其它
+# fork 的仓库名会让 releases/latest 取到别人的版本，下载到不含本 fork 改动的
+# 二进制。可用 GITHUB_REPO=owner/repo 覆盖以便测试或从镜像仓库安装。
+GITHUB_REPO="${GITHUB_REPO:-yyssp/sub2api-kiro}"
 INSTALL_DIR="/opt/sub2api"
 SERVICE_NAME="sub2api"
 SERVICE_USER="sub2api"

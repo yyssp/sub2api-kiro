@@ -27,6 +27,11 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
+      # 本 fork 删掉了上游的 update-version / sync-version-file 两个 job，
+      # 不再把 tag 回写进 backend/cmd/server/VERSION。若不在此注入，二进制会
+      # 报告 VERSION 文件里的上游基线版本（如 0.2.4），而非实际发布的
+      # 0.2.4-kiro-001。main.go 的 init 会跳过已注入的 Version，安全。
+      - -X main.Version={{.Version}}
       - -X main.Commit={{.Commit}}
       - -X main.Date={{.Date}}
       - -X main.BuildType=release
@@ -173,7 +178,10 @@ release:
     owner: "{{ .Env.GITHUB_REPO_OWNER }}"
     name: "{{ .Env.GITHUB_REPO_NAME }}"
   draft: false
-  prerelease: auto
+  # 不能用 auto：fork 版本号形如 0.2.4-kiro-001，semver 上属于预发布，auto 会
+  # 把每次发布都标成 Pre-release，GitHub 的 /releases/latest 便不再返回它，
+  # deploy/install.sh 依赖该接口取版本，会直接装不上。
+  prerelease: false
   name_template: "Sub2API {{.Version}}"
   # 完全使用 tag 消息作为 release 内容（通过环境变量传入）
   header: |
