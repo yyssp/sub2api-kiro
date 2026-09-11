@@ -20,6 +20,7 @@ import (
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -38,6 +39,10 @@ const (
 	// Hard safety ceiling used when the model capability registry does not
 	// provide a context window. Strategy values can further reduce it.
 	cacheAbsoluteMaxInputTokens = 1_000_000
+	// capJitterCapRatio 限制触顶抖动最多能把上报值拉低多少，取值对齐 kiro.rs
+	// cap_jitter() 里的 `max_simulated_input_tokens * 0.08`
+	// （src/anthropic/cache.rs:1053）。
+	capJitterCapRatio = 0.08
 )
 
 type cacheEmulationUsage struct {
@@ -80,11 +85,21 @@ var globalCacheTracker = &cacheTracker{
 // 得到估算结果，commit() 才会把本次前缀写入 tracker。调用方应在确认上游请求成功后
 // 再 commit()，避免请求失败/未发出时就把内容错误标记为已缓存，污染下一次请求的估算。
 type cacheEmulationPlan struct {
-	usage       *cacheEmulationUsage
-	cacheKey    uint64
-	profile     *cacheProfile
+	usage    *cacheEmulationUsage
+	cacheKey uint64
+	profile  *cacheProfile
+	// nonStream 取自请求体的 stream 字段（缺失按非流式算，与各网关的默认一致）。
+	// 只用来判断 skip_non_stream_usage_projection 是否命中：投影的调用点散落在
+	// 二十来处流式/非流式处理函数里，在计划上记一次比逐个透传参数可靠。
+	nonStream   bool
 	usagePolicy CacheUsagePolicy
 	committed   atomic.Bool
+}
+
+// skipProjection 表示这次响应应当原样透传上游 usage：非流式拿得到完整 usage，
+// 配了 skip_non_stream_usage_projection 的策略更希望不套缓存整形。
+func (p *cacheEmulationPlan) skipProjection() bool {
+	return p != nil && p.nonStream && p.usagePolicy.SkipNonStreamUsageProjection
 }
 
 func (p *cacheEmulationPlan) result() *cacheEmulationUsage {
@@ -212,18 +227,22 @@ func applyUsageProjectionClaude(dst *ClaudeUsage, rawInput, rawOutput int, polic
 	dst.CacheCreation5mTokens, dst.CacheCreation1hTokens = capCacheCreationBreakdown(
 		dst.CacheCreation5mTokens, dst.CacheCreation1hTokens, dst.CacheCreationInputTokens,
 	)
-	if policy.OutputUpliftPercent > 0 && policy.OutputUpliftMinTokens > 0 &&
-		dst.OutputTokens > policy.OutputUpliftMinTokens {
-		dst.OutputTokens += int(math.Round(float64(dst.OutputTokens) * float64(cacheMinInt(policy.OutputUpliftPercent, 200)) / 100))
+	// 输出放大与输出最终上限同属一组，由 OutputGuardOn() 一起控制：
+	// 关掉之后两者都不生效，不必把数值清零再填回来。
+	if policy.OutputGuardOn() {
+		if policy.OutputUpliftPercent > 0 && policy.OutputUpliftMinTokens > 0 &&
+			dst.OutputTokens > policy.OutputUpliftMinTokens {
+			dst.OutputTokens += int(math.Round(float64(dst.OutputTokens) * float64(cacheMinInt(policy.OutputUpliftPercent, 200)) / 100))
+		}
+		dst.OutputTokens = applyFinalCapWithJitter(dst.OutputTokens, policy.FinalOutputMaxTokens,
+			policy.FinalOutputJitterMinTokens, policy.FinalOutputJitterMaxTokens, seed^0x55)
 	}
-	if policy.FinalOutputMaxTokens > 0 {
-		dst.OutputTokens = cacheMinInt(dst.OutputTokens, policy.FinalOutputMaxTokens)
-	}
-	if policy.FinalCacheReadMaxTokens > 0 {
-		dst.CacheReadInputTokens = cacheMinInt(dst.CacheReadInputTokens, policy.FinalCacheReadMaxTokens)
-	}
+	dst.CacheReadInputTokens = applyFinalCapWithJitter(dst.CacheReadInputTokens, policy.FinalCacheReadMaxTokens,
+		policy.FinalCacheReadJitterMinTokens, policy.FinalCacheReadJitterMaxTokens, seed^0x66)
 	if policy.FinalCacheCreationMaxTokens > 0 {
-		dst.CacheCreationInputTokens = cacheMinInt(dst.CacheCreationInputTokens, policy.FinalCacheCreationMaxTokens)
+		dst.CacheCreationInputTokens = applyFinalCapWithJitter(dst.CacheCreationInputTokens,
+			policy.FinalCacheCreationMaxTokens, policy.FinalCacheCreationJitterMinTokens,
+			policy.FinalCacheCreationJitterMaxTokens, seed^0x77)
 		dst.CacheCreation5mTokens, dst.CacheCreation1hTokens = capCacheCreationBreakdown(
 			dst.CacheCreation5mTokens, dst.CacheCreation1hTokens, dst.CacheCreationInputTokens,
 		)
@@ -255,23 +274,40 @@ func applyUsageProjectionOpenAI(dst *OpenAIUsage, rawInput, rawOutput int, polic
 	uncached = projected
 	read = projectUsageField(policy.CacheRead, read, seed^0x33)
 	creation = projectUsageField(policy.CacheCreation, creation, seed^0x44)
-	if policy.FinalCacheReadMaxTokens > 0 {
-		read = cacheMinInt(read, policy.FinalCacheReadMaxTokens)
-	}
-	if policy.FinalCacheCreationMaxTokens > 0 {
-		creation = cacheMinInt(creation, policy.FinalCacheCreationMaxTokens)
-	}
+	read = applyFinalCapWithJitter(read, policy.FinalCacheReadMaxTokens,
+		policy.FinalCacheReadJitterMinTokens, policy.FinalCacheReadJitterMaxTokens, seed^0x66)
+	creation = applyFinalCapWithJitter(creation, policy.FinalCacheCreationMaxTokens,
+		policy.FinalCacheCreationJitterMinTokens, policy.FinalCacheCreationJitterMaxTokens, seed^0x77)
 	dst.InputTokens = uncached + read + creation
 	dst.CacheReadInputTokens = read
 	dst.CacheCreationInputTokens = creation
 	dst.OutputTokens = projectUsageFieldWithRaw(policy.Output, dst.OutputTokens, rawOutput, seed^0x22)
-	if policy.OutputUpliftPercent > 0 && policy.OutputUpliftMinTokens > 0 &&
-		dst.OutputTokens > policy.OutputUpliftMinTokens {
-		dst.OutputTokens += int(math.Round(float64(dst.OutputTokens) * float64(cacheMinInt(policy.OutputUpliftPercent, 200)) / 100))
+	if policy.OutputGuardOn() {
+		if policy.OutputUpliftPercent > 0 && policy.OutputUpliftMinTokens > 0 &&
+			dst.OutputTokens > policy.OutputUpliftMinTokens {
+			dst.OutputTokens += int(math.Round(float64(dst.OutputTokens) * float64(cacheMinInt(policy.OutputUpliftPercent, 200)) / 100))
+		}
+		dst.OutputTokens = applyFinalCapWithJitter(dst.OutputTokens, policy.FinalOutputMaxTokens,
+			policy.FinalOutputJitterMinTokens, policy.FinalOutputJitterMaxTokens, seed^0x55)
 	}
-	if policy.FinalOutputMaxTokens > 0 {
-		dst.OutputTokens = cacheMinInt(dst.OutputTokens, policy.FinalOutputMaxTokens)
+}
+
+// applyFinalCapWithJitter 把 value 夹到 capTokens 以内。只有真正触顶时才抖动：
+// 未触顶的值本来就各不相同，再减一次会凭空少报 token。
+//
+// 抖动量在 [jitterMin, jitterMax] 内按 seed 取值，并夹到 capTokens 以内
+// （对齐 kiro.rs 的 toWhole(..., 0, finalXxxMaxTokens)，
+// ui/src/lib/runtime-config-defaults.ts:585）。同一请求的重试结果保持一致。
+func applyFinalCapWithJitter(value, capTokens, jitterMin, jitterMax int, seed uint64) int {
+	if capTokens <= 0 || value <= capTokens {
+		return value
 	}
+	jitterMax = min(max(jitterMax, 0), capTokens)
+	if jitterMax <= 0 {
+		return capTokens
+	}
+	jitterMin = min(max(jitterMin, 0), jitterMax)
+	return max(capTokens-jitterWithin(jitterMin, jitterMax, seed), 0)
 }
 
 func projectUsageFieldWithRaw(policy CacheUsageFieldPolicy, current, raw int, seed uint64) int {
@@ -463,7 +499,7 @@ func mergeAndCommitCachePlan(c *gin.Context, usage *ClaudeUsage, success bool) {
 				zap.Any("panic", r))
 		}
 	}()
-	if usage != nil {
+	if usage != nil && !plan.skipProjection() {
 		upstreamEvidence := claudeUsageHasCacheEvidence(usage)
 		projectClaudeUsage(usage, plan.result(), plan.usagePolicy, plan.cacheKey)
 		if !upstreamEvidence {
@@ -490,7 +526,7 @@ func mergeAndCommitOpenAICachePlan(c *gin.Context, usage *OpenAIUsage, success b
 	if plan == nil {
 		return
 	}
-	if usage != nil {
+	if usage != nil && !plan.skipProjection() {
 		upstreamEvidence := openAIUsageHasCacheEvidence(usage)
 		projectOpenAIUsage(usage, plan.result(), plan.usagePolicy, plan.cacheKey)
 		if !upstreamEvidence {
@@ -819,7 +855,15 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(account *Account, 
 	}
 	return &cacheEmulationPlan{
 		usage: result, cacheKey: cacheKey, profile: profile, usagePolicy: policy.Usage,
+		nonStream: !requestBodyWantsStream(profile.rawBody),
 	}
+}
+
+// requestBodyWantsStream 读取请求体的 stream 字段。三种协议（Messages /
+// Chat Completions / Responses）都用这个布尔字段，字段缺失或请求体畸形时返回
+// false，与各网关「默认非流式」的行为一致。
+func requestBodyWantsStream(body []byte) bool {
+	return gjson.GetBytes(body, "stream").Bool()
 }
 
 // uncachedInputBand describes the range the reported uncached input_tokens is
@@ -1119,16 +1163,16 @@ func applyReportedInputJitter(capped, minJitter, maxJitter int, seed uint64, low
 	if maxJitter < minJitter {
 		maxJitter = minJitter
 	}
-	// 抖动只是给触顶值加一点噪声，不能把它整体拉低一个量级。
-	// cap_jitter 的默认值（12k~24k）是按 kiro.rs 30 万的模拟上限定的；
-	// 用户把 reported_input_max_tokens 设成 3 万时照搬会砍掉八成，
-	// 上报出来根本不是"触顶"该有的样子。统一限制在触顶值的 25% 以内。
+	// 抖动只是给触顶值加一点噪声，不能把它整体拉低一个量级：cap_jitter 的默认值
+	// （12k~24k）是按 kiro.rs 30 万的模拟上限定的，直接用在 3 万的上限上会砍掉八成。
 	//
-	// 注意 min 要按同比例缩放而不是一起夹到 ceiling：两端都取 ceiling 会让区间塌成
-	// 一个点，每条记录又变成同一个数字 —— 正是这个抖动要解决的问题。
-	if ceiling := capped / 4; ceiling > 0 && maxJitter > ceiling {
-		minJitter = int(int64(minJitter) * int64(ceiling) / int64(maxJitter))
+	// 比例与夹取方式对齐 kiro.rs 的 cap_jitter()（src/anthropic/cache.rs:1049）：
+	// 上限取「触顶值的 8%」，min 直接夹到 max 而不是按比例缩放。夹取后区间可能塌成
+	// 一个点（此时该上限下的记录取值相同），这与参考实现一致 —— 想要区间就把
+	// cap_jitter_min/max 配到上限的 8% 以内。
+	if ceiling := int(float64(capped) * capJitterCapRatio); ceiling > 0 && maxJitter > ceiling {
 		maxJitter = ceiling
+		minJitter = min(minJitter, maxJitter)
 	}
 	span := maxJitter - minJitter + 1
 	jitter := minJitter

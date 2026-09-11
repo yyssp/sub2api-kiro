@@ -357,16 +357,159 @@ func TestCapJitterStaysProportionalToTheCap(t *testing.T) {
 		require.LessOrEqual(t, got, cap30k)
 	}
 
-	// 比例限制不能把区间压成一个点 —— 那样每条记录又是同一个数字。
-	seen := map[int]struct{}{}
+	// 夹取方式对齐 kiro.rs 的 cap_jitter()：上限取「触顶值的 8%」，
+	// min 直接 .min(max) 夹到 max 而不是按比例缩放。配置的 12k~24k 都超过
+	// 30000 的 8%（2400）时，区间会塌成一个点 —— 这与参考实现一致。
+	// 想在小上限下拿到一个区间，就把 cap_jitter_min/max 配到上限的 8% 以内。
+	narrowed := map[int]struct{}{}
 	for seed := uint64(0); seed < 200; seed++ {
-		seen[applyReportedInputJitter(cap30k, cfg.CapJitterMinTokens, cfg.CapJitterMaxTokens, seed, 0)] = struct{}{}
+		narrowed[applyReportedInputJitter(cap30k, cfg.CapJitterMinTokens, cfg.CapJitterMaxTokens, seed, 0)] = struct{}{}
 	}
-	require.Greater(t, len(seen), 1, "按比例收窄后抖动区间塌成了一个值")
+	require.Len(t, narrowed, 1, "两端都超过 8% 时应一起夹到同一个点")
+
+	// 配在 8% 以内时，区间必须照常散开。
+	inBand := map[int]struct{}{}
+	for seed := uint64(0); seed < 200; seed++ {
+		inBand[applyReportedInputJitter(cap30k, 400, 2000, seed, 0)] = struct{}{}
+	}
+	require.Greater(t, len(inBand), 1, "8% 以内的区间不应被夹平")
 
 	// 上限本身很大时，默认区间应原样生效，不被比例限制吃掉。
 	const cap300k = 300000
 	big := applyReportedInputJitter(cap300k, cfg.CapJitterMinTokens, cfg.CapJitterMaxTokens, 7, 0)
 	require.GreaterOrEqual(t, big, cap300k-cfg.CapJitterMaxTokens)
 	require.LessOrEqual(t, big, cap300k-cfg.CapJitterMinTokens)
+}
+
+// 上限扣减区间：触顶的记录不能全部落在同一个数字上。
+//
+// 用户的验收标准第 5 条要求「到达极限时给一个随机变量做增减」，第 2 条要求
+// 连续几条数据不能都是同一个缓存数值。裸 min() 会让所有触顶请求上报一模一样的
+// 上限值（一整列 700000），一眼就是伪造的。
+func TestFinalCapJitterSpreadsCappedValues(t *testing.T) {
+	const capTokens = 650000
+	const jMin, jMax = 23456, 54321
+
+	seen := map[int]struct{}{}
+	for seed := uint64(1); seed <= 40; seed++ {
+		got := applyFinalCapWithJitter(capTokens*2, capTokens, jMin, jMax, seed)
+		require.GreaterOrEqual(t, got, capTokens-jMax)
+		require.LessOrEqual(t, got, capTokens-jMin)
+		seen[got] = struct{}{}
+	}
+	// 40 次取样必须散开，否则等于没有抖动。
+	require.Greater(t, len(seen), 10)
+
+	// 同一 seed（同一请求）必须稳定，重试不能换一个数字。
+	require.Equal(t,
+		applyFinalCapWithJitter(capTokens*2, capTokens, jMin, jMax, 9),
+		applyFinalCapWithJitter(capTokens*2, capTokens, jMin, jMax, 9))
+
+	// 未触顶的值原样返回：这些值本来就各不相同，再减一次会凭空少报 token。
+	require.Equal(t, 1000, applyFinalCapWithJitter(1000, capTokens, jMin, jMax, 3))
+
+	// 没配上限（0）= 不限制，扣减区间不得凭空生效。
+	require.Equal(t, 9_000_000, applyFinalCapWithJitter(9_000_000, 0, jMin, jMax, 3))
+
+	// 扣减量超过上限本身时夹到上限，结果不能变成负数。
+	require.GreaterOrEqual(t, applyFinalCapWithJitter(5000, 100, 9999, 99999, 3), 0)
+}
+
+// 配置缺失不能报错，也不能改变原有行为。
+func TestUsagePolicyDegradesSafelyWhenUnconfigured(t *testing.T) {
+	// 存量策略的 JSON 里没有 final_output_guard_enabled 这个字段。
+	// 裸 bool 会反序列化成 false，等于静默关掉输出上限 —— 必须补成开启。
+	var legacy CacheUsagePolicy
+	require.NoError(t, json.Unmarshal([]byte(`{"enabled":true,"final_output_max_tokens":4096}`), &legacy))
+	require.Nil(t, legacy.FinalOutputGuardEnabled)
+	require.True(t, legacy.OutputGuardOn(), "未配置的总开关必须视为开启")
+
+	normalized := normalizeCacheUsagePolicy(legacy)
+	require.NotNil(t, normalized.FinalOutputGuardEnabled)
+	require.True(t, *normalized.FinalOutputGuardEnabled)
+
+	// 显式关掉时才真的不生效。
+	off := CacheUsagePolicy{Enabled: true, FinalOutputGuardEnabled: boolPtr(false), FinalOutputMaxTokens: 100}
+	usage := &ClaudeUsage{OutputTokens: 9999}
+	applyUsageProjectionClaude(usage, 0, 9999, off, 1, false)
+	require.Equal(t, 9999, usage.OutputTokens, "总开关关掉后输出上限不得生效")
+
+	// 上限为 0 时扣减区间一并清零，页面不会留下一组无效数字。
+	cleared := normalizeCacheUsagePolicy(CacheUsagePolicy{
+		Enabled:                       true,
+		FinalCacheReadJitterMinTokens: 500, FinalCacheReadJitterMaxTokens: 900,
+	})
+	require.Zero(t, cleared.FinalCacheReadJitterMinTokens)
+	require.Zero(t, cleared.FinalCacheReadJitterMaxTokens)
+
+	// min > max 的手工输入要被收敛，不能报错。
+	swapped := normalizeCacheUsagePolicy(CacheUsagePolicy{
+		Enabled: true, FinalCacheCreationMaxTokens: 1000,
+		FinalCacheCreationJitterMinTokens: 800, FinalCacheCreationJitterMaxTokens: 200,
+	})
+	require.LessOrEqual(t, swapped.FinalCacheCreationJitterMinTokens, swapped.FinalCacheCreationJitterMaxTokens)
+	require.NoError(t, validateCacheUsagePolicy(swapped))
+}
+
+// 分组没绑策略、或绑了但没启用，都必须按默认逻辑放行，不产生任何错误。
+func TestUnboundOrDisabledStrategyFallsBackWithoutError(t *testing.T) {
+	resetCacheTracker()
+	svc := &GatewayService{}
+	account := &Account{ID: 9402, Platform: PlatformAnthropic}
+	body := throttledGrowthBody("fallback-session", 2)
+
+	// 1) 完全没绑策略。
+	unbound := &Group{ID: 9401, Platform: PlatformAnthropic}
+	require.False(t, hasBoundCacheStrategy(unbound))
+	require.Nil(t, svc.prepareCacheEmulationUsage(
+		context.Background(), account, unbound, body, "claude-sonnet-4-5-20250929", 40000))
+
+	// 2) 绑了策略但 Enabled=false。
+	strategyID := int64(900401)
+	baseCfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	// 这个请求体没有真实会话标识，不放开派生会话就挑不出缓存键，
+	// 第 3 步会拿到 nil 而掩盖掉「启用后才生效」的对比。
+	baseCfg.AllowDerivedSession = true
+	cfg, err := NormalizeCacheStrategyConfig(baseCfg)
+	require.NoError(t, err)
+	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
+		ID: strategyID, Name: "bound but off", Enabled: false, Revision: 1, Config: cfg,
+	})
+	defer GlobalCacheStrategyRegistry().Delete(strategyID)
+
+	bound := &Group{ID: 9403, Platform: PlatformAnthropic, CacheStrategyID: &strategyID}
+	require.True(t, hasBoundCacheStrategy(bound), "绑定关系仍然存在，只是没启用")
+	_, enabled := effectiveCacheStrategyConfig(bound)
+	require.False(t, enabled)
+	require.Nil(t, svc.prepareCacheEmulationUsage(
+		context.Background(), account, bound, body, "claude-sonnet-4-5-20250929", 40000))
+
+	// 3) 绑定且启用，策略才真正生效。
+	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
+		ID: strategyID, Name: "bound and on", Enabled: true, Revision: 2, Config: cfg,
+	})
+	require.NotNil(t, svc.prepareCacheEmulationUsage(
+		context.Background(), account, bound, body, "claude-sonnet-4-5-20250929", 40000))
+}
+
+// skip_non_stream_usage_projection 只影响非流式，且必须真的生效。
+func TestSkipNonStreamUsageProjectionTakesEffect(t *testing.T) {
+	streamBody := []byte(`{"model":"m","stream":true}`)
+	nonStreamBody := []byte(`{"model":"m","stream":false}`)
+	absentBody := []byte(`{"model":"m"}`)
+
+	require.True(t, requestBodyWantsStream(streamBody))
+	require.False(t, requestBodyWantsStream(nonStreamBody))
+	require.False(t, requestBodyWantsStream(absentBody), "字段缺失按非流式算")
+	require.False(t, requestBodyWantsStream(nil), "请求体畸形也不能 panic")
+
+	on := CacheUsagePolicy{Enabled: true, SkipNonStreamUsageProjection: true}
+	require.True(t, (&cacheEmulationPlan{nonStream: true, usagePolicy: on}).skipProjection())
+	require.False(t, (&cacheEmulationPlan{nonStream: false, usagePolicy: on}).skipProjection(),
+		"流式响应不受这个开关影响")
+
+	off := CacheUsagePolicy{Enabled: true}
+	require.False(t, (&cacheEmulationPlan{nonStream: true, usagePolicy: off}).skipProjection(),
+		"未配置时保持原有的投影行为")
+	require.False(t, (*cacheEmulationPlan)(nil).skipProjection())
 }

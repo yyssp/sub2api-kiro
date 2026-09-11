@@ -9,7 +9,8 @@ export default {
     name: "名称",
     kind: "策略类型",
     templateLabel: "策略模板",
-    templateHint: "选择模板会立即载入一套可编辑的完整配置，保存后仍可继续调整。",
+    templateHint:
+      "选择模板会立即载入一套可编辑的完整配置，保存后仍可继续调整。",
     usageSummary: "用量整形",
     usageSummaryInput: "输入",
     usageSummaryOutput: "输出",
@@ -68,9 +69,23 @@ export default {
       usageNormalMaxMultiplier: "目标常规最大倍率",
       outputUpliftMinTokens: "输出放大阈值（0=关闭）",
       outputUpliftPercent: "输出放大比例（%）",
+      finalOutputGuardEnabled: "启用输出上限（放大与最终上限的总开关）",
+      finalOutputGuardEnabledHint:
+        "关掉后输出放大与输出最终上限都不生效，数值保留不用清零。未配置时默认开启。",
       finalOutputMaxTokens: "输出最终上限（0=关闭）",
+      finalOutputJitterMinTokens: "输出上限扣减下限",
+      finalOutputJitterMaxTokens: "输出上限扣减上限",
       finalCacheReadMaxTokens: "读取缓存最终上限（0=关闭）",
+      finalCacheReadJitterMinTokens: "最终上限扣减下限",
+      finalCacheReadJitterMaxTokens: "最终上限扣减上限",
       finalCacheCreationMaxTokens: "创建缓存最终上限（0=关闭）",
+      finalCacheCreationJitterMinTokens: "写入上限扣减下限",
+      finalCacheCreationJitterMaxTokens: "写入上限扣减上限",
+      finalCapJitterHint:
+        "触顶时在这个区间内随机回退一点，避免所有触顶记录都显示同一个数字。扣减量会被夹到上限以内；上限为 0（不限制）时该区间自动清零。",
+      skipNonStreamUsageProjection: "非流式响应跳过用量投影",
+      skipNonStreamUsageProjectionHint:
+        "非流式响应能拿到完整的上游 usage，勾选后原样透传、不套缓存整形。仅影响非流式，流式响应不受影响。",
       behavior: "缓存命中与创建行为（高级）",
       behaviorHint:
         "这些参数决定本地缓存证据如何产生；它们不是最终用量上报值。最终返回的 input/output/read/create 请在上方用量上报策略中设置。",
@@ -132,7 +147,8 @@ export default {
     },
     kindDescriptions: {
       prefix: "按稳定请求前缀建立缓存，适合大多数 Claude Code 兼容分组。",
-      toolAware: "在稳定前缀基础上细分工具、历史和工具结果，适合工具密集型长会话。",
+      toolAware:
+        "在稳定前缀基础上细分工具、历史和工具结果，适合工具密集型长会话。",
       disabled: "不读、不写本地缓存，也不补足模拟的 cache usage。",
     },
     templates: {
@@ -142,52 +158,17 @@ export default {
       highCache: {
         name: "高缓存（默认）",
         description:
-          "对应参考项目的默认高缓存路径：稳定前缀、98% usage 比例、长输入 token 缩放和最终 usage 上限。",
+          "对应参考项目的默认高缓存路径：稳定前缀、98% usage 比例、长输入 token 缩放和最终 usage 上限。单次创建上限 30k，用途是用量整形而非追求增长速度。",
       },
-      claudeCode: {
-        name: "Claude Code 工具会话",
+      steadyGrowth: {
+        name: "稳步增长",
         description:
-          "对应 Claude Code 高缓存路径：工具感知前缀、输入压到 96 token 并将差值转入读取缓存，Creation 围绕 3,000 token 整形。",
+          "每轮写入恒定额度，缓存呈平稳上升的直线。24 轮实测每轮创建 30k、读取线性涨到约 846k。创建节奏只由单次上限决定，最小间隔与窗口预算都置零以免中途停滞。",
       },
-      inputShaping: {
-        name: "输入整形（高缓存）",
+      rapidGrowth: {
+        name: "快速增长",
         description:
-          "对应只改写 input 上报的高缓存路径：缓存读写保留计算值，input 使用 96 token 上限并把差值归入读取缓存。",
-      },
-      lowFrequencyCreation: {
-        name: "低频创建",
-        description:
-          "保持已有前缀读取，同时降低新增缓存写入频率：首次允许合法创建，后续由成功请求间隔、单次写入上限和 5 分钟窗口预算控制。",
-      },
-      readPriority: {
-        name: "仅读取优先",
-        description:
-          "工具感知缓存优先复用已经存在的前缀；首次请求仍允许合法创建，命中后不继续写入新增尾部。",
-      },
-      strictClient: {
-        name: "仅客户端断点",
-        description:
-          "只接受请求显式声明的 cache_control 断点，不自动猜测稳定边界，适合需要严格可审计缓存的分组。",
-      },
-      sharedSession: {
-        name: "共享会话缓存",
-        description:
-          "按分组和会话共享缓存状态，读取与创建使用独立比例，适合多个账号承接同一 Claude Code 会话。",
-      },
-      conservativeUsage: {
-        name: "保守用量整形",
-        description:
-          "限制缓存读写和输出的上报上限，并使用小幅目标采样，适合需要平滑、低波动 usage 的分组。",
-      },
-      longContextGuard: {
-        name: "长上下文保护",
-        description:
-          "支持较长稳定前缀但设置 96k 输入保护、48k 读取上限和 8k 单次创建上限，避免超出合理上下文。",
-      },
-      noCache: {
-        name: "完全不缓存",
-        description:
-          "对应 no-cache 路径：关闭本地缓存读写和模拟 usage，响应只保留上游真实 usage。",
+          "几轮内冲到较大数值，且每轮增量不规整。24 轮实测首轮创建即约 56k、末轮读取约 921k，单轮创建在 40k~56k 间浮动。额度由 98% 覆盖率推导，不被单次上限削平。",
       },
     },
     ratioModes: {

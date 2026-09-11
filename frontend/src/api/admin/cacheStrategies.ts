@@ -38,15 +38,30 @@ export interface CacheStrategyConfig {
   usage: {
     enabled: boolean;
     preserve_upstream_cache_usage?: boolean;
+    /** 非流式响应原样透传上游 usage，不套缓存整形；未配置时保持投影。 */
+    skip_non_stream_usage_projection?: boolean;
     input: CacheUsageFieldPolicy;
     output: CacheUsageFieldPolicy;
     cache_read: CacheUsageFieldPolicy;
     cache_creation: CacheUsageFieldPolicy;
+    /**
+     * 每个 final_*_max_tokens 都配一对扣减区间：触顶时在
+     * [jitter_min, jitter_max] 内按请求指纹回退一点，避免所有触顶记录
+     * 都落在同一个数字上。上限为 0（不限制）时扣减区间会被后端清零。
+     */
     final_cache_read_max_tokens: number;
+    final_cache_read_jitter_min_tokens: number;
+    final_cache_read_jitter_max_tokens: number;
     final_cache_creation_max_tokens: number;
+    final_cache_creation_jitter_min_tokens: number;
+    final_cache_creation_jitter_max_tokens: number;
     output_uplift_min_tokens: number;
     output_uplift_percent: number;
+    /** 输出放大 + 输出最终上限的总开关；未配置（undefined）视为开启。 */
+    final_output_guard_enabled?: boolean;
     final_output_max_tokens: number;
+    final_output_jitter_min_tokens: number;
+    final_output_jitter_max_tokens: number;
   };
   creation_control: {
     enabled: boolean;
@@ -60,10 +75,7 @@ export interface CacheStrategyConfig {
 }
 
 export type CacheUsageFieldMode =
-  | "raw"
-  | "preserve"
-  | "sample_max"
-  | "sample_target";
+  "raw" | "preserve" | "sample_max" | "sample_target";
 
 export interface CacheUsageFieldPolicy {
   mode: CacheUsageFieldMode;

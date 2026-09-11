@@ -3,18 +3,19 @@ import type {
   CacheUsageFieldPolicy,
 } from "@/api/admin/cacheStrategies";
 
+// 缓存类型（config.kind）说明：
+//
+// - prefix「前缀缓存」：把请求开头那段稳定内容（system、tools 定义、已结束的
+//   历史轮次）整体当作缓存前缀，按 token 位置切断点。只要前缀逐字节一致就能命中，
+//   适合上下文逐轮追加的普通会话 —— 也是绝大多数场景该选的类型。
+//
+// - tool_aware「工具缓存」：在前缀缓存的基础上额外感知工具调用结构，把
+//   tool_use / tool_result 这类频繁变动的块单独处理，避免一次工具调用就把
+//   整个前缀顶掉。适合 Claude Code 这种每轮都夹带工具往返的客户端。
+//
+// - disabled「关闭」：不产生任何缓存证据，请求原样转发。
 export type CacheStrategyTemplateId =
-  | "blank"
-  | "high_cache"
-  | "claude_code"
-  | "input_shaping"
-  | "low_frequency_creation"
-  | "read_priority"
-  | "strict_client"
-  | "shared_session"
-  | "conservative_usage"
-  | "long_context_guard"
-  | "no_cache";
+  "blank" | "high_cache" | "steady_growth" | "rapid_growth";
 
 export interface CacheStrategyTemplate {
   id: Exclude<CacheStrategyTemplateId, "blank">;
@@ -82,11 +83,21 @@ export function createDefaultCacheStrategyConfig(
       output: usageField("raw"),
       cache_read: usageField("preserve"),
       cache_creation: usageField("preserve"),
+      skip_non_stream_usage_projection: false,
+      // 上限默认全 0（不限制），扣减区间也随之留 0：没有上限就没有触顶，
+      // 填了也不会生效（后端 normalize 会清零）。
       final_cache_read_max_tokens: 0,
+      final_cache_read_jitter_min_tokens: 0,
+      final_cache_read_jitter_max_tokens: 0,
       final_cache_creation_max_tokens: 0,
+      final_cache_creation_jitter_min_tokens: 0,
+      final_cache_creation_jitter_max_tokens: 0,
       output_uplift_min_tokens: 0,
       output_uplift_percent: 0,
+      final_output_guard_enabled: true,
       final_output_max_tokens: 0,
+      final_output_jitter_min_tokens: 0,
+      final_output_jitter_max_tokens: 0,
     },
     creation_control: {
       enabled: false,
@@ -138,240 +149,56 @@ function highCacheConfig(): CacheStrategyConfig {
   return config;
 }
 
-function claudeCodeConfig(): CacheStrategyConfig {
-  const config = createDefaultCacheStrategyConfig("tool_aware");
-  config.coverage_ratio = 0.92;
-  config.usage_ratio = 0.9;
-  config.read_ratio = 0.95;
-  config.creation_ratio = 0.8;
-  config.token_scale = 1.35;
-  config.scale_min_input_tokens = 20000;
-  config.max_coverage_tokens = 240000;
-  config.max_new_creation_tokens_per_request = 24000;
-  config.max_simulated_input_tokens = 240000;
-  config.preserve_upstream_cache_usage = false;
-  config.usage.preserve_upstream_cache_usage = false;
-  config.usage.input = usageField("sample_max", {
-    max_tokens: 16000,
-    move_delta_to_cache_read: true,
-  });
-  config.usage.cache_creation = usageField("sample_target", {
-    target_tokens: 30000,
-    normal_max_multiplier: 1.2,
-  });
-  config.usage.cache_read = usageField("sample_target", {
-    target_tokens: 180000,
-    normal_max_multiplier: 1.2,
-  });
-  config.usage.final_cache_read_max_tokens = 500000;
-  config.usage.final_cache_creation_max_tokens = 200000;
-  config.usage.output_uplift_min_tokens = 1000;
-  config.usage.output_uplift_percent = 50;
-  config.usage.final_output_max_tokens = 16384;
-  return config;
-}
-
-function inputShapingConfig(): CacheStrategyConfig {
-  const config = highCacheConfig();
-  config.kind = "tool_aware";
-  config.coverage_ratio = 0.86;
-  config.usage_ratio = 0.82;
-  config.read_ratio = 0.9;
-  config.creation_ratio = 0.72;
-  config.token_scale = 1.25;
-  config.max_coverage_tokens = 180000;
-  config.max_new_creation_tokens_per_request = 18000;
-  config.max_simulated_input_tokens = 180000;
-  config.usage.input = usageField("sample_max", {
-    max_tokens: 24000,
-    move_delta_to_cache_read: true,
-  });
-  config.usage.output = usageField("raw");
-  config.usage.cache_read = usageField("preserve");
-  config.usage.cache_creation = usageField("preserve");
-  config.usage.final_cache_read_max_tokens = 300000;
-  config.usage.final_cache_creation_max_tokens = 120000;
-  return config;
-}
-
-function lowFrequencyCreationConfig(): CacheStrategyConfig {
+// 稳步增长：每轮写入恒定额度，缓存呈一条平稳上升的直线。
+//
+// 24 轮 mock 回归实测：每轮 create 稳定在 30000，cache_read 从 0 线性涨到
+// 约 846K，中途没有停滞。关键在于创建控制的三个节流项全部让路 ——
+// 最小间隔 60 秒是默认值，但真实会话相邻两轮只隔几秒，留着会让第 1 轮之后
+// 每一轮都被压制；窗口预算同理，跑得比窗口重置还快时会在中途卡死。
+// 节奏只由「单次上限」一项决定，这才是可预测的稳步增长。
+function steadyGrowthConfig(): CacheStrategyConfig {
   const config = createDefaultCacheStrategyConfig("prefix");
-  config.ratio_mode = "independent";
-  config.coverage_ratio = 0.78;
-  config.usage_ratio = 0.75;
-  config.read_ratio = 1;
-  config.creation_ratio = 0.55;
-  config.max_coverage_tokens = 180000;
-  config.max_new_creation_tokens_per_request = 30000;
-  config.max_simulated_input_tokens = 220000;
-  config.preserve_upstream_cache_usage = false;
-  config.usage.preserve_upstream_cache_usage = false;
-  config.usage.cache_read = usageField("sample_max", {
-    max_tokens: 180000,
-  });
-  config.usage.cache_creation = usageField("sample_max", {
-    max_tokens: 30000,
-  });
-  config.usage.final_cache_read_max_tokens = 300000;
-  config.usage.final_cache_creation_max_tokens = 120000;
-  config.creation_control = {
-    enabled: true,
-    min_creation_delta_tokens: 0,
-    min_successful_requests_between: 2,
-    min_creation_interval_seconds: 0,
-    max_creation_tokens_per_event: 30000,
-    creation_budget_window_seconds: 300,
-    max_creation_tokens_per_window: 120000,
-  };
-  return config;
-}
-
-function readPriorityConfig(): CacheStrategyConfig {
-  const config = createDefaultCacheStrategyConfig("tool_aware");
-  config.ratio_mode = "independent";
   config.coverage_ratio = 0.9;
-  config.usage_ratio = 0.9;
-  config.read_ratio = 1;
-  config.creation_ratio = 0.35;
-  config.max_coverage_tokens = 240000;
-  config.max_new_creation_tokens_per_request = 12000;
-  config.incremental_create_enabled = false;
-  config.max_simulated_input_tokens = 260000;
-  config.preserve_upstream_cache_usage = false;
-  config.usage.preserve_upstream_cache_usage = false;
-  config.usage.cache_read = usageField("sample_max", {
-    max_tokens: 220000,
-  });
-  config.usage.cache_creation = usageField("sample_max", {
-    max_tokens: 12000,
-  });
-  config.usage.final_cache_read_max_tokens = 500000;
-  config.usage.final_cache_creation_max_tokens = 60000;
-  config.creation_control = {
-    enabled: true,
-    min_creation_delta_tokens: 0,
-    min_successful_requests_between: 1,
-    min_creation_interval_seconds: 0,
-    max_creation_tokens_per_event: 12000,
-    creation_budget_window_seconds: 600,
-    max_creation_tokens_per_window: 48000,
-  };
-  return config;
-}
-
-function strictClientConfig(): CacheStrategyConfig {
-  const config = createDefaultCacheStrategyConfig("prefix");
-  config.coverage_ratio = 0.65;
-  config.usage_ratio = 0.8;
-  config.read_ratio = 0.8;
-  config.creation_ratio = 0.8;
-  config.breakpoint_mode = "client_only";
-  config.max_coverage_tokens = 180000;
-  config.max_new_creation_tokens_per_request = 60000;
-  config.max_simulated_input_tokens = 200000;
-  config.preserve_upstream_cache_usage = false;
-  config.usage.preserve_upstream_cache_usage = false;
-  config.incremental_create_enabled = false;
-  config.usage.cache_read = usageField("sample_max", { max_tokens: 180000 });
-  config.usage.cache_creation = usageField("sample_max", { max_tokens: 60000 });
-  config.usage.final_cache_read_max_tokens = 180000;
-  config.usage.final_cache_creation_max_tokens = 60000;
-  return config;
-}
-
-function sharedSessionConfig(): CacheStrategyConfig {
-  const config = createDefaultCacheStrategyConfig("prefix");
-  config.ratio_mode = "independent";
-  config.scope_mode = "group_session";
   config.allow_derived_session = true;
-  config.coverage_ratio = 0.9;
-  config.read_ratio = 0.75;
-  config.creation_ratio = 0.6;
-  config.max_coverage_tokens = 260000;
-  config.max_new_creation_tokens_per_request = 45000;
-  config.max_simulated_input_tokens = 280000;
-  config.preserve_upstream_cache_usage = false;
-  config.usage.preserve_upstream_cache_usage = false;
-  config.creation_control = {
-    enabled: true,
-    min_creation_delta_tokens: 256,
-    min_successful_requests_between: 1,
-    min_creation_interval_seconds: 0,
-    max_creation_tokens_per_event: 45000,
-    creation_budget_window_seconds: 600,
-    max_creation_tokens_per_window: 160000,
-  };
-  config.usage.cache_read = usageField("sample_target", {
-    target_tokens: 180000,
-    normal_max_multiplier: 1.3,
-  });
-  config.usage.cache_creation = usageField("sample_target", {
-    target_tokens: 45000,
-    normal_max_multiplier: 1.25,
-  });
-  config.usage.final_cache_read_max_tokens = 600000;
-  config.usage.final_cache_creation_max_tokens = 160000;
+  config.creation_control.enabled = true;
+  config.creation_control.min_creation_interval_seconds = 0;
+  config.creation_control.min_creation_delta_tokens = 0;
+  config.creation_control.min_successful_requests_between = 0;
+  config.creation_control.max_creation_tokens_per_event = 30000;
+  config.creation_control.creation_budget_window_seconds = 0;
+  config.creation_control.max_creation_tokens_per_window = 0;
+  config.usage.final_cache_read_max_tokens = 650000;
+  config.usage.final_cache_read_jitter_min_tokens = 23456;
+  config.usage.final_cache_read_jitter_max_tokens = 54321;
+  config.usage.final_cache_creation_max_tokens = 300000;
+  config.usage.final_cache_creation_jitter_min_tokens = 23456;
+  config.usage.final_cache_creation_jitter_max_tokens = 54321;
   return config;
 }
 
-function conservativeUsageConfig(): CacheStrategyConfig {
-  const config = createDefaultCacheStrategyConfig("tool_aware");
-  config.coverage_ratio = 0.72;
-  config.usage_ratio = 0.7;
-  config.read_ratio = 0.7;
-  config.creation_ratio = 0.7;
-  config.token_scale = 1.1;
-  config.scale_min_input_tokens = 12000;
-  config.max_simulated_input_tokens = 120000;
-  config.max_coverage_tokens = 90000;
-  config.max_new_creation_tokens_per_request = 12000;
-  config.preserve_upstream_cache_usage = false;
-  config.usage.preserve_upstream_cache_usage = false;
-  config.usage.input = usageField("sample_target", {
-    target_tokens: 12000,
-    normal_max_multiplier: 1.35,
-  });
-  config.usage.output = usageField("sample_target", {
-    target_tokens: 256,
-    normal_max_multiplier: 1.5,
-  });
-  config.usage.cache_read = usageField("sample_max", { max_tokens: 120000 });
-  config.usage.cache_creation = usageField("sample_max", { max_tokens: 60000 });
-  config.usage.final_cache_read_max_tokens = 120000;
-  config.usage.final_cache_creation_max_tokens = 60000;
-  config.usage.final_output_max_tokens = 8192;
-  return config;
-}
-
-function longContextGuardConfig(): CacheStrategyConfig {
+// 快速增长：几轮之内就冲到较大数值，且每轮增量不规整。
+//
+// 24 轮 mock 回归实测：第 1 轮 create 就有 56051，到第 24 轮 cache_read 约 921K，
+// 单轮创建在 40K~56K 之间浮动 —— 因为额度由覆盖率推导的实际前缀长度决定，
+// 而不是被单次上限削平，看上去就没有稳步增长那条直线那么规律。
+// 这里给窗口预算留了一个足够大的值（200 万）作为兜底，防止异常流量无限写入。
+function rapidGrowthConfig(): CacheStrategyConfig {
   const config = createDefaultCacheStrategyConfig("prefix");
-  config.coverage_ratio = 0.92;
-  config.max_coverage_tokens = 450000;
-  config.max_new_creation_tokens_per_request = 30000;
-  config.reported_input_min_tokens = 20000;
-  config.reported_input_max_tokens = 850000;
-  config.token_scale = 1.2;
-  config.scale_min_input_tokens = 24000;
-  config.max_simulated_input_tokens = 450000;
-  config.default_ttl_seconds = 600;
-  config.hour_ttl_seconds = 1800;
-  config.max_entries_per_scope = 64;
-  config.usage.cache_read = usageField("preserve");
-  config.usage.cache_creation = usageField("preserve");
-  config.preserve_upstream_cache_usage = false;
-  config.usage.preserve_upstream_cache_usage = false;
-  config.usage.final_cache_read_max_tokens = 550000;
-  config.usage.final_cache_creation_max_tokens = 180000;
-  config.usage.final_output_max_tokens = 32768;
-  return config;
-}
-
-function noCacheConfig(): CacheStrategyConfig {
-  const config = createDefaultCacheStrategyConfig("disabled");
-  config.usage.input = usageField("raw");
-  config.usage.output = usageField("raw");
-  config.usage.cache_read = usageField("raw");
-  config.usage.cache_creation = usageField("raw");
+  config.coverage_ratio = 0.98;
+  config.allow_derived_session = true;
+  config.creation_control.enabled = true;
+  config.creation_control.min_creation_interval_seconds = 0;
+  config.creation_control.min_creation_delta_tokens = 0;
+  config.creation_control.min_successful_requests_between = 0;
+  config.creation_control.max_creation_tokens_per_event = 120000;
+  config.creation_control.creation_budget_window_seconds = 300;
+  config.creation_control.max_creation_tokens_per_window = 2000000;
+  config.usage.final_cache_read_max_tokens = 650000;
+  config.usage.final_cache_read_jitter_min_tokens = 23456;
+  config.usage.final_cache_read_jitter_max_tokens = 54321;
+  config.usage.final_cache_creation_max_tokens = 300000;
+  config.usage.final_cache_creation_jitter_min_tokens = 23456;
+  config.usage.final_cache_creation_jitter_max_tokens = 54321;
   return config;
 }
 
@@ -383,62 +210,15 @@ export const cacheStrategyTemplates: CacheStrategyTemplate[] = [
     createConfig: highCacheConfig,
   },
   {
-    id: "claude_code",
-    nameKey: "admin.cacheStrategies.templates.claudeCode.name",
-    descriptionKey: "admin.cacheStrategies.templates.claudeCode.description",
-    createConfig: claudeCodeConfig,
+    id: "steady_growth",
+    nameKey: "admin.cacheStrategies.templates.steadyGrowth.name",
+    descriptionKey: "admin.cacheStrategies.templates.steadyGrowth.description",
+    createConfig: steadyGrowthConfig,
   },
   {
-    id: "input_shaping",
-    nameKey: "admin.cacheStrategies.templates.inputShaping.name",
-    descriptionKey: "admin.cacheStrategies.templates.inputShaping.description",
-    createConfig: inputShapingConfig,
-  },
-  {
-    id: "low_frequency_creation",
-    nameKey: "admin.cacheStrategies.templates.lowFrequencyCreation.name",
-    descriptionKey:
-      "admin.cacheStrategies.templates.lowFrequencyCreation.description",
-    createConfig: lowFrequencyCreationConfig,
-  },
-  {
-    id: "read_priority",
-    nameKey: "admin.cacheStrategies.templates.readPriority.name",
-    descriptionKey: "admin.cacheStrategies.templates.readPriority.description",
-    createConfig: readPriorityConfig,
-  },
-  {
-    id: "strict_client",
-    nameKey: "admin.cacheStrategies.templates.strictClient.name",
-    descriptionKey:
-      "admin.cacheStrategies.templates.strictClient.description",
-    createConfig: strictClientConfig,
-  },
-  {
-    id: "shared_session",
-    nameKey: "admin.cacheStrategies.templates.sharedSession.name",
-    descriptionKey:
-      "admin.cacheStrategies.templates.sharedSession.description",
-    createConfig: sharedSessionConfig,
-  },
-  {
-    id: "conservative_usage",
-    nameKey: "admin.cacheStrategies.templates.conservativeUsage.name",
-    descriptionKey:
-      "admin.cacheStrategies.templates.conservativeUsage.description",
-    createConfig: conservativeUsageConfig,
-  },
-  {
-    id: "long_context_guard",
-    nameKey: "admin.cacheStrategies.templates.longContextGuard.name",
-    descriptionKey:
-      "admin.cacheStrategies.templates.longContextGuard.description",
-    createConfig: longContextGuardConfig,
-  },
-  {
-    id: "no_cache",
-    nameKey: "admin.cacheStrategies.templates.noCache.name",
-    descriptionKey: "admin.cacheStrategies.templates.noCache.description",
-    createConfig: noCacheConfig,
+    id: "rapid_growth",
+    nameKey: "admin.cacheStrategies.templates.rapidGrowth.name",
+    descriptionKey: "admin.cacheStrategies.templates.rapidGrowth.description",
+    createConfig: rapidGrowthConfig,
   },
 ];

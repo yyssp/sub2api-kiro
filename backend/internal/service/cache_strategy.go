@@ -65,17 +65,46 @@ type CacheUsageFieldPolicy struct {
 // CacheUsagePolicy mirrors the four independent usage controls from
 // 2ue_kiro.rs without carrying any path/Kiro-specific semantics.
 type CacheUsagePolicy struct {
-	Enabled                     bool                  `json:"enabled"`
-	PreserveUpstreamCacheUsage  bool                  `json:"preserve_upstream_cache_usage"`
-	Input                       CacheUsageFieldPolicy `json:"input"`
-	Output                      CacheUsageFieldPolicy `json:"output"`
-	CacheRead                   CacheUsageFieldPolicy `json:"cache_read"`
-	CacheCreation               CacheUsageFieldPolicy `json:"cache_creation"`
-	FinalCacheReadMaxTokens     int                   `json:"final_cache_read_max_tokens"`
-	FinalCacheCreationMaxTokens int                   `json:"final_cache_creation_max_tokens"`
-	OutputUpliftMinTokens       int                   `json:"output_uplift_min_tokens"`
-	OutputUpliftPercent         int                   `json:"output_uplift_percent"`
-	FinalOutputMaxTokens        int                   `json:"final_output_max_tokens"`
+	Enabled                    bool                  `json:"enabled"`
+	PreserveUpstreamCacheUsage bool                  `json:"preserve_upstream_cache_usage"`
+	// SkipNonStreamUsageProjection 关掉非流式响应的用量投影：非流式拿得到完整的
+	// 上游 usage，有些场景更希望原样透传而不是套一遍缓存整形。
+	// 对齐 kiro.rs 的 skipNonStreamUsageProjection。
+	SkipNonStreamUsageProjection bool                  `json:"skip_non_stream_usage_projection"`
+	Input                        CacheUsageFieldPolicy `json:"input"`
+	Output                       CacheUsageFieldPolicy `json:"output"`
+	CacheRead                    CacheUsageFieldPolicy `json:"cache_read"`
+	CacheCreation                CacheUsageFieldPolicy `json:"cache_creation"`
+	// Final*MaxTokens 是上报值的最终硬上限。裸 min() 会让所有触顶记录落在同一个
+	// 数字上（一列整齐的 700000），因此每个上限都配一对抖动区间：触顶时在
+	// [jitter_min, jitter_max] 内按请求指纹回退一点，回退量夹到上限本身以内。
+	// 对齐 kiro.rs pathPolicy() 的 final*JitterMin/MaxTokens
+	// （ui/src/lib/runtime-config-defaults.ts:92）。
+	FinalCacheReadMaxTokens           int `json:"final_cache_read_max_tokens"`
+	FinalCacheReadJitterMinTokens     int `json:"final_cache_read_jitter_min_tokens"`
+	FinalCacheReadJitterMaxTokens     int `json:"final_cache_read_jitter_max_tokens"`
+	FinalCacheCreationMaxTokens       int `json:"final_cache_creation_max_tokens"`
+	FinalCacheCreationJitterMinTokens int `json:"final_cache_creation_jitter_min_tokens"`
+	FinalCacheCreationJitterMaxTokens int `json:"final_cache_creation_jitter_max_tokens"`
+	OutputUpliftMinTokens             int `json:"output_uplift_min_tokens"`
+	OutputUpliftPercent               int `json:"output_uplift_percent"`
+	// FinalOutputGuardEnabled 是输出上限那一组的总开关：关掉之后放大与最终上限
+	// 都不生效，方便临时排查而不用把数值清零再填回来。对齐 kiro.rs 的
+	// finalOutputGuardEnabled。
+	//
+	// 用指针而不是裸 bool：这个字段是后加的，库里存量策略的 JSON 根本没有它。
+	// 裸 bool 反序列化会得到 false，等于把这些策略的输出上限静默关掉 —— 配置缺失
+	// 必须保持原行为，所以 nil 在 normalize 里补成 true。
+	FinalOutputGuardEnabled    *bool `json:"final_output_guard_enabled,omitempty"`
+	FinalOutputMaxTokens       int   `json:"final_output_max_tokens"`
+	FinalOutputJitterMinTokens int   `json:"final_output_jitter_min_tokens"`
+	FinalOutputJitterMaxTokens int   `json:"final_output_jitter_max_tokens"`
+}
+
+// OutputGuardOn 读取输出上限总开关。未配置（nil）视为开启，保证存量策略与
+// 没填这个字段的请求维持原行为。
+func (p CacheUsagePolicy) OutputGuardOn() bool {
+	return p.FinalOutputGuardEnabled == nil || *p.FinalOutputGuardEnabled
 }
 
 func defaultCacheUsageFieldPolicy(mode CacheUsageFieldMode) CacheUsageFieldPolicy {
@@ -90,6 +119,9 @@ func DefaultCacheUsagePolicy() CacheUsagePolicy {
 		Output:                     defaultCacheUsageFieldPolicy(CacheUsageFieldRaw),
 		CacheRead:                  defaultCacheUsageFieldPolicy(CacheUsageFieldPreserve),
 		CacheCreation:              defaultCacheUsageFieldPolicy(CacheUsageFieldPreserve),
+		// 上限默认全 0（不限制），因此扣减区间也留 0：没有上限时扣减无从谈起。
+		// 一旦用户填了上限，页面会提示配一个扣减区间，避免每条触顶记录都是同一个数字。
+		FinalOutputGuardEnabled: boolPtr(true),
 	}
 }
 
@@ -348,12 +380,6 @@ func normalizeCacheUsagePolicy(in CacheUsagePolicy) CacheUsagePolicy {
 			p.TargetTokens = 0
 		}
 	}
-	if in.FinalCacheReadMaxTokens < 0 {
-		in.FinalCacheReadMaxTokens = 0
-	}
-	if in.FinalCacheCreationMaxTokens < 0 {
-		in.FinalCacheCreationMaxTokens = 0
-	}
 	if in.OutputUpliftMinTokens < 0 {
 		in.OutputUpliftMinTokens = 0
 	}
@@ -363,8 +389,26 @@ func normalizeCacheUsagePolicy(in CacheUsagePolicy) CacheUsagePolicy {
 	if in.OutputUpliftPercent > 200 {
 		in.OutputUpliftPercent = 200
 	}
-	if in.FinalOutputMaxTokens < 0 {
-		in.FinalOutputMaxTokens = 0
+	if in.FinalOutputGuardEnabled == nil {
+		// 缺失即开启，见字段注释。补成显式值后写回库，存量策略下次读出来就不再依赖默认。
+		in.FinalOutputGuardEnabled = boolPtr(true)
+	}
+	// 三组「上限 + 扣减区间」统一按同一规则收敛：负数归零、min 不超过 max、
+	// 扣减量不超过上限本身（否则触顶值会被减成负数）。上限为 0（不限制）时
+	// 扣减区间也一并清零 —— 没有上限就没有触顶，留着只会让页面显示一组无效数字。
+	for _, g := range []struct{ cap_, jMin, jMax *int }{
+		{&in.FinalCacheReadMaxTokens, &in.FinalCacheReadJitterMinTokens, &in.FinalCacheReadJitterMaxTokens},
+		{&in.FinalCacheCreationMaxTokens, &in.FinalCacheCreationJitterMinTokens, &in.FinalCacheCreationJitterMaxTokens},
+		{&in.FinalOutputMaxTokens, &in.FinalOutputJitterMinTokens, &in.FinalOutputJitterMaxTokens},
+	} {
+		*g.cap_ = max(*g.cap_, 0)
+		*g.jMin, *g.jMax = max(*g.jMin, 0), max(*g.jMax, 0)
+		if *g.cap_ == 0 {
+			*g.jMin, *g.jMax = 0, 0
+			continue
+		}
+		*g.jMax = min(*g.jMax, *g.cap_)
+		*g.jMin = min(*g.jMin, *g.jMax)
 	}
 	return in
 }

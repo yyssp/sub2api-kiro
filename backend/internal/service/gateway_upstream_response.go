@@ -1571,7 +1571,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	// Fill synthetic group-policy cache usage only when the upstream response did
 	// not report authoritative cache buckets. Keep the JSON response and the
 	// returned usage object in sync for non-streaming Messages requests.
-	if plan := cachePlanFromContext(c); plan != nil {
+	if plan := cachePlanFromContext(c); plan != nil && !plan.skipProjection() {
 		upstreamEvidence := claudeUsageHasCacheEvidence(&response.Usage)
 		projectClaudeUsage(&response.Usage, plan.result(), plan.usagePolicy, plan.cacheKey)
 		if plan.result() != nil && !upstreamEvidence {

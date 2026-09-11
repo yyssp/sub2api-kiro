@@ -90,9 +90,7 @@
             <span
               class="badge"
               :class="
-                row.config?.kind === 'disabled'
-                  ? 'badge-gray'
-                  : 'badge-primary'
+                row.config?.kind === 'disabled' ? 'badge-gray' : 'badge-primary'
               "
             >
               {{ kindLabel(row.config?.kind) }}
@@ -296,10 +294,7 @@
               </p>
             </div>
 
-            <div
-              v-if="editing"
-              class="flex items-center justify-between gap-4"
-            >
+            <div v-if="editing" class="flex items-center justify-between gap-4">
               <div>
                 <label class="input-label mb-0">
                   {{ t("admin.cacheStrategies.status") }}
@@ -358,11 +353,33 @@
             </div>
           </div>
 
+          <div v-if="editing.config.usage.enabled">
+            <label class="flex items-center gap-2 text-sm">
+              <input
+                v-model="editing.config.usage.skip_non_stream_usage_projection"
+                type="checkbox"
+                class="checkbox"
+              />
+              <span>
+                {{
+                  t("admin.cacheStrategies.form.skipNonStreamUsageProjection")
+                }}
+              </span>
+            </label>
+            <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-dark-400">
+              {{
+                t("admin.cacheStrategies.form.skipNonStreamUsageProjectionHint")
+              }}
+            </p>
+          </div>
+
           <div
             v-if="editing.config.usage.enabled"
             class="grid gap-4 xl:grid-cols-2"
           >
-            <div class="space-y-3 rounded-lg bg-gray-50/60 p-4 dark:bg-dark-800/40">
+            <div
+              class="space-y-3 rounded-lg bg-gray-50/60 p-4 dark:bg-dark-800/40"
+            >
               <div>
                 <h4 class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ t("admin.cacheStrategies.form.usageInput") }}
@@ -428,7 +445,9 @@
                   />
                 </div>
               </div>
-              <label class="flex items-center justify-between gap-3 rounded-lg bg-white/80 px-3 py-2.5 dark:bg-dark-900/40">
+              <label
+                class="flex items-center justify-between gap-3 rounded-lg bg-white/80 px-3 py-2.5 dark:bg-dark-900/40"
+              >
                 <span class="text-sm text-gray-700 dark:text-gray-200">
                   {{ t("admin.cacheStrategies.form.moveInputDelta") }}
                 </span>
@@ -438,7 +457,9 @@
               </label>
             </div>
 
-            <div class="space-y-3 rounded-lg bg-gray-50/60 p-4 dark:bg-dark-800/40">
+            <div
+              class="space-y-3 rounded-lg bg-gray-50/60 p-4 dark:bg-dark-800/40"
+            >
               <div>
                 <h4 class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ t("admin.cacheStrategies.form.usageOutput") }}
@@ -531,6 +552,21 @@
                   />
                 </div>
               </div>
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  v-model="editing.config.usage.final_output_guard_enabled"
+                  type="checkbox"
+                  class="checkbox"
+                />
+                <span>
+                  {{ t("admin.cacheStrategies.form.finalOutputGuardEnabled") }}
+                </span>
+              </label>
+              <p class="text-xs leading-5 text-gray-500 dark:text-dark-400">
+                {{
+                  t("admin.cacheStrategies.form.finalOutputGuardEnabledHint")
+                }}
+              </p>
               <div>
                 <label class="input-label">
                   {{ t("admin.cacheStrategies.form.finalOutputMaxTokens") }}
@@ -542,9 +578,46 @@
                   min="0"
                 />
               </div>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label class="input-label">
+                    {{
+                      t("admin.cacheStrategies.form.finalOutputJitterMinTokens")
+                    }}
+                  </label>
+                  <input
+                    v-model.number="
+                      editing.config.usage.final_output_jitter_min_tokens
+                    "
+                    type="number"
+                    class="input"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{
+                      t("admin.cacheStrategies.form.finalOutputJitterMaxTokens")
+                    }}
+                  </label>
+                  <input
+                    v-model.number="
+                      editing.config.usage.final_output_jitter_max_tokens
+                    "
+                    type="number"
+                    class="input"
+                    min="0"
+                  />
+                </div>
+              </div>
+              <p class="text-xs leading-5 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.finalCapJitterHint") }}
+              </p>
             </div>
 
-            <div class="space-y-3 rounded-lg bg-gray-50/60 p-4 dark:bg-dark-800/40">
+            <div
+              class="space-y-3 rounded-lg bg-gray-50/60 p-4 dark:bg-dark-800/40"
+            >
               <div>
                 <h4 class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ t("admin.cacheStrategies.form.usageCacheRead") }}
@@ -625,9 +698,50 @@
                   min="0"
                 />
               </div>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label class="input-label">
+                    {{
+                      t(
+                        "admin.cacheStrategies.form.finalCacheReadJitterMinTokens",
+                      )
+                    }}
+                  </label>
+                  <input
+                    v-model.number="
+                      editing.config.usage.final_cache_read_jitter_min_tokens
+                    "
+                    type="number"
+                    class="input"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{
+                      t(
+                        "admin.cacheStrategies.form.finalCacheReadJitterMaxTokens",
+                      )
+                    }}
+                  </label>
+                  <input
+                    v-model.number="
+                      editing.config.usage.final_cache_read_jitter_max_tokens
+                    "
+                    type="number"
+                    class="input"
+                    min="0"
+                  />
+                </div>
+              </div>
+              <p class="text-xs leading-5 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.finalCapJitterHint") }}
+              </p>
             </div>
 
-            <div class="space-y-3 rounded-lg bg-gray-50/60 p-4 dark:bg-dark-800/40">
+            <div
+              class="space-y-3 rounded-lg bg-gray-50/60 p-4 dark:bg-dark-800/40"
+            >
               <div>
                 <h4 class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ t("admin.cacheStrategies.form.usageCacheCreation") }}
@@ -714,6 +828,47 @@
                   min="0"
                 />
               </div>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label class="input-label">
+                    {{
+                      t(
+                        "admin.cacheStrategies.form.finalCacheCreationJitterMinTokens",
+                      )
+                    }}
+                  </label>
+                  <input
+                    v-model.number="
+                      editing.config.usage
+                        .final_cache_creation_jitter_min_tokens
+                    "
+                    type="number"
+                    class="input"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{
+                      t(
+                        "admin.cacheStrategies.form.finalCacheCreationJitterMaxTokens",
+                      )
+                    }}
+                  </label>
+                  <input
+                    v-model.number="
+                      editing.config.usage
+                        .final_cache_creation_jitter_max_tokens
+                    "
+                    type="number"
+                    class="input"
+                    min="0"
+                  />
+                </div>
+              </div>
+              <p class="text-xs leading-5 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.finalCapJitterHint") }}
+              </p>
             </div>
           </div>
         </section>
@@ -820,7 +975,9 @@
                 :options="dynamicContentModeOptions"
               />
             </div>
-            <label class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40">
+            <label
+              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+            >
               <span class="text-sm text-gray-700 dark:text-gray-200">
                 {{ t("admin.cacheStrategies.form.allowDerivedSession") }}
               </span>
@@ -1020,31 +1177,41 @@
           </div>
 
           <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <label class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40">
+            <label
+              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+            >
               <span class="text-sm text-gray-700 dark:text-gray-200">
                 {{ t("admin.cacheStrategies.form.cacheSystem") }}
               </span>
               <Toggle v-model="editing.config.cache_system" />
             </label>
-            <label class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40">
+            <label
+              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+            >
               <span class="text-sm text-gray-700 dark:text-gray-200">
                 {{ t("admin.cacheStrategies.form.cacheTools") }}
               </span>
               <Toggle v-model="editing.config.cache_tools" />
             </label>
-            <label class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40">
+            <label
+              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+            >
               <span class="text-sm text-gray-700 dark:text-gray-200">
                 {{ t("admin.cacheStrategies.form.cacheHistory") }}
               </span>
               <Toggle v-model="editing.config.cache_history" />
             </label>
-            <label class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40">
+            <label
+              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+            >
               <span class="text-sm text-gray-700 dark:text-gray-200">
                 {{ t("admin.cacheStrategies.form.cacheToolResults") }}
               </span>
               <Toggle v-model="editing.config.cache_tool_results" />
             </label>
-            <label class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40">
+            <label
+              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+            >
               <span class="text-sm text-gray-700 dark:text-gray-200">
                 {{ t("admin.cacheStrategies.form.currentUserStablePrefix") }}
               </span>
@@ -1052,7 +1219,9 @@
                 v-model="editing.config.cache_current_user_stable_prefix"
               />
             </label>
-            <label class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40">
+            <label
+              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+            >
               <span class="text-sm text-gray-700 dark:text-gray-200">
                 {{ t("admin.cacheStrategies.form.incrementalCreation") }}
               </span>
@@ -1093,7 +1262,9 @@
             </p>
           </div>
 
-          <div class="flex items-center justify-between gap-4 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40">
+          <div
+            class="flex items-center justify-between gap-4 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+          >
             <span class="text-sm text-gray-700 dark:text-gray-200">
               {{ t("admin.cacheStrategies.form.creationControlEnabled") }}
             </span>

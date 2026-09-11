@@ -70,9 +70,23 @@ export default {
       usageNormalMaxMultiplier: "Normal maximum multiplier",
       outputUpliftMinTokens: "Output uplift threshold (0=off)",
       outputUpliftPercent: "Output uplift percent",
+      finalOutputGuardEnabled: "Enable output guard (uplift and final cap)",
+      finalOutputGuardEnabledHint:
+        "Turning this off disables both the output uplift and the final output cap without clearing their values. Enabled by default when unset.",
       finalOutputMaxTokens: "Final output cap (0=off)",
+      finalOutputJitterMinTokens: "Output cap deduction min",
+      finalOutputJitterMaxTokens: "Output cap deduction max",
       finalCacheReadMaxTokens: "Final cache-read cap (0=off)",
+      finalCacheReadJitterMinTokens: "Final cap deduction min",
+      finalCacheReadJitterMaxTokens: "Final cap deduction max",
       finalCacheCreationMaxTokens: "Final cache-creation cap (0=off)",
+      finalCacheCreationJitterMinTokens: "Write cap deduction min",
+      finalCacheCreationJitterMaxTokens: "Write cap deduction max",
+      finalCapJitterHint:
+        "When a value hits the cap it is pulled back by a random amount in this range, so capped records do not all report the same number. The deduction is clamped to the cap; when the cap is 0 (off) the range is cleared automatically.",
+      skipNonStreamUsageProjection: "Skip usage projection for non-streaming",
+      skipNonStreamUsageProjectionHint:
+        "Non-streaming responses carry complete upstream usage. Enable this to pass it through untouched instead of applying cache shaping. Streaming responses are unaffected.",
       behavior: "Cache hit and creation behavior (advanced)",
       behaviorHint:
         "These settings control how local cache evidence is produced, not the final usage values. Set input/output/read/create reporting in the Usage reporting policy section above.",
@@ -144,57 +158,22 @@ export default {
     },
     templates: {
       blank: {
-        name: "Custom blank strategy",
+        name: "Blank custom strategy",
       },
       highCache: {
         name: "High cache (default)",
         description:
-          "Maps to the reference project's default high-cache route: stable prefixes, 98% usage ratio, long-input token scaling, and final usage caps.",
+          "Mirrors the reference project's default high-cache path: stable prefix, 98% usage ratio, long-input token scaling and final usage caps. Its 30k per-event creation cap makes it a usage-shaping template rather than a growth one.",
       },
-      claudeCode: {
-        name: "Claude Code tool session",
+      steadyGrowth: {
+        name: "Steady growth",
         description:
-          "Maps to the Claude Code high-cache route: tool-aware prefixes, input shaped to 96 tokens with the delta moved to cache read, and creation centered around 3,000 tokens.",
+          "Writes a constant amount每turn so the cache climbs in a straight line. Measured over 24 turns: 30k created per turn, reads rising linearly to about 846k. Pacing comes solely from the per-event cap; the minimum interval and window budget are zeroed so growth never stalls.",
       },
-      inputShaping: {
-        name: "Input shaping (high cache)",
+      rapidGrowth: {
+        name: "Rapid growth",
         description:
-          "Maps to the input-only high-cache route: preserve calculated cache read/write values while capping input at 96 tokens and moving the delta to cache read.",
-      },
-      lowFrequencyCreation: {
-        name: "Low-frequency creation",
-        description:
-          "Keeps existing prefix reads while slowing new writes: the first valid creation is allowed, then a success-count gate, per-event cap, and five-minute budget apply.",
-      },
-      readPriority: {
-        name: "Read priority",
-        description:
-          "Prefers tool-aware reuse of existing prefixes; the first request may still create a valid entry, while later hits do not append new tail entries.",
-      },
-      strictClient: {
-        name: "Client breakpoints only",
-        description:
-          "Accepts only explicit cache_control breakpoints and never guesses stable boundaries, for auditable cache behavior.",
-      },
-      sharedSession: {
-        name: "Shared session cache",
-        description:
-          "Shares cache state by group and session with independent read/create ratios, useful when multiple accounts serve one Claude Code session.",
-      },
-      conservativeUsage: {
-        name: "Conservative usage",
-        description:
-          "Caps cache read/write and output reporting with low-variance target sampling for predictable usage values.",
-      },
-      longContextGuard: {
-        name: "Long-context guard",
-        description:
-          "Allows longer stable prefixes while enforcing a 96k input guard, 48k read cap, and 8k per-request creation cap.",
-      },
-      noCache: {
-        name: "No cache",
-        description:
-          "Maps to the no-cache route: disables local cache reads, writes, and simulated usage so responses keep upstream usage.",
+          "Reaches a large value within a few turns with irregular per-turn increments. Measured over 24 turns: about 56k created on the first turn and about 921k read by the last, with per-turn creation drifting between 40k and 56k. The allowance follows the 98% coverage ratio instead of being flattened by a per-event cap.",
       },
     },
     ratioModes: {
