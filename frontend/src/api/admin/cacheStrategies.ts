@@ -55,6 +55,8 @@ export interface CacheStrategyConfig {
     final_cache_creation_max_tokens: number;
     final_cache_creation_jitter_min_tokens: number;
     final_cache_creation_jitter_max_tokens: number;
+    /** 输出放大的独立开关；未配置（undefined）时按「阈值与比例都为正」推断。 */
+    output_uplift_enabled?: boolean;
     output_uplift_min_tokens: number;
     output_uplift_percent: number;
     /** 输出放大 + 输出最终上限的总开关；未配置（undefined）视为开启。 */

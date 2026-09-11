@@ -230,8 +230,7 @@ func applyUsageProjectionClaude(dst *ClaudeUsage, rawInput, rawOutput int, polic
 	// 输出放大与输出最终上限同属一组，由 OutputGuardOn() 一起控制：
 	// 关掉之后两者都不生效，不必把数值清零再填回来。
 	if policy.OutputGuardOn() {
-		if policy.OutputUpliftPercent > 0 && policy.OutputUpliftMinTokens > 0 &&
-			dst.OutputTokens > policy.OutputUpliftMinTokens {
+		if policy.OutputUpliftOn() && dst.OutputTokens > policy.OutputUpliftMinTokens {
 			dst.OutputTokens += int(math.Round(float64(dst.OutputTokens) * float64(cacheMinInt(policy.OutputUpliftPercent, 200)) / 100))
 		}
 		dst.OutputTokens = applyFinalCapWithJitter(dst.OutputTokens, policy.FinalOutputMaxTokens,
@@ -283,8 +282,7 @@ func applyUsageProjectionOpenAI(dst *OpenAIUsage, rawInput, rawOutput int, polic
 	dst.CacheCreationInputTokens = creation
 	dst.OutputTokens = projectUsageFieldWithRaw(policy.Output, dst.OutputTokens, rawOutput, seed^0x22)
 	if policy.OutputGuardOn() {
-		if policy.OutputUpliftPercent > 0 && policy.OutputUpliftMinTokens > 0 &&
-			dst.OutputTokens > policy.OutputUpliftMinTokens {
+		if policy.OutputUpliftOn() && dst.OutputTokens > policy.OutputUpliftMinTokens {
 			dst.OutputTokens += int(math.Round(float64(dst.OutputTokens) * float64(cacheMinInt(policy.OutputUpliftPercent, 200)) / 100))
 		}
 		dst.OutputTokens = applyFinalCapWithJitter(dst.OutputTokens, policy.FinalOutputMaxTokens,

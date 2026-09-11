@@ -610,6 +610,11 @@ func streamUsageFromAnthropicBody(body string) (input, read, creation int) {
 func TestGatewayCacheStrategyRealDispatch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	strategyID, cfg := newRouteCacheStrategy()
+	// 默认作用域已改成「分组 + 会话」——同一会话换账号仍然命中。这条用例断言的
+	// 「缓存不跨账号」是可选行为，必须显式声明，不能再依赖默认值。
+	// 注册发生在 helper 内部，改完要重新 Put，否则改的只是返回的副本。
+	cfg.ScopeMode = service.CacheScopeModeGroupAccountSession
+	newRouteCacheStrategyWithConfig(strategyID, "route dispatch integration", cfg)
 	t.Cleanup(func() { service.GlobalCacheStrategyRegistry().Delete(strategyID) })
 
 	upstreamAState := &routeCacheUpstream{}

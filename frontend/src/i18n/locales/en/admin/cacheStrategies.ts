@@ -68,7 +68,10 @@ export default {
       usageMaxTokens: "Maximum tokens",
       usageTargetTokens: "Target tokens",
       usageNormalMaxMultiplier: "Normal maximum multiplier",
-      outputUpliftMinTokens: "Output uplift threshold (0=off)",
+      outputUpliftEnabled: "Enable output uplift",
+      outputUpliftEnabledHint:
+        "When off, neither the threshold nor the percent applies. Values are kept, so re-enabling needs no retyping.",
+      outputUpliftMinTokens: "Output uplift threshold",
       outputUpliftPercent: "Output uplift percent",
       finalOutputGuardEnabled: "Enable output guard (uplift and final cap)",
       finalOutputGuardEnabledHint:
@@ -103,7 +106,7 @@ export default {
       bindingsHint:
         "One strategy can be bound to multiple groups; groups use the shared policy.",
       cacheNamespaceHint:
-        "Cache namespaces are isolated by account, group, strategy revision, and protocol. Switching to another account starts a new cache instead of reusing the previous account's entries.",
+        'Cache namespaces are isolated by group, session, strategy revision, and protocol by default (scope "group + session"), so switching accounts within a session still hits the existing prefix. Choosing "group + account + session" adds per-account isolation, which starts a new cache on every account switch.',
       coverageRatio: "Cache-evidence coverage ratio",
       usageRatio: "Cache-evidence total ratio",
       ratioMode: "Cache-evidence ratio mode",

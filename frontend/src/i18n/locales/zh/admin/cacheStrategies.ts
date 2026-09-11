@@ -67,7 +67,10 @@ export default {
       usageMaxTokens: "最大 Token",
       usageTargetTokens: "目标 Token",
       usageNormalMaxMultiplier: "目标常规最大倍率",
-      outputUpliftMinTokens: "输出放大阈值（0=关闭）",
+      outputUpliftEnabled: "启用输出放大",
+      outputUpliftEnabledHint:
+        "关闭后阈值与比例都不生效，数值会原样保留，重新开启不用再填一遍。",
+      outputUpliftMinTokens: "输出放大阈值",
       outputUpliftPercent: "输出放大比例（%）",
       finalOutputGuardEnabled: "启用输出上限（放大与最终上限的总开关）",
       finalOutputGuardEnabledHint:
@@ -100,7 +103,7 @@ export default {
       bindings: "绑定分组",
       bindingsHint: "同一个策略可以绑定多个分组；分组只使用绑定的通用策略。",
       cacheNamespaceHint:
-        "缓存按账号、分组、策略版本和协议分别隔离。相同请求换到另一个账号后会重新创建缓存，不会命中原账号缓存。",
+        "缓存默认按分组、会话、策略版本和协议隔离（作用域「分组 + 会话」）：同一会话切换账号仍可命中，不必重建前缀。改成「分组 + 账号 + 会话」后会额外按账号隔离，换账号即重新创建缓存。",
       coverageRatio: "缓存证据覆盖比例",
       usageRatio: "缓存证据总比例",
       ratioMode: "缓存证据比例模式",

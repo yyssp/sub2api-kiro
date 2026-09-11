@@ -525,6 +525,19 @@
                   />
                 </div>
               </div>
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  v-model="editing.config.usage.output_uplift_enabled"
+                  type="checkbox"
+                  class="checkbox"
+                />
+                <span>
+                  {{ t("admin.cacheStrategies.form.outputUpliftEnabled") }}
+                </span>
+              </label>
+              <p class="form-hint">
+                {{ t("admin.cacheStrategies.form.outputUpliftEnabledHint") }}
+              </p>
               <div class="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label class="input-label">
@@ -537,6 +550,7 @@
                     type="number"
                     class="input"
                     min="0"
+                    :disabled="!editing.config.usage.output_uplift_enabled"
                   />
                 </div>
                 <div>
@@ -549,6 +563,7 @@
                     class="input"
                     min="0"
                     max="200"
+                    :disabled="!editing.config.usage.output_uplift_enabled"
                   />
                 </div>
               </div>
@@ -1534,14 +1549,15 @@ const breakpointOptions = computed(() => [
   },
 ]);
 
+// 默认项排在最前：分组 + 会话。
 const scopeModeOptions = computed(() => [
-  {
-    value: "group_account_session",
-    label: t("admin.cacheStrategies.scopeModes.groupAccountSession"),
-  },
   {
     value: "group_session",
     label: t("admin.cacheStrategies.scopeModes.groupSession"),
+  },
+  {
+    value: "group_account_session",
+    label: t("admin.cacheStrategies.scopeModes.groupAccountSession"),
   },
 ]);
 

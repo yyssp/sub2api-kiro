@@ -57,7 +57,9 @@ export function createDefaultCacheStrategyConfig(
     breakpoint_mode: "hybrid",
     allow_derived_session: false,
     dynamic_content_mode: "exclude",
-    scope_mode: "group_account_session",
+    // 默认「分组 + 会话」：缓存按策略与会话隔离，同一会话换账号仍可命中。
+    // 带上账号会让每次账号切换都重新建缓存，前缀白白重写一遍。
+    scope_mode: "group_session",
     max_coverage_tokens: 0,
     max_new_creation_tokens_per_request: 0,
     incremental_create_enabled: true,
@@ -69,10 +71,12 @@ export function createDefaultCacheStrategyConfig(
     max_simulated_input_tokens: 0,
     default_ttl_seconds: 300,
     hour_ttl_seconds: 3600,
-    max_entries_per_scope: 128,
-    max_entries_global: 10000,
-    estimated_bytes_limit: 67108864,
-    expire_after_idle_seconds: 0,
+    // 容量与生命周期对齐 kiro.rs 页面默认值：单作用域 200 条、全局 20000 条、
+    // 估算字节上限 256MB、空闲 1 小时过期。
+    max_entries_per_scope: 200,
+    max_entries_global: 20000,
+    estimated_bytes_limit: 268435456,
+    expire_after_idle_seconds: 3600,
     cap_jitter_min_tokens: 0,
     cap_jitter_max_tokens: 0,
     preserve_upstream_cache_usage: true,
@@ -84,20 +88,21 @@ export function createDefaultCacheStrategyConfig(
       cache_read: usageField("preserve"),
       cache_creation: usageField("preserve"),
       skip_non_stream_usage_projection: false,
-      // 上限默认全 0（不限制），扣减区间也随之留 0：没有上限就没有触顶，
-      // 填了也不会生效（后端 normalize 会清零）。
-      final_cache_read_max_tokens: 0,
+      // 上限与扣减区间对齐 kiro.rs 的 pathPolicy()。此前全留 0（不限制），
+      // 等于把参考实现的护栏整组丢掉。读取上限在参考实现里不配扣减区间，照搬。
+      final_cache_read_max_tokens: 700000,
       final_cache_read_jitter_min_tokens: 0,
       final_cache_read_jitter_max_tokens: 0,
-      final_cache_creation_max_tokens: 0,
-      final_cache_creation_jitter_min_tokens: 0,
-      final_cache_creation_jitter_max_tokens: 0,
-      output_uplift_min_tokens: 0,
-      output_uplift_percent: 0,
+      final_cache_creation_max_tokens: 400000,
+      final_cache_creation_jitter_min_tokens: 20000,
+      final_cache_creation_jitter_max_tokens: 45000,
+      output_uplift_enabled: true,
+      output_uplift_min_tokens: 1000,
+      output_uplift_percent: 50,
       final_output_guard_enabled: true,
-      final_output_max_tokens: 0,
-      final_output_jitter_min_tokens: 0,
-      final_output_jitter_max_tokens: 0,
+      final_output_max_tokens: 200000,
+      final_output_jitter_min_tokens: 5000,
+      final_output_jitter_max_tokens: 12000,
     },
     creation_control: {
       enabled: false,
@@ -141,11 +146,19 @@ function highCacheConfig(): CacheStrategyConfig {
   config.cap_jitter_max_tokens = 24000;
   config.preserve_upstream_cache_usage = false;
   config.usage.preserve_upstream_cache_usage = false;
+  // 三组上限都配上扣减区间，触顶记录才不会全是同一个数字。
   config.usage.final_cache_read_max_tokens = 700000;
+  config.usage.final_cache_read_jitter_min_tokens = 20000;
+  config.usage.final_cache_read_jitter_max_tokens = 45000;
   config.usage.final_cache_creation_max_tokens = 400000;
+  config.usage.final_cache_creation_jitter_min_tokens = 20000;
+  config.usage.final_cache_creation_jitter_max_tokens = 45000;
+  config.usage.output_uplift_enabled = true;
   config.usage.output_uplift_min_tokens = 1000;
   config.usage.output_uplift_percent = 50;
   config.usage.final_output_max_tokens = 16384;
+  config.usage.final_output_jitter_min_tokens = 512;
+  config.usage.final_output_jitter_max_tokens = 1300;
   return config;
 }
 
@@ -173,6 +186,12 @@ function steadyGrowthConfig(): CacheStrategyConfig {
   config.usage.final_cache_creation_max_tokens = 300000;
   config.usage.final_cache_creation_jitter_min_tokens = 23456;
   config.usage.final_cache_creation_jitter_max_tokens = 54321;
+  config.usage.output_uplift_enabled = true;
+  config.usage.output_uplift_min_tokens = 1000;
+  config.usage.output_uplift_percent = 50;
+  config.usage.final_output_max_tokens = 64000;
+  config.usage.final_output_jitter_min_tokens = 2000;
+  config.usage.final_output_jitter_max_tokens = 5000;
   return config;
 }
 
@@ -199,6 +218,12 @@ function rapidGrowthConfig(): CacheStrategyConfig {
   config.usage.final_cache_creation_max_tokens = 300000;
   config.usage.final_cache_creation_jitter_min_tokens = 23456;
   config.usage.final_cache_creation_jitter_max_tokens = 54321;
+  config.usage.output_uplift_enabled = true;
+  config.usage.output_uplift_min_tokens = 1000;
+  config.usage.output_uplift_percent = 50;
+  config.usage.final_output_max_tokens = 64000;
+  config.usage.final_output_jitter_min_tokens = 2000;
+  config.usage.final_output_jitter_max_tokens = 5000;
   return config;
 }
 

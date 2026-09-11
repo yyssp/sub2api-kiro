@@ -232,6 +232,9 @@ func TestBoundCacheStrategyIsolatesCacheByAccount(t *testing.T) {
 	strategyID := int64(900003)
 	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
 	cfg.MinCacheableTokens = 1
+	// 默认作用域已改成「分组 + 会话」（换账号仍命中）。按账号隔离是可选行为，
+	// 这条测试验证的正是它，所以要显式声明，不能依赖默认值。
+	cfg.ScopeMode = CacheScopeModeGroupAccountSession
 	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
 		ID:       strategyID,
 		Name:     "account isolation",
@@ -268,6 +271,35 @@ func TestBoundCacheStrategyIsolatesCacheByAccount(t *testing.T) {
 	require.NotNil(t, switchedAccount)
 	require.Greater(t, switchedAccount.CacheCreationInputTokens, 0)
 	require.Zero(t, switchedAccount.CacheReadInputTokens)
+}
+
+// 默认作用域「分组 + 会话」：同一会话换账号必须命中已有前缀。
+// 带上账号会让每次账号切换都重建缓存，白白重写一遍前缀。
+func TestDefaultScopeSharesCacheAcrossAccounts(t *testing.T) {
+	resetCacheTracker()
+	strategyID := int64(900009)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
+	cfg.MinCacheableTokens = 1
+	require.Equal(t, CacheScopeModeGroupSession, cfg.ScopeMode, "默认作用域应为分组 + 会话")
+	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
+		ID: strategyID, Name: "default scope", Enabled: true, Revision: 1, Config: cfg,
+	})
+	defer GlobalCacheStrategyRegistry().Delete(strategyID)
+
+	group := &Group{ID: 9009, Platform: PlatformAnthropic, CacheStrategyID: &strategyID}
+	body := cacheRequestBody("default scope sharing", false)
+	svc := &GatewayService{}
+
+	first := svc.buildCacheEmulationUsage(context.Background(),
+		&Account{ID: 9010, Platform: PlatformAnthropic}, group, body, "claude-sonnet-4-6", 2000)
+	require.NotNil(t, first)
+	require.Greater(t, first.CacheCreationInputTokens, 0)
+	require.Zero(t, first.CacheReadInputTokens)
+
+	switched := svc.buildCacheEmulationUsage(context.Background(),
+		&Account{ID: 9011, Platform: PlatformAnthropic}, group, body, "claude-sonnet-4-6", 2000)
+	require.NotNil(t, switched)
+	require.Greater(t, switched.CacheReadInputTokens, 0, "换账号后应命中同一会话的前缀")
 }
 
 func TestCacheTrackerFallsBackToOlderBreakpointWhenCreationIsCapped(t *testing.T) {

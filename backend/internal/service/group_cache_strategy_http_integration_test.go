@@ -151,6 +151,9 @@ func TestGroupCacheStrategyHTTPMultiAccountAndRevisionIsolation(t *testing.T) {
 	cfg.MinCacheableTokens = 1
 	cfg.DefaultTTLSeconds = 300
 	cfg.HourTTLSeconds = 3600
+	// 默认作用域已改成「分组 + 会话」（换账号仍命中）。这条测试验证的是
+	// 按账号隔离，属于可选行为，必须显式声明。
+	cfg.ScopeMode = CacheScopeModeGroupAccountSession
 	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
 		ID:       strategyID,
 		Name:     "http integration",
@@ -341,6 +344,9 @@ func TestGroupCacheStrategyHTTPMultipleStrategyProfiles(t *testing.T) {
 		cfg.Usage.FinalOutputMaxTokens = 12
 		cfg.Usage.FinalCacheReadMaxTokens = 32
 		cfg.Usage.FinalCacheCreationMaxTokens = 18
+		// 本子测试的第三步断言「换账号后重新创建」，走的是按账号隔离。
+		// 默认作用域已是「分组 + 会话」（换账号共享），下一个子测试覆盖那条路径。
+		cfg.ScopeMode = CacheScopeModeGroupAccountSession
 		registerCacheStrategyProfile(t, strategyID, "prefix-high-cache", cfg)
 
 		server, _ := newCacheStrategyHTTPServer(t, anthropicCacheStreamResponse(10, 0, 0, 5))

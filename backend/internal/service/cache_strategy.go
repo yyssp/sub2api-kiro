@@ -86,8 +86,13 @@ type CacheUsagePolicy struct {
 	FinalCacheCreationMaxTokens       int `json:"final_cache_creation_max_tokens"`
 	FinalCacheCreationJitterMinTokens int `json:"final_cache_creation_jitter_min_tokens"`
 	FinalCacheCreationJitterMaxTokens int `json:"final_cache_creation_jitter_max_tokens"`
-	OutputUpliftMinTokens             int `json:"output_uplift_min_tokens"`
-	OutputUpliftPercent               int `json:"output_uplift_percent"`
+	// OutputUpliftEnabled 是输出放大的独立开关。此前只能靠把阈值或比例填成 0
+	// 来关闭，属于「用数值兼作开关」，关掉就得把配好的数字清空，再开又要重填。
+	// 同样用指针：存量策略的 JSON 没有这个键，nil 在 normalize 里按「阈值与比例
+	// 是否都为正」推断，保证既有行为不变。
+	OutputUpliftEnabled   *bool `json:"output_uplift_enabled,omitempty"`
+	OutputUpliftMinTokens int   `json:"output_uplift_min_tokens"`
+	OutputUpliftPercent   int   `json:"output_uplift_percent"`
 	// FinalOutputGuardEnabled 是输出上限那一组的总开关：关掉之后放大与最终上限
 	// 都不生效，方便临时排查而不用把数值清零再填回来。对齐 kiro.rs 的
 	// finalOutputGuardEnabled。
@@ -107,6 +112,15 @@ func (p CacheUsagePolicy) OutputGuardOn() bool {
 	return p.FinalOutputGuardEnabled == nil || *p.FinalOutputGuardEnabled
 }
 
+// OutputUpliftOn 读取输出放大开关。未配置（nil）时退回旧语义 ——
+// 「阈值与比例都为正才放大」—— 这样存量策略的行为一字不变。
+func (p CacheUsagePolicy) OutputUpliftOn() bool {
+	if p.OutputUpliftEnabled == nil {
+		return p.OutputUpliftMinTokens > 0 && p.OutputUpliftPercent > 0
+	}
+	return *p.OutputUpliftEnabled
+}
+
 func defaultCacheUsageFieldPolicy(mode CacheUsageFieldMode) CacheUsageFieldPolicy {
 	return CacheUsageFieldPolicy{Mode: mode, NormalMaxMultiplier: 1.1}
 }
@@ -119,9 +133,23 @@ func DefaultCacheUsagePolicy() CacheUsagePolicy {
 		Output:                     defaultCacheUsageFieldPolicy(CacheUsageFieldRaw),
 		CacheRead:                  defaultCacheUsageFieldPolicy(CacheUsageFieldPreserve),
 		CacheCreation:              defaultCacheUsageFieldPolicy(CacheUsageFieldPreserve),
-		// 上限默认全 0（不限制），因此扣减区间也留 0：没有上限时扣减无从谈起。
-		// 一旦用户填了上限，页面会提示配一个扣减区间，避免每条触顶记录都是同一个数字。
-		FinalOutputGuardEnabled: boolPtr(true),
+		// 上限与扣减区间对齐 kiro.rs 的 pathPolicy()
+		// （ui/src/lib/runtime-config-defaults.ts:84）。此前这里全留 0（不限制），
+		// 等于把参考实现的护栏整组丢掉：上报值可以无限涨，也不会有触顶抖动。
+		//
+		// 读取上限 70 万在参考实现里没配扣减区间（两端都是 0），我们照搬 ——
+		// 那条路径靠 cap_jitter 在更早的阶段就把 reported_input 打散了。
+		FinalCacheReadMaxTokens:           700000,
+		FinalCacheCreationMaxTokens:       400000,
+		FinalCacheCreationJitterMinTokens: 20000,
+		FinalCacheCreationJitterMaxTokens: 45000,
+		OutputUpliftEnabled:               boolPtr(true),
+		OutputUpliftMinTokens:             1000,
+		OutputUpliftPercent:               50,
+		FinalOutputGuardEnabled:           boolPtr(true),
+		FinalOutputMaxTokens:              200000,
+		FinalOutputJitterMinTokens:        5000,
+		FinalOutputJitterMaxTokens:        12000,
 	}
 }
 
@@ -193,11 +221,18 @@ func DefaultCacheStrategyConfig(kind string) CacheStrategyConfig {
 		ReadRatio: 1, CreationRatio: 1, CacheSystem: true, CacheTools: true,
 		CacheHistory: true, CacheToolResults: true, BreakpointMode: CacheBreakpointHybrid,
 		CacheCurrentUserStablePrefix: false, CurrentUserStablePrefixMaxTokens: 0,
-		DynamicContentMode: CacheDynamicContentExclude, ScopeMode: CacheScopeModeGroupAccountSession,
+		// 作用域默认「分组 + 会话」：缓存按策略与会话隔离，同一会话换账号仍可命中。
+		// 带上账号会让每次账号切换都重新建缓存，前缀白白重写一遍。
+		DynamicContentMode: CacheDynamicContentExclude, ScopeMode: CacheScopeModeGroupSession,
 		PreserveUpstreamCacheUsage: true,
 		IncrementalCreateEnabled:   true, MinCacheableTokens: 1024, TokenScale: 1,
-		ScaleMinInputTokens: 20000, DefaultTTLSeconds: 300, HourTTLSeconds: 3600, MaxEntriesPerScope: 128,
-		MaxEntriesGlobal: 10000, EstimatedBytesLimit: 64 << 20,
+		// 缓存容量与生命周期对齐 kiro.rs 的页面默认值
+		// （ui/src/lib/runtime-config-defaults.ts:516）：条目 TTL 86400 秒、
+		// 单作用域 200 条、全局 20000 条、估算字节上限 256MB。
+		// 原来的 300 秒 TTL 是「断点默认 TTL」的值，被误用成了条目存活时间：
+		// 5 分钟后整条缓存就被清掉，长会话每隔几分钟就要重建一次前缀。
+		ScaleMinInputTokens: 20000, DefaultTTLSeconds: 300, HourTTLSeconds: 3600, MaxEntriesPerScope: 200,
+		MaxEntriesGlobal: 20000, EstimatedBytesLimit: 256 << 20, ExpireAfterIdleSeconds: 3600,
 		// 触顶抖动。留 0 的话所有触顶请求会上报同一个数值，一眼看去就是伪造的。
 		CapJitterMinTokens: 12000, CapJitterMaxTokens: 24000,
 		UncachedInputMinTokens: 1024, UncachedInputMaxTokens: 4096,
@@ -277,7 +312,7 @@ func NormalizeCacheStrategyConfig(in CacheStrategyConfig) (CacheStrategyConfig, 
 		return in, fmt.Errorf("config.dynamic_content_mode must be exclude or allow")
 	}
 	if in.ScopeMode == "" {
-		in.ScopeMode = CacheScopeModeGroupAccountSession
+		in.ScopeMode = CacheScopeModeGroupSession
 	}
 	if in.ScopeMode != CacheScopeModeGroupAccountSession && in.ScopeMode != CacheScopeModeGroupSession {
 		return in, fmt.Errorf("config.scope_mode must be group_account_session or group_session")
@@ -392,6 +427,10 @@ func normalizeCacheUsagePolicy(in CacheUsagePolicy) CacheUsagePolicy {
 	if in.FinalOutputGuardEnabled == nil {
 		// 缺失即开启，见字段注释。补成显式值后写回库，存量策略下次读出来就不再依赖默认。
 		in.FinalOutputGuardEnabled = boolPtr(true)
+	}
+	if in.OutputUpliftEnabled == nil {
+		// 缺失时按旧语义推断，把隐式行为固化成显式开关，行为不变。
+		in.OutputUpliftEnabled = boolPtr(in.OutputUpliftMinTokens > 0 && in.OutputUpliftPercent > 0)
 	}
 	// 三组「上限 + 扣减区间」统一按同一规则收敛：负数归零、min 不超过 max、
 	// 扣减量不超过上限本身（否则触顶值会被减成负数）。上限为 0（不限制）时
