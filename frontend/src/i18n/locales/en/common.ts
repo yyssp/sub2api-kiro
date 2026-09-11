@@ -218,6 +218,10 @@ export default {
 
   // Auth
   auth: {
+    remoteLoginTitle: 'Administrator Sign In',
+    adminKeyLabel: 'Admin API Key',
+    adminKeyPlaceholder: 'Enter your admin API key',
+    remoteLoginHint: 'Enter your admin API key to continue',
     welcomeBack: 'Welcome Back',
     signInToAccount: 'Sign in to your account to continue',
     signIn: 'Sign In',

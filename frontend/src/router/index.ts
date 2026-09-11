@@ -50,6 +50,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    // 远程代管登录页。刻意不从 /login 或任何导航引用：入口地址由部署方自行告知。
+    // 未启用远程代管时页面自身会跳回 /login。
+    path: '/remote-login',
+    name: 'RemoteLogin',
+    component: () => import('@/views/auth/RemoteLoginView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Remote Login'
+    }
+  },
+  {
     path: '/register',
     name: 'Register',
     component: () => import('@/views/auth/RegisterView.vue'),
@@ -774,7 +785,9 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
+// '/remote-login' 必须在列：backend 模式下匿名用户被限制在白名单内，
+// 否则远程代管登录页会被守卫弹回 /login，导致该模式下无法登录。
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/remote-login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',

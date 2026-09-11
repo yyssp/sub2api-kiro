@@ -104,6 +104,15 @@ services:
       - SETUP_MIGRATION_TIMEOUT_SECONDS=${SETUP_MIGRATION_TIMEOUT_SECONDS:-0}
 
       # =======================================================================
+      # Remote Proxy 远程后端代管
+      # =======================================================================
+      # 启用后本部署自身的管理面被远程管理面取代。/login 不受影响；管理员在
+      # /remote-login 用管理员 API Key 登录（该页刻意不做入口链接）。
+      - REMOTE_PROXY_ENABLED=${REMOTE_PROXY_ENABLED:-false}
+      - REMOTE_PROXY_BACKEND_URL=${REMOTE_PROXY_BACKEND_URL:-}
+      - REMOTE_PROXY_TIMEOUT=${REMOTE_PROXY_TIMEOUT:-60}
+
+      # =======================================================================
       # TOTP (2FA) Configuration
       # =======================================================================
       # IMPORTANT: Set a fixed encryption key for TOTP secrets. If left empty,

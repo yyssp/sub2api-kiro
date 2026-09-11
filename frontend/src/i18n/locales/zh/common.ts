@@ -219,6 +219,10 @@ export default {
   // Auth
   auth: {
     welcomeBack: '欢迎回来',
+    remoteLoginTitle: '管理员登录',
+    adminKeyLabel: '管理员 API Key',
+    adminKeyPlaceholder: '请输入管理员 API Key',
+    remoteLoginHint: '请输入管理员 API Key 以继续',
     signInToAccount: '登录您的账户以继续',
     signIn: '登录',
     signingIn: '登录中...',

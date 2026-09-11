@@ -113,6 +113,21 @@ cors:
   allow_credentials: true
 
 # =============================================================================
+# Remote Proxy Configuration
+# 远程后端代管配置
+# =============================================================================
+# 启用后，本部署自身的管理面将被远程管理面取代。普通登录页 /login 不受影响，
+# 仍服务于本部署自己的用户；管理员在 /remote-login 用管理员 API Key 登录。
+# 该页面刻意不做任何入口链接，地址需由部署方自行告知。
+remote_proxy:
+  enabled: false
+  # Target deployment base URL, e.g. https://sub2api2.example.com
+  # 目标部署地址，例如 https://sub2api2.example.com
+  backend_url: ""
+  # Forward timeout in seconds. 转发超时（秒）。
+  timeout: 60
+
+# =============================================================================
 # Security Configuration
 # 安全配置
 # =============================================================================

@@ -14,6 +14,22 @@ import {
 } from './adminUIRequest'
 import { refreshAuthTokens } from './tokenRefresh'
 import { getAPIBaseURL } from './url'
+
+/**
+ * 是否处于远程代管会话。
+ *
+ * 刻意直接读 localStorage 而不从 '@/api/remote' 导入 isRemoteSession：
+ * remote.ts 依赖本模块的 apiClient，导入会形成循环依赖。
+ * 该键名与 remote.ts 中的 REMOTE_MODE_KEY 保持一致。
+ */
+function isRemoteProxySession(): boolean {
+  try {
+    return localStorage.getItem('remote_proxy_mode') === '1'
+  } catch {
+    return false
+  }
+}
+
 export { buildApiUrl, buildGatewayUrl } from './url'
 
 // ==================== Axios Instance Configuration ====================
@@ -152,6 +168,24 @@ apiClient.interceptors.response.use(
           // ignore event failures
         }
 
+        return Promise.reject({
+          status,
+          code: apiData.code,
+          message: apiData.message || error.message,
+          metadata: apiData.metadata,
+        })
+      }
+
+      // 远程代管会话不走本地账号体系：令牌由 /remote/login 签发，本部署的 JWT
+      // 中间件并不认它。因此访问本地用户侧接口（/auth/me、/announcements 等）
+      // 必然 401，而这些 401 与远程会话是否有效无关。
+      //
+      // 若继续走下面的通用处理，会清空 auth_token 并跳转登录页，把一个本就
+      // 可用的远程会话误判为过期。这里直接把错误抛回调用方：远程会话没有
+      // 刷新令牌可用，也不存在需要重新登录的本地会话。
+      //
+      // 远程会话自身失效时，失效的是 /admin/* 转发请求，由调用方各自处理。
+      if (status === 401 && isRemoteProxySession()) {
         return Promise.reject({
           status,
           code: apiData.code,

@@ -69,6 +69,7 @@ type Config struct {
 	Server                  ServerConfig                  `mapstructure:"server"`
 	Log                     LogConfig                     `mapstructure:"log"`
 	CORS                    CORSConfig                    `mapstructure:"cors"`
+	RemoteProxy             RemoteProxyConfig             `mapstructure:"remote_proxy"`
 	Security                SecurityConfig                `mapstructure:"security"`
 	Billing                 BillingConfig                 `mapstructure:"billing"`
 	Turnstile               TurnstileConfig               `mapstructure:"turnstile"`
@@ -703,6 +704,16 @@ type H2CConfig struct {
 type CORSConfig struct {
 	AllowedOrigins   []string `mapstructure:"allowed_origins"`
 	AllowCredentials bool     `mapstructure:"allow_credentials"`
+}
+
+// RemoteProxyConfig 让本部署的管理面接管另一套 sub2api 的数据。
+// 浏览器始终只访问本站同源地址，由服务端携带 Admin API Key 转发到 BackendURL，
+// 因此目标端可以是未经改造的原版部署，且全程不涉及浏览器跨域。
+// BackendURL 只允许来自启动配置：转发目标不可由请求指定，避免形成任意 URL 转发器。
+type RemoteProxyConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`
+	BackendURL string `mapstructure:"backend_url"`
+	Timeout    int    `mapstructure:"timeout"` // 转发超时（秒），0 表示使用默认值
 }
 
 // WebAuthnConfig configures this deployment as a WebAuthn relying party.
@@ -2031,6 +2042,11 @@ func setDefaults() {
 	// CORS
 	viper.SetDefault("cors.allowed_origins", []string{})
 	viper.SetDefault("cors.allow_credentials", true)
+
+	// 远程后端代管（默认关闭；注册默认值以便 AutomaticEnv 能够覆盖）
+	viper.SetDefault("remote_proxy.enabled", false)
+	viper.SetDefault("remote_proxy.backend_url", "")
+	viper.SetDefault("remote_proxy.timeout", 60)
 
 	// WebAuthn / Passkeys are opt-in because every deployment must explicitly
 	// declare its relying-party domain and trusted browser origins.
