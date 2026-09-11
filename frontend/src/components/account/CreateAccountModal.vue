@@ -45,7 +45,8 @@
       @submit.prevent="handleSubmit"
       class="space-y-5"
     >
-      <div>
+      <!-- 导入模式下每条凭证各有名称（在下一步的预览表里逐条编辑），这里不再要求单个名称。 -->
+      <div v-if="!isKiroImportMode">
         <label class="input-label">{{ t('admin.accounts.accountName') }}</label>
         <input
           v-model="form.name"
@@ -3964,21 +3965,11 @@
 
     <!-- Step 2: OAuth Authorization -->
     <div v-else class="space-y-5">
-      <div v-if="isKiroImportMode" class="space-y-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/20">
-        <div>
-          <label class="input-label">{{ t('admin.accounts.oauth.kiro.tokenJsonLabel') }} <span class="text-red-500">*</span></label>
-          <textarea v-model="kiroTokenJson" rows="8" class="input font-mono text-xs" :placeholder="kiroImportTokenPlaceholder"></textarea>
-          <p class="input-hint">{{ t('admin.accounts.oauth.kiro.tokenJsonHint') }}</p>
-        </div>
-        <div v-if="kiroImportNeedsDeviceRegistration">
-          <label class="input-label">{{ t('admin.accounts.oauth.kiro.deviceRegistrationLabel') }} <span class="text-red-500">*</span></label>
-          <textarea v-model="kiroDeviceRegistrationJson" rows="6" class="input font-mono text-xs" placeholder='{"clientId":"...","clientSecret":"..."}'></textarea>
-          <p class="input-hint">{{ t('admin.accounts.oauth.kiro.deviceRegistrationHint') }}</p>
-        </div>
-        <div v-if="currentOAuthError" class="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30">
-          <p class="whitespace-pre-line text-sm text-red-600 dark:text-red-400">{{ currentOAuthError }}</p>
-        </div>
-      </div>
+      <KiroCredentialImportPanel
+        v-if="isKiroImportMode"
+        :importer="kiroImporter"
+        :error="currentOAuthError"
+      />
       <OAuthAuthorizationFlow
         v-else
         ref="oauthFlowRef"
@@ -4064,14 +4055,28 @@
         <button type="button" class="btn btn-secondary" @click="goBackToBasicInfo">
           {{ t('common.back') }}
         </button>
+        <!-- 导入分两步：先解析预览，确认无误再落库，避免脏数据直接建号。 -->
         <button
-          v-if="isKiroImportMode"
+          v-if="isKiroImportMode && !kiroImporter.entries.value.length"
           type="button"
-          :disabled="currentOAuthLoading || !kiroTokenJson.trim() || (kiroImportNeedsDeviceRegistration && !kiroDeviceRegistrationJson.trim())"
+          :disabled="!kiroImporter.canParse.value"
+          class="btn btn-primary"
+          @click="handleKiroParse"
+        >
+          {{ kiroImporter.parsing.value ? t('common.loading') : t('admin.accounts.kiroImportParse') }}
+        </button>
+        <button
+          v-else-if="isKiroImportMode"
+          type="button"
+          :disabled="currentOAuthLoading || kiroImporter.creatableCount.value === 0"
           class="btn btn-primary"
           @click="handleKiroImport"
         >
-          {{ currentOAuthLoading ? t('admin.accounts.creating') : t('common.create') }}
+          {{
+            currentOAuthLoading
+              ? t('admin.accounts.creating')
+              : t('admin.accounts.kiroImportConfirm', { count: kiroImporter.creatableCount.value })
+          }}
         </button>
         <button
           v-else-if="isManualInputMethod"
@@ -4370,6 +4375,8 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useKiroOAuth } from '@/composables/useKiroOAuth'
+import { useKiroCredentialImport } from '@/composables/useKiroCredentialImport'
+import KiroCredentialImportPanel from '@/components/account/KiroCredentialImportPanel.vue'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
 import type {
   Proxy,
@@ -4421,7 +4428,6 @@ import {
   parseDateTimeLocalInput
 } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
-import { kiroTokenJsonPlaceholder } from '@/utils/kiroAccount'
 import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
 import { VERTEX_LOCATION_SELECT_OPTIONS, BEDROCK_REGION_SELECT_OPTIONS } from '@/constants/account'
 import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
@@ -4906,34 +4912,9 @@ const kiroAccountType = ref<'oauth' | 'idc' | 'external_idp' | 'import'>('oauth'
 const kiroLoginProvider = ref<'google' | 'github'>('google')
 const kiroIDCStartUrl = ref('https://view.awsapps.com/start')
 const kiroIDCRegion = ref('us-east-1')
-const kiroTokenJson = ref('')
-const kiroDeviceRegistrationJson = ref('')
-// Device registration is needed only when the imported payload contains a
-// clientIdHash without the corresponding client credentials. Provider is
-// optional metadata and is intentionally not used to drive the form.
-const kiroImportNeedsDeviceRegistration = computed(() => {
-  try {
-    const parsed = JSON.parse(kiroTokenJson.value)
-    const entries = Array.isArray(parsed) ? parsed : [parsed]
-    return entries.some((entry) => {
-      if (!entry || typeof entry !== 'object') return false
-      const value = entry as Record<string, unknown>
-      const authMethod = String(value.authMethod ?? value.auth_method ?? '').trim().toLowerCase()
-      if (authMethod === 'api_key' || authMethod === 'api-key' || authMethod === 'apikey') {
-        return false
-      }
-      const clientIdHash = String(value.clientIdHash ?? value.client_id_hash ?? '').trim()
-      const clientId = String(value.clientId ?? value.client_id ?? '').trim()
-      const clientSecret = String(value.clientSecret ?? value.client_secret ?? '').trim()
-      return Boolean(clientIdHash && (!clientId || !clientSecret))
-    })
-  } catch {
-    return false
-  }
-})
-const kiroImportTokenPlaceholder = computed(
-  () => kiroTokenJsonPlaceholder(t('admin.accounts.oauth.kiro.tokenJsonPlaceholderOr'))
-)
+// 凭证导入的解析状态：支持 JSON / ksk 清单 / 裸 token / Kiro IDE 导出四种数据形态，
+// 解析出的每条账号都套用本表单下方的通用参数（分组、代理、优先级……）。
+const kiroImporter = useKiroCredentialImport()
 const kiroModelMappings = ref<ModelMapping[]>([])
 const kiroCreditUnitPriceUsd = ref(0)
 const kiroPresetMappings = computed(() => getPresetMappingsByPlatform('kiro'))
@@ -5912,8 +5893,7 @@ const resetForm = () => {
   kiroLoginProvider.value = 'google'
   kiroIDCStartUrl.value = 'https://view.awsapps.com/start'
   kiroIDCRegion.value = 'us-east-1'
-  kiroTokenJson.value = ''
-  kiroDeviceRegistrationJson.value = ''
+  kiroImporter.resetAll()
   kiroCreditUnitPriceUsd.value = 0
   fetchKiroDefaultMappings().then(mappings => {
     kiroModelMappings.value = [...mappings]
@@ -6204,7 +6184,8 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 const handleSubmit = async () => {
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
-    if (!isGrokSSOInputMethod.value && !form.name.trim()) {
+    // 导入模式的账号名来自预览表里逐条可编辑的那一列，不走这里的单账号名称。
+    if (!isGrokSSOInputMethod.value && !isKiroImportMode.value && !form.name.trim()) {
       appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
       return
     }
@@ -7716,57 +7697,40 @@ const handleExchangeCode = async () => {
   }
 }
 
+/** 第一步：解析凭证内容，结果进预览表等待确认。 */
+const handleKiroParse = async () => {
+  if (!isKiroImportMode.value) return
+  kiroOAuth.error.value = ''
+  await kiroImporter.parse(t('admin.accounts.kiroImportEmpty'))
+}
+
+/**
+ * 第二步：把预览里保留的条目建成账号。
+ *
+ * 每条都套用本表单的通用参数（分组/代理/优先级/并发/倍率/备注…），
+ * 名称则取预览表里可编辑的那一列——导入的账号和手工添加的账号
+ * 在调度上没有任何区别，不该因为来路不同而少一套参数。
+ */
 const handleKiroImport = async () => {
   if (!isKiroImportMode.value) return
 
-  // Token JSON is required. Device registration is required only when the
-  // payload has clientIdHash but lacks clientId/clientSecret.
-  if (!kiroTokenJson.value.trim()) {
-    kiroOAuth.error.value = t('admin.accounts.oauth.kiro.tokenJsonRequired')
-    appStore.showError(kiroOAuth.error.value)
-    return
-  }
-  if (kiroImportNeedsDeviceRegistration.value && !kiroDeviceRegistrationJson.value.trim()) {
-    kiroOAuth.error.value = t('admin.accounts.oauth.kiro.deviceRegistrationRequired')
-    appStore.showError(kiroOAuth.error.value)
-    return
-  }
+  const selected = kiroImporter.collectCreatable()
+  if (selected.length === 0) return
 
+  kiroOAuth.error.value = ''
+  kiroOAuth.loading.value = true
   try {
-    JSON.parse(kiroTokenJson.value)
-  } catch {
-    kiroOAuth.error.value = t('admin.accounts.oauth.kiro.tokenJsonInvalid')
-    appStore.showError(kiroOAuth.error.value)
-    return
-  }
-
-  const importEntries = await kiroOAuth.importToken(
-    kiroTokenJson.value,
-    kiroDeviceRegistrationJson.value || undefined
-  )
-  if (!importEntries || importEntries.length === 0) return
-
-  try {
-    if (importEntries.length === 1) {
-      const entry = importEntries[0]
-      const credentials =
-        entry.account_type === 'apikey'
-          ? buildKiroImportedAPIKeyCredentials(entry)
-          : buildKiroCredentials(entry)
-      await createAccountAndFinish('kiro', entry.account_type, credentials)
-      return
-    }
-
     const accounts = []
-    for (let index = 0; index < importEntries.length; index++) {
-      const entry = importEntries[index]
+    for (const { entry, name } of selected) {
       const credentials =
         entry.account_type === 'apikey'
           ? buildKiroImportedAPIKeyCredentials(entry)
           : buildKiroCredentials(entry)
+      // endpoint 是 kiro.rs 特有的自定义上游，buildCredentials 不认，这里补上。
+      if (entry.endpoint) credentials.endpoint = entry.endpoint
       if (!applyTempUnschedConfig(credentials)) return
       accounts.push({
-        name: `${form.name || t('admin.accounts.oauth.kiro.importedAccountName')} #${index + 1}`,
+        name,
         notes: form.notes,
         platform: 'kiro' as const,
         type: entry.account_type,
@@ -7775,7 +7739,8 @@ const handleKiroImport = async () => {
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
-        priority: form.priority,
+        // 单条凭证自带的优先级优先于表单默认值：kiro.rs 的导出里这是有意义的调度属性。
+        priority: entry.priority ?? form.priority,
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
         expires_at: form.expires_at,
@@ -7805,6 +7770,8 @@ const handleKiroImport = async () => {
   } catch (error: any) {
     kiroOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(kiroOAuth.error.value)
+  } finally {
+    kiroOAuth.loading.value = false
   }
 }
 
