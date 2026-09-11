@@ -52,6 +52,17 @@ export interface KiroImportTokenResult {
   entries: KiroImportEntry[]
 }
 
+/** kiro.rs 凭证补齐后的条目，额外带该系统特有的调度属性。 */
+export interface KiroRsImportEntry extends KiroImportEntry {
+  endpoint?: string
+  priority: number
+  disabled: boolean
+}
+
+export interface KiroRsImportResult {
+  entries: KiroRsImportEntry[]
+}
+
 export async function generateAuthUrl(payload: {
   proxy_id?: number
   provider?: string
@@ -108,10 +119,24 @@ export async function importToken(payload: {
   return data
 }
 
+/**
+ * 解析 kiro.rs 凭证文件并返回补齐后的账号条目。
+ *
+ * 与 importToken 并列：那条走 Kiro IDE 导出的严格校验，
+ * 本接口面向 kiro.rs 的凭证格式（只有 refreshToken、或仅 kiroApiKey）。
+ */
+export async function importKiroRsCredentials(payload: {
+  content: string
+}): Promise<KiroRsImportResult> {
+  const { data } = await apiClient.post<KiroRsImportResult>('/admin/kiro/oauth/import-kiro-rs', payload)
+  return data
+}
+
 export default {
   generateAuthUrl,
   generateIDCAuthUrl,
   exchangeCode,
   refreshToken,
-  importToken
+  importToken,
+  importKiroRsCredentials
 }

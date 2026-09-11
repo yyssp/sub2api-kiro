@@ -522,6 +522,8 @@ func registerKiroOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		kiro.POST("/oauth/exchange-code", h.Admin.KiroOAuth.ExchangeCode)
 		kiro.POST("/oauth/refresh-token", h.Admin.KiroOAuth.RefreshToken)
 		kiro.POST("/oauth/import-token", h.Admin.KiroOAuth.ImportToken)
+		// kiro.rs 凭证文件导入：与上面的 Kiro IDE 导出导入并列，解析规则更宽松。
+		kiro.POST("/oauth/import-kiro-rs", h.Admin.KiroOAuth.ImportKiroRsCredentials)
 	}
 }
 

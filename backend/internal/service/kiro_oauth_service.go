@@ -139,6 +139,24 @@ type KiroImportEntry struct {
 	APIKey string `json:"api_key,omitempty"`
 }
 
+type KiroRsImportInput struct {
+	// Content 是凭证文件原文：单对象 JSON、数组 JSON 或 `ksk_xxx|region` 纯文本。
+	Content string
+}
+
+type KiroRsImportResult struct {
+	Entries []*KiroRsImportEntry `json:"entries"`
+}
+
+// KiroRsImportEntry 在通用导入条目之上附带 kiro.rs 特有的调度属性，
+// 供前端预填账号表单的优先级/启用状态。
+type KiroRsImportEntry struct {
+	*KiroImportEntry
+	Endpoint string `json:"endpoint,omitempty"`
+	Priority int    `json:"priority"`
+	Disabled bool   `json:"disabled"`
+}
+
 func (s *KiroOAuthService) GenerateAuthURL(ctx context.Context, input *KiroGenerateAuthURLInput) (*KiroAuthURLResult, error) {
 	if input == nil {
 		return nil, fmt.Errorf("kiro auth url input is required")
@@ -531,6 +549,38 @@ func (s *KiroOAuthService) ImportToken(input *KiroImportTokenInput) (*KiroImport
 		if token.AuthMethod == "api_key" {
 			entry.AccountType = "apikey"
 			entry.APIKey = token.APIKey
+		} else {
+			entry.AccountType = "oauth"
+		}
+		result.Entries = append(result.Entries, entry)
+	}
+	return result, nil
+}
+
+// ImportKiroRsCredentials 导入 kiro.rs 的凭证文件。
+//
+// 与 ImportToken 并列而不是替换它：ImportToken 面向 Kiro IDE 导出，必须保持严格；
+// kiro.rs 只持久化 refreshToken（不存 accessToken），API-key 文件更是只有一个
+// kiroApiKey 字段，用严格校验会全量拒绝。这里改用宽松解析 + 按 kiro.rs 默认值补齐。
+func (s *KiroOAuthService) ImportKiroRsCredentials(input *KiroRsImportInput) (*KiroRsImportResult, error) {
+	if input == nil {
+		return nil, fmt.Errorf("kiro.rs import input is required")
+	}
+	creds, err := kiropkg.ParseKiroRsCredentials(input.Content)
+	if err != nil {
+		return nil, err
+	}
+	result := &KiroRsImportResult{Entries: make([]*KiroRsImportEntry, 0, len(creds))}
+	for _, cred := range creds {
+		entry := &KiroRsImportEntry{
+			KiroImportEntry: &KiroImportEntry{KiroTokenInfo: toKiroTokenInfo(cred.TokenData)},
+			Endpoint:        cred.Endpoint,
+			Priority:        cred.Priority,
+			Disabled:        cred.Disabled,
+		}
+		if cred.AuthMethod == "api_key" {
+			entry.AccountType = "apikey"
+			entry.APIKey = cred.APIKey
 		} else {
 			entry.AccountType = "oauth"
 		}

@@ -155,3 +155,25 @@ func (h *KiroOAuthHandler) ImportToken(c *gin.Context) {
 	}
 	response.Success(c, tokenInfo)
 }
+
+type KiroRsImportRequest struct {
+	Content string `json:"content" binding:"required"`
+}
+
+// ImportKiroRsCredentials 解析 kiro.rs 凭证文件并返回补齐后的账号条目。
+// 只做解析与补齐，账号创建仍由前端走既有的批量创建接口。
+func (h *KiroOAuthHandler) ImportKiroRsCredentials(c *gin.Context) {
+	var req KiroRsImportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "请求无效: "+err.Error())
+		return
+	}
+	result, err := h.kiroOAuthService.ImportKiroRsCredentials(&service.KiroRsImportInput{
+		Content: req.Content,
+	})
+	if err != nil {
+		response.BadRequest(c, "解析 kiro.rs 凭证失败: "+err.Error())
+		return
+	}
+	response.Success(c, result)
+}
