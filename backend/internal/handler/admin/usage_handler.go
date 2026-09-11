@@ -109,6 +109,16 @@ func (h *UsageHandler) List(c *gin.Context) {
 		groupID = id
 	}
 
+	var cacheStrategyID int64
+	if v := c.Query("cache_strategy_id"); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			response.BadRequest(c, "Invalid cache_strategy_id")
+			return
+		}
+		cacheStrategyID = id
+	}
+
 	model := c.Query("model")
 	requestID := strings.TrimSpace(c.Query("request_id"))
 	billingMode := strings.TrimSpace(c.Query("billing_mode"))
@@ -193,6 +203,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		APIKeyID:              apiKeyID,
 		AccountID:             accountID,
 		GroupID:               groupID,
+		CacheStrategyID:       cacheStrategyID,
 		RequestID:             requestID,
 		Model:                 model,
 		ModelFilterSource:     usagestats.ModelSourceRequested,

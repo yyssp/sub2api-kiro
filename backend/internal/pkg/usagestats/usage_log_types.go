@@ -273,7 +273,10 @@ type UsageLogFilters struct {
 	APIKeyID  int64
 	AccountID int64
 	GroupID   int64
-	RequestID string
+	// CacheStrategyID 按请求发生时生效的缓存策略过滤。0 表示不过滤。
+	// 日志里同时存了 cache_strategy_name，但按 ID 过滤才不受后续改名影响。
+	CacheStrategyID int64
+	RequestID       string
 	Model     string
 	// ModelFilterSource controls how Model is matched. Empty preserves raw usage_logs.model semantics.
 	ModelFilterSource     string
