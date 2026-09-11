@@ -300,12 +300,11 @@ func applyFinalCapWithJitter(value, capTokens, jitterMin, jitterMax int, seed ui
 	if capTokens <= 0 || value <= capTokens {
 		return value
 	}
-	jitterMax = min(max(jitterMax, 0), capTokens)
+	jitterMin, jitterMax = normalizeFinalCapJitter(capTokens, jitterMin, jitterMax)
 	if jitterMax <= 0 {
 		return capTokens
 	}
-	jitterMin = min(max(jitterMin, 0), jitterMax)
-	return max(capTokens-jitterWithin(jitterMin, jitterMax, seed), 0)
+	return max(capTokens-jitterWithin(jitterMin, jitterMax, seed), 1)
 }
 
 func projectUsageFieldWithRaw(policy CacheUsageFieldPolicy, current, raw int, seed uint64) int {
@@ -324,7 +323,13 @@ func projectUsageField(policy CacheUsageFieldPolicy, current int, seed uint64) i
 		if policy.MaxTokens <= 0 {
 			return current
 		}
-		return cacheMinInt(current, policy.MaxTokens)
+		if current <= policy.MaxTokens {
+			return current
+		}
+		// A field-level maximum must not turn every capped record into the same
+		// value. Keep the configured maximum as the ceiling, but deterministically
+		// pull capped values back by a small amount so retries remain stable.
+		return sampleMaxWithJitter(policy.MaxTokens, seed^uint64(current))
 	case CacheUsageFieldSampleTarget:
 		if policy.TargetTokens <= 0 {
 			return current
@@ -368,6 +373,23 @@ func cacheMaxFloat(a, b float64) float64 {
 		return a
 	}
 	return b
+}
+
+// sampleMaxWithJitter returns a positive value at or below maxTokens. The
+// range is intentionally small (up to 5% of the cap) so sample_max remains a
+// ceiling rather than becoming a target-shaped projection.
+func sampleMaxWithJitter(maxTokens int, seed uint64) int {
+	if maxTokens <= 1 {
+		return maxTokens
+	}
+	jitterMax := maxTokens / 20
+	if jitterMax < 1 {
+		jitterMax = 1
+	}
+	if jitterMax >= maxTokens {
+		jitterMax = maxTokens - 1
+	}
+	return maxTokens - jitterWithin(1, jitterMax, seed)
 }
 
 func capCacheCreationBreakdown(cache5m, cache1h, total int) (int, int) {

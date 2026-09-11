@@ -86,7 +86,11 @@ export default {
       finalCacheCreationJitterMinTokens: "Cap jitter range min",
       finalCacheCreationJitterMaxTokens: "Cap jitter range max",
       finalCapJitterHint:
-        "When a value hits the cap it is pulled back by a random amount in this range, so capped records do not all report the same number. The deduction is clamped to the cap; when the cap is 0 (off) the range is cleared automatically.",
+        "When a value hits the cap it is pulled back by a deterministic amount in this range, so capped records do not all report the same number; retries of the same request stay stable. Keep the lower bound well below the cap and ensure the deduction cannot reduce the result to 0. Small caps scale the range proportionally; when the cap is 0 (off) the range is cleared automatically.",
+      finalCapJitterValidationHint:
+        "Recommended: keep the lower bound meaningfully below the cap and the upper bound below the cap. Otherwise normalization scales the range and narrows the variation at the cap.",
+      finalCapJitterValidationError:
+        "Invalid cap jitter range: the upper bound must be greater than the lower bound, and the lower bound must be below the final cap. Disable jitter when the final cap is 1.",
       skipNonStreamUsageProjection: "Skip usage projection for non-streaming",
       skipNonStreamUsageProjectionHint:
         "Non-streaming responses carry complete upstream usage. Enable this to pass it through untouched instead of applying cache shaping. Streaming responses are unaffected.",

@@ -65,8 +65,8 @@ type CacheUsageFieldPolicy struct {
 // CacheUsagePolicy mirrors the four independent usage controls from
 // 2ue_kiro.rs without carrying any path/Kiro-specific semantics.
 type CacheUsagePolicy struct {
-	Enabled                    bool                  `json:"enabled"`
-	PreserveUpstreamCacheUsage bool                  `json:"preserve_upstream_cache_usage"`
+	Enabled                    bool `json:"enabled"`
+	PreserveUpstreamCacheUsage bool `json:"preserve_upstream_cache_usage"`
 	// SkipNonStreamUsageProjection 关掉非流式响应的用量投影：非流式拿得到完整的
 	// 上游 usage，有些场景更希望原样透传而不是套一遍缓存整形。
 	// 对齐 kiro.rs 的 skipNonStreamUsageProjection。
@@ -77,7 +77,8 @@ type CacheUsagePolicy struct {
 	CacheCreation                CacheUsageFieldPolicy `json:"cache_creation"`
 	// Final*MaxTokens 是上报值的最终硬上限。裸 min() 会让所有触顶记录落在同一个
 	// 数字上（一列整齐的 700000），因此每个上限都配一对抖动区间：触顶时在
-	// [jitter_min, jitter_max] 内按请求指纹回退一点，回退量夹到上限本身以内。
+	// [jitter_min, jitter_max] 内按请求指纹回退一点，回退量最多为上限减一，
+	// 确保触顶结果始终为正数。
 	// 对齐 kiro.rs pathPolicy() 的 final*JitterMin/MaxTokens
 	// （ui/src/lib/runtime-config-defaults.ts:92）。
 	FinalCacheReadMaxTokens           int `json:"final_cache_read_max_tokens"`
@@ -157,29 +158,29 @@ func DefaultCacheUsagePolicy() CacheUsagePolicy {
 }
 
 type CacheStrategyConfig struct {
-	Kind                             string               `json:"kind"`
-	RatioMode                        string               `json:"ratio_mode"`
-	CoverageRatio                    float64              `json:"coverage_ratio"`
-	UsageRatio                       float64              `json:"usage_ratio"`
-	ReadRatio                        float64              `json:"read_ratio"`
-	CreationRatio                    float64              `json:"creation_ratio"`
-	CacheSystem                      bool                 `json:"cache_system"`
-	CacheTools                       bool                 `json:"cache_tools"`
-	CacheHistory                     bool                 `json:"cache_history"`
-	CacheToolResults                 bool                 `json:"cache_tool_results"`
-	CacheCurrentUserStablePrefix     bool                 `json:"cache_current_user_stable_prefix"`
-	CurrentUserStablePrefixMaxTokens int                  `json:"current_user_stable_prefix_max_tokens"`
-	BreakpointMode                   string               `json:"breakpoint_mode"`
-	AllowDerivedSession              bool                 `json:"allow_derived_session"`
-	DynamicContentMode               string               `json:"dynamic_content_mode"`
-	ScopeMode                        string               `json:"scope_mode"`
-	MaxCoverageTokens                int                  `json:"max_coverage_tokens"`
-	MaxNewCreationTokensPerRequest   int                  `json:"max_new_creation_tokens_per_request"`
-	IncrementalCreateEnabled         bool                 `json:"incremental_create_enabled"`
-	MinCacheableTokens               int                  `json:"min_cacheable_tokens"`
-	ModelMinCacheableOverrides       map[string]int       `json:"model_min_cacheable_overrides,omitempty"`
-	ReportedInputMinTokens           int                  `json:"reported_input_min_tokens"`
-	ReportedInputMaxTokens           int                  `json:"reported_input_max_tokens"`
+	Kind                             string         `json:"kind"`
+	RatioMode                        string         `json:"ratio_mode"`
+	CoverageRatio                    float64        `json:"coverage_ratio"`
+	UsageRatio                       float64        `json:"usage_ratio"`
+	ReadRatio                        float64        `json:"read_ratio"`
+	CreationRatio                    float64        `json:"creation_ratio"`
+	CacheSystem                      bool           `json:"cache_system"`
+	CacheTools                       bool           `json:"cache_tools"`
+	CacheHistory                     bool           `json:"cache_history"`
+	CacheToolResults                 bool           `json:"cache_tool_results"`
+	CacheCurrentUserStablePrefix     bool           `json:"cache_current_user_stable_prefix"`
+	CurrentUserStablePrefixMaxTokens int            `json:"current_user_stable_prefix_max_tokens"`
+	BreakpointMode                   string         `json:"breakpoint_mode"`
+	AllowDerivedSession              bool           `json:"allow_derived_session"`
+	DynamicContentMode               string         `json:"dynamic_content_mode"`
+	ScopeMode                        string         `json:"scope_mode"`
+	MaxCoverageTokens                int            `json:"max_coverage_tokens"`
+	MaxNewCreationTokensPerRequest   int            `json:"max_new_creation_tokens_per_request"`
+	IncrementalCreateEnabled         bool           `json:"incremental_create_enabled"`
+	MinCacheableTokens               int            `json:"min_cacheable_tokens"`
+	ModelMinCacheableOverrides       map[string]int `json:"model_min_cacheable_overrides,omitempty"`
+	ReportedInputMinTokens           int            `json:"reported_input_min_tokens"`
+	ReportedInputMaxTokens           int            `json:"reported_input_max_tokens"`
 	// UncachedInput* 约束的是上报 usage 里那份「未命中缓存」的 input_tokens，
 	// 与 ReportedInput*（约束的是 input 总量）不是一回事。缓存把整个前缀吃光时
 	// input 会掉到 0，而真实 API 不存在 input=0 且 cache_read>0 的组合，
@@ -187,22 +188,22 @@ type CacheStrategyConfig struct {
 	// 退还目标在 [min, max] 内按请求指纹抖动，避免每条都是同一个数字。
 	// 注意：input 已经高于下限时不做任何处理 —— 不会把 input 反向塞进 creation，
 	// 那会把便宜的 input 计成更贵的 creation。
-	UncachedInputMinTokens int `json:"uncached_input_min_tokens"`
-	UncachedInputMaxTokens int `json:"uncached_input_max_tokens"`
-	TokenScale                       float64              `json:"token_scale"`
-	ScaleMinInputTokens              int                  `json:"scale_min_input_tokens"`
-	MaxSimulatedInputTokens          int                  `json:"max_simulated_input_tokens"`
-	DefaultTTLSeconds                int                  `json:"default_ttl_seconds"`
-	HourTTLSeconds                   int                  `json:"hour_ttl_seconds"`
-	MaxEntriesPerScope               int                  `json:"max_entries_per_scope"`
-	MaxEntriesGlobal                 int                  `json:"max_entries_global"`
-	EstimatedBytesLimit              int64                `json:"estimated_bytes_limit"`
-	ExpireAfterIdleSeconds           int                  `json:"expire_after_idle_seconds"`
-	CapJitterMinTokens               int                  `json:"cap_jitter_min_tokens"`
-	CapJitterMaxTokens               int                  `json:"cap_jitter_max_tokens"`
-	PreserveUpstreamCacheUsage       bool                 `json:"preserve_upstream_cache_usage"`
-	CreationControl                  CacheCreationControl `json:"creation_control"`
-	Usage                            CacheUsagePolicy     `json:"usage"`
+	UncachedInputMinTokens     int                  `json:"uncached_input_min_tokens"`
+	UncachedInputMaxTokens     int                  `json:"uncached_input_max_tokens"`
+	TokenScale                 float64              `json:"token_scale"`
+	ScaleMinInputTokens        int                  `json:"scale_min_input_tokens"`
+	MaxSimulatedInputTokens    int                  `json:"max_simulated_input_tokens"`
+	DefaultTTLSeconds          int                  `json:"default_ttl_seconds"`
+	HourTTLSeconds             int                  `json:"hour_ttl_seconds"`
+	MaxEntriesPerScope         int                  `json:"max_entries_per_scope"`
+	MaxEntriesGlobal           int                  `json:"max_entries_global"`
+	EstimatedBytesLimit        int64                `json:"estimated_bytes_limit"`
+	ExpireAfterIdleSeconds     int                  `json:"expire_after_idle_seconds"`
+	CapJitterMinTokens         int                  `json:"cap_jitter_min_tokens"`
+	CapJitterMaxTokens         int                  `json:"cap_jitter_max_tokens"`
+	PreserveUpstreamCacheUsage bool                 `json:"preserve_upstream_cache_usage"`
+	CreationControl            CacheCreationControl `json:"creation_control"`
+	Usage                      CacheUsagePolicy     `json:"usage"`
 }
 
 type CacheCreationControl struct {
@@ -435,24 +436,54 @@ func normalizeCacheUsagePolicy(in CacheUsagePolicy) CacheUsagePolicy {
 		// 缺失时按旧语义推断，把隐式行为固化成显式开关，行为不变。
 		in.OutputUpliftEnabled = boolPtr(in.OutputUpliftMinTokens > 0 && in.OutputUpliftPercent > 0)
 	}
-	// 三组「上限 + 扣减区间」统一按同一规则收敛：负数归零、min 不超过 max、
-	// 扣减量不超过上限本身（否则触顶值会被减成负数）。上限为 0（不限制）时
-	// 扣减区间也一并清零 —— 没有上限就没有触顶，留着只会让页面显示一组无效数字。
+	// 三组「上限 + 扣减区间」统一按同一规则收敛：负数归零、按上限比例缩放，
+	// 并保证扣减量最多为 cap-1。以前直接把两端夹到 cap，较小的 cap 会把
+	// jitter_min/max 压成同一个数字，触顶值也就重新变成一整列常数；扣减量等于
+	// cap 时还会把最终上报值归零。上限为 0（不限制）时区间一并清零。
 	for _, g := range []struct{ cap_, jMin, jMax *int }{
 		{&in.FinalCacheReadMaxTokens, &in.FinalCacheReadJitterMinTokens, &in.FinalCacheReadJitterMaxTokens},
 		{&in.FinalCacheCreationMaxTokens, &in.FinalCacheCreationJitterMinTokens, &in.FinalCacheCreationJitterMaxTokens},
 		{&in.FinalOutputMaxTokens, &in.FinalOutputJitterMinTokens, &in.FinalOutputJitterMaxTokens},
 	} {
 		*g.cap_ = max(*g.cap_, 0)
-		*g.jMin, *g.jMax = max(*g.jMin, 0), max(*g.jMax, 0)
-		if *g.cap_ == 0 {
-			*g.jMin, *g.jMax = 0, 0
-			continue
-		}
-		*g.jMax = min(*g.jMax, *g.cap_)
-		*g.jMin = min(*g.jMin, *g.jMax)
+		*g.jMin, *g.jMax = normalizeFinalCapJitter(*g.cap_, *g.jMin, *g.jMax)
 	}
 	return in
+}
+
+// normalizeFinalCapJitter keeps final-cap jitter usable for every positive cap.
+//
+// Jitter is a deduction, so cap-1 is the largest safe deduction: subtracting
+// cap itself would report zero. When a legacy/default range is larger than a
+// small cap, scale both ends proportionally instead of clamping both to the
+// same point. This preserves a real interval and keeps old configurations
+// usable without a database migration.
+func normalizeFinalCapJitter(capTokens, jitterMin, jitterMax int) (int, int) {
+	capTokens = max(capTokens, 0)
+	jitterMin = max(jitterMin, 0)
+	jitterMax = max(jitterMax, 0)
+	if capTokens <= 1 || jitterMax == 0 {
+		return 0, 0
+	}
+	if jitterMax < jitterMin {
+		jitterMin, jitterMax = jitterMax, jitterMin
+	}
+
+	safeMax := capTokens - 1
+	if jitterMax > safeMax {
+		scale := float64(safeMax) / float64(jitterMax)
+		jitterMin = int(math.Floor(float64(jitterMin) * scale))
+		jitterMax = safeMax
+	}
+	if jitterMin >= jitterMax {
+		// A single-point input is not useful as jitter. Pick a lower bound that
+		// retains at least two possible deductions while staying deterministic.
+		jitterMin = jitterMax / 2
+		if jitterMin >= jitterMax {
+			jitterMin = jitterMax - 1
+		}
+	}
+	return max(jitterMin, 0), max(jitterMax, 0)
 }
 
 func validateCacheUsagePolicy(in CacheUsagePolicy) error {

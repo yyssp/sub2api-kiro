@@ -628,6 +628,13 @@
               <p class="text-xs leading-5 text-gray-500 dark:text-dark-400">
                 {{ t("admin.cacheStrategies.form.finalCapJitterHint") }}
               </p>
+              <p class="text-xs leading-5 text-amber-600 dark:text-amber-400">
+                {{
+                  t(
+                    "admin.cacheStrategies.form.finalCapJitterValidationHint",
+                  )
+                }}
+              </p>
             </div>
 
             <div
@@ -751,6 +758,13 @@
               </div>
               <p class="text-xs leading-5 text-gray-500 dark:text-dark-400">
                 {{ t("admin.cacheStrategies.form.finalCapJitterHint") }}
+              </p>
+              <p class="text-xs leading-5 text-amber-600 dark:text-amber-400">
+                {{
+                  t(
+                    "admin.cacheStrategies.form.finalCapJitterValidationHint",
+                  )
+                }}
               </p>
             </div>
 
@@ -883,6 +897,13 @@
               </div>
               <p class="text-xs leading-5 text-gray-500 dark:text-dark-400">
                 {{ t("admin.cacheStrategies.form.finalCapJitterHint") }}
+              </p>
+              <p class="text-xs leading-5 text-amber-600 dark:text-amber-400">
+                {{
+                  t(
+                    "admin.cacheStrategies.form.finalCapJitterValidationHint",
+                  )
+                }}
               </p>
             </div>
           </div>
@@ -1695,6 +1716,36 @@ function usageModeLabel(mode?: string) {
   }
 }
 
+function validateFinalCapJitter(config: CacheStrategyConfig): string | null {
+  const groups = [
+    [
+      config.usage.final_output_max_tokens,
+      config.usage.final_output_jitter_min_tokens,
+      config.usage.final_output_jitter_max_tokens,
+    ],
+    [
+      config.usage.final_cache_read_max_tokens,
+      config.usage.final_cache_read_jitter_min_tokens,
+      config.usage.final_cache_read_jitter_max_tokens,
+    ],
+    [
+      config.usage.final_cache_creation_max_tokens,
+      config.usage.final_cache_creation_jitter_min_tokens,
+      config.usage.final_cache_creation_jitter_max_tokens,
+    ],
+  ];
+
+  for (const [cap, min, max] of groups) {
+    if (cap <= 0 || max <= 0) {
+      continue;
+    }
+    if (cap <= 1 || min < 0 || max < 0 || min >= max || min >= cap) {
+      return t("admin.cacheStrategies.form.finalCapJitterValidationError");
+    }
+  }
+  return null;
+}
+
 function openCreate() {
   selectedGroupIds.value = [];
   selectedTemplateId.value = "blank";
@@ -1817,8 +1868,15 @@ async function save() {
     return;
   }
 
-  saving.value = true;
   error.value = "";
+  const validationError = validateFinalCapJitter(editing.value.config);
+  if (validationError) {
+    error.value = validationError;
+    appStore.showError(validationError);
+    return;
+  }
+
+  saving.value = true;
 
   try {
     const item = editing.value;

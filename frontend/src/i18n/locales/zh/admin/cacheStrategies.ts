@@ -85,7 +85,11 @@ export default {
       finalCacheCreationJitterMinTokens: "上限波动区间下限",
       finalCacheCreationJitterMaxTokens: "上限波动区间上限",
       finalCapJitterHint:
-        "触顶时在这个区间内随机回退一点，避免所有触顶记录都显示同一个数字。回退量会被夹到上限以内；上限为 0（不限制）时该区间自动清零。",
+        "触顶时按请求指纹在这个区间内确定性回退一点，避免所有触顶记录都显示同一个数字；同一请求重试结果保持一致。波动下限应显著小于上限本身，且不能把上限扣减到 0。小上限配置会按比例缩放区间；上限为 0（不限制）时该区间自动清零。",
+      finalCapJitterValidationHint:
+        "建议：波动下限至少比上限低一个明显区间，波动上限必须小于上限；否则归一化会缩放配置，触顶值的波动范围会变窄。",
+      finalCapJitterValidationError:
+        "上限波动区间无效：波动上限必须大于下限，且波动下限必须小于最终上限；最终上限为 1 时请关闭波动。",
       skipNonStreamUsageProjection: "非流式响应跳过用量投影",
       skipNonStreamUsageProjectionHint:
         "非流式响应能拿到完整的上游 usage，勾选后原样透传、不套缓存整形。仅影响非流式，流式响应不受影响。",

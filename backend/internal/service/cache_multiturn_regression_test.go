@@ -415,6 +415,94 @@ func TestFinalCapJitterSpreadsCappedValues(t *testing.T) {
 	require.GreaterOrEqual(t, applyFinalCapWithJitter(5000, 100, 9999, 99999, 3), 0)
 }
 
+func TestSampleMaxJitterSpreadsCappedValues(t *testing.T) {
+	const maxTokens = 200
+
+	seen := map[int]struct{}{}
+	for seed := uint64(1); seed <= 100; seed++ {
+		got := projectUsageField(CacheUsageFieldPolicy{
+			Mode:      CacheUsageFieldSampleMax,
+			MaxTokens: maxTokens,
+		}, maxTokens*2, seed)
+		require.Greater(t, got, 0)
+		require.LessOrEqual(t, got, maxTokens)
+		seen[got] = struct{}{}
+	}
+	require.Greater(t, len(seen), 5, "sample_max 触顶后应产生多个确定性取值")
+
+	require.Equal(t,
+		projectUsageField(CacheUsageFieldPolicy{
+			Mode:      CacheUsageFieldSampleMax,
+			MaxTokens: maxTokens,
+		}, maxTokens*2, 9),
+		projectUsageField(CacheUsageFieldPolicy{
+			Mode:      CacheUsageFieldSampleMax,
+			MaxTokens: maxTokens,
+		}, maxTokens*2, 9),
+		"同一 seed 的 sample_max 触顶抖动必须稳定")
+
+	require.Equal(t, 99, projectUsageField(CacheUsageFieldPolicy{
+		Mode:      CacheUsageFieldSampleMax,
+		MaxTokens: maxTokens,
+	}, 99, 3), "未触顶值必须原样返回")
+	require.Equal(t, maxTokens, projectUsageField(CacheUsageFieldPolicy{
+		Mode:      CacheUsageFieldSampleMax,
+		MaxTokens: maxTokens,
+	}, maxTokens, 3), "刚好等于上限时不应额外扣减")
+	require.Zero(t, projectUsageField(CacheUsageFieldPolicy{
+		Mode:      CacheUsageFieldSampleMax,
+		MaxTokens: maxTokens,
+	}, 0, 3), "原始 0 不应被抖动成正数")
+}
+
+func TestFinalCapJitterNormalizationKeepsSmallCapsPositiveAndVariable(t *testing.T) {
+	minJitter, maxJitter := normalizeFinalCapJitter(8000, 12345, 45312)
+	require.Less(t, minJitter, maxJitter)
+	require.Less(t, maxJitter, 8000)
+
+	seen := map[int]struct{}{}
+	for seed := uint64(1); seed <= 100; seed++ {
+		got := applyFinalCapWithJitter(16000, 8000, 12345, 45312, seed)
+		require.Greater(t, got, 0)
+		require.LessOrEqual(t, got, 8000)
+		seen[got] = struct{}{}
+	}
+	require.Greater(t, len(seen), 5)
+
+	for _, capTokens := range []int{1, 2, 10, 12345} {
+		for seed := uint64(0); seed < 20; seed++ {
+			got := applyFinalCapWithJitter(capTokens*2, capTokens, 12345, 45312, seed)
+			require.GreaterOrEqual(t, got, 1)
+			require.LessOrEqual(t, got, capTokens)
+		}
+	}
+}
+
+func TestNormalizeCacheStrategyConfigScalesCollapsedFinalCapJitter(t *testing.T) {
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
+	cfg.Usage.FinalCacheReadMaxTokens = 80000
+	cfg.Usage.FinalCacheReadJitterMinTokens = 12345
+	cfg.Usage.FinalCacheReadJitterMaxTokens = 45312
+	cfg.Usage.FinalOutputMaxTokens = 8000
+	cfg.Usage.FinalOutputJitterMinTokens = 12345
+	cfg.Usage.FinalOutputJitterMaxTokens = 45312
+
+	normalized, err := NormalizeCacheStrategyConfig(cfg)
+	require.NoError(t, err)
+	require.Less(t,
+		normalized.Usage.FinalCacheReadJitterMinTokens,
+		normalized.Usage.FinalCacheReadJitterMaxTokens,
+	)
+	require.Less(t,
+		normalized.Usage.FinalOutputJitterMinTokens,
+		normalized.Usage.FinalOutputJitterMaxTokens,
+	)
+	require.Less(t,
+		normalized.Usage.FinalOutputJitterMaxTokens,
+		normalized.Usage.FinalOutputMaxTokens,
+	)
+}
+
 // 配置缺失不能报错，也不能改变原有行为。
 func TestUsagePolicyDegradesSafelyWhenUnconfigured(t *testing.T) {
 	// 存量策略的 JSON 里没有 final_output_guard_enabled 这个字段。
