@@ -131,28 +131,23 @@ func registerRoutes(
 	routes.RegisterUserRoutes(v1, h, jwtAuth, auditLog, settingService, panelRateLimiter)
 	routes.RegisterModelPlazaRoutes(v1, h, optionalJWTAuth, settingService, panelRateLimiter)
 
+	// 本地管理面始终注册：远程代管挂在独立的 /remote-admin 前缀下，
+	// 两者不再互斥，同一部署可同时提供本地账密管理与远端代管。
+	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService, panelRateLimiter)
+
 	// 远程代管模式：本部署的管理面接管另一套 sub2api 的数据。
-	// 此模式下 /admin/* 全部转发到目标端，因此不再注册任何本地管理路由
-	// （gin 不允许同一前缀既有通配路由又有具体路由）。
-	remoteProxyEnabled := cfg.RemoteProxy.Enabled
-	if remoteProxyEnabled {
+	if cfg.RemoteProxy.Enabled {
 		remoteCfg, err := remoteproxy.Validate(cfg.RemoteProxy)
 		if err != nil {
 			// 配置错误在启动期暴露，优于运行期才发现管理面不可用。
 			panic(fmt.Sprintf("remote proxy misconfigured: %v", err))
 		}
-		slog.Warn("remote proxy enabled: local admin panel is serving another deployment's data",
-			"backend_url", remoteCfg.BackendURL)
+		slog.Warn("remote proxy enabled: local admin panel can also serve another deployment's data",
+			"backend_url", remoteCfg.BackendURL, "prefix", remoteproxy.RemoteAdminPrefix)
 		remoteproxy.Register(v1, remoteproxy.New(remoteCfg))
-	} else {
-		routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService, panelRateLimiter)
 	}
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg)
 
-	// 支付与页面路由都在 /admin 下注册了具体路径，与远程代管的通配路由冲突，
-	// 因此远程模式下同样跳过；它们的管理端请求会经由 /admin/* 转发到目标端。
-	if !remoteProxyEnabled {
-		routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, auditLog, settingService, panelRateLimiter)
-		handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)
-	}
+	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, auditLog, settingService, panelRateLimiter)
+	handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)
 }

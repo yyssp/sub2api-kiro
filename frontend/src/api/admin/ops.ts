@@ -5,6 +5,7 @@
  */
 
 import { apiClient, buildGatewayUrl } from '../client'
+import { isRemoteProxySession } from '../url'
 import type { PaginatedResponse } from '@/types'
 
 export type OpsQueryMode = 'auto' | 'raw' | 'preagg'
@@ -590,6 +591,14 @@ export function subscribeQPS(onMessage: (data: any) => void, options: SubscribeQ
     if (isConnecting) return
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
     if (hasConnectedOnce && reconnectAttempts >= maxReconnectAttempts) return
+
+    // 远程代管会话不支持实时 QPS：转发层是普通 HTTP 代理，不做 WebSocket 协议升级，
+    // 且目标端只认 Admin API Key，而这里只能通过子协议传 JWT。
+    // 直接置为 offline，避免无意义的重连风暴；面板其余部分不受影响。
+    if (isRemoteProxySession()) {
+      setStatus('offline')
+      return
+    }
 
     isConnecting = true
     setStatus(hasConnectedOnce ? 'reconnecting' : 'connecting')

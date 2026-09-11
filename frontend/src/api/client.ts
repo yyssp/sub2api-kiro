@@ -13,7 +13,7 @@ import {
   shouldMarkUserUIRequest,
 } from './adminUIRequest'
 import { refreshAuthTokens } from './tokenRefresh'
-import { getAPIBaseURL } from './url'
+import { getAPIBaseURL, rewriteAdminPathForRemote } from './url'
 
 /**
  * 是否处于远程代管会话。
@@ -56,6 +56,13 @@ const getUserTimezone = (): string => {
 
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // 远程代管会话：把 /admin/* 改写到 /remote-admin/*，由服务端转发到目标部署。
+    // 本地会话保持 /admin/* 不变，两套路由在后端并存。
+    // 在此处统一改写，业务侧数百个调用点无需感知远程模式。
+    if (config.url) {
+      config.url = rewriteAdminPathForRemote(config.url)
+    }
+
     // Attach token from localStorage
     const token = localStorage.getItem('auth_token')
     if (token && config.headers) {

@@ -43,6 +43,14 @@ import (
 )
 
 const (
+	// RemoteAdminPrefix 是本端暴露给浏览器的远程代管入口前缀（相对 /api/v1）。
+	// 与本地管理面的 /admin 区分开，使两套路由可以同时注册。
+	RemoteAdminPrefix = "/remote-admin"
+
+	// localAdminPrefix 是目标端实际的管理面前缀。转发前需把本端前缀换回它，
+	// 因为目标端可能是未经改造的原版部署，只认 /api/v1/admin。
+	localAdminPrefix = "/admin"
+
 	// 转发时携带的管理员认证头，与原版 admin 中间件一致。
 	adminAPIKeyHeader = "X-API-Key"
 
@@ -308,7 +316,9 @@ func (p *Component) Proxy(c *gin.Context) {
 		return
 	}
 
-	target := p.cfg.BackendURL + c.Request.URL.Path
+	// 本端入口是 /api/v1/remote-admin/*，目标端只认 /api/v1/admin/*，
+	// 转发前必须换回去，否则原版部署会 404。
+	target := p.cfg.BackendURL + rewriteAdminPath(c.Request.URL.Path)
 	if raw := c.Request.URL.RawQuery; raw != "" {
 		target += "?" + raw
 	}
@@ -414,6 +424,23 @@ func (p *Component) Logout(c *gin.Context) {
 	response.Success(c, gin.H{"success": true})
 }
 
+// rewriteAdminPath 把本端的 /remote-admin 入口前缀换回目标端的 /admin。
+//
+// 只替换 /api/v1 之后紧邻的那一段，不做全局字符串替换：
+// 路径里出现的其它同名片段（如 /api/v1/admin/settings/remote-admin）必须原样保留。
+func rewriteAdminPath(path string) string {
+	const base = "/api/v1"
+	if !strings.HasPrefix(path, base+RemoteAdminPrefix) {
+		return path
+	}
+	rest := path[len(base)+len(RemoteAdminPrefix):]
+	// 只有完整匹配一整段才替换：/remote-adminfoo 不是本入口。
+	if rest != "" && !strings.HasPrefix(rest, "/") {
+		return path
+	}
+	return base + localAdminPrefix + rest
+}
+
 // Info 供前端在登录页判断本部署是否处于远程代管模式。
 // GET /api/v1/remote/info
 //
@@ -434,5 +461,10 @@ func Register(v1 *gin.RouterGroup, comp *Component) {
 	v1.POST("/remote/logout", comp.Logout)
 
 	// 转发全部管理面请求。鉴权在 Proxy 内完成（远程会话令牌）。
-	v1.Any("/admin/*path", comp.Proxy)
+	//
+	// 刻意挂在 /remote-admin 而非 /admin：后者会与本地 RegisterAdminRoutes 的
+	// 具体路径在 gin 路由树上冲突（同一前缀不能既有通配又有具体路径），
+	// 导致远程代管开启时本地管理面、支付、页面路由全部无法注册。
+	// 用独立前缀后两套路由可以并存，本地账密与远程代管互不影响。
+	v1.Any(RemoteAdminPrefix+"/*path", comp.Proxy)
 }
