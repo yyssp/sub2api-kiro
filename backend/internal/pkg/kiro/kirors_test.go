@@ -297,3 +297,172 @@ func TestCompleteKiroRsCredentialDerivesMachineIDFromRefreshToken(t *testing.T) 
 		t.Errorf("MachineID = %q, 期望由 refreshToken 派生 %q", creds[0].MachineID, want)
 	}
 }
+
+// --- 多格式支持（对齐 kiro.rs 的 credential-import.ts）---
+
+func TestParseKiroRsCredentialsContainerUnwrapping(t *testing.T) {
+	// 容器解包：accounts / credentials / data.credentials / 嵌套数组。
+	cases := []struct {
+		name string
+		raw  string
+		want int
+	}{
+		{"accounts 数组", `{"version":"1.5.0","accounts":[{"refreshToken":"a"},{"refreshToken":"b"}]}`, 2},
+		{"credentials 数组", `{"credentials":[{"refreshToken":"a"}]}`, 1},
+		{"data.credentials", `{"data":{"credentials":[{"refreshToken":"a"},{"refreshToken":"b"}]}}`, 2},
+		{"裸数组", `[{"refreshToken":"a"},{"refreshToken":"b"}]`, 2},
+		{"嵌套数组", `[[{"refreshToken":"a"}],[{"refreshToken":"b"}]]`, 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			creds, err := ParseKiroRsCredentials(tc.raw)
+			if err != nil {
+				t.Fatalf("解析失败: %v", err)
+			}
+			if len(creds) != tc.want {
+				t.Errorf("解析出 %d 条，期望 %d", len(creds), tc.want)
+			}
+		})
+	}
+}
+
+func TestParseKiroRsCredentialsKAMNestedFormat(t *testing.T) {
+	// KAM 旧版：credentials 是单对象而非数组，不能被当成容器丢掉。
+	raw := `{"email":"a@b.com","credentials":{"refreshToken":"rt1","clientId":"ci","clientSecret":"cs","region":"us-west-2"}}`
+	creds, err := ParseKiroRsCredentials(raw)
+	if err != nil {
+		t.Fatalf("解析 KAM 嵌套格式失败: %v", err)
+	}
+	if len(creds) != 1 {
+		t.Fatalf("期望 1 条，实际 %d", len(creds))
+	}
+	c := creds[0]
+	if c.RefreshToken != "rt1" {
+		t.Errorf("RefreshToken = %q，嵌套字段未提取", c.RefreshToken)
+	}
+	if c.Email != "a@b.com" {
+		t.Errorf("Email = %q，平铺字段丢失", c.Email)
+	}
+	if c.Region != "us-west-2" {
+		t.Errorf("Region = %q", c.Region)
+	}
+	// clientId+clientSecret 应推断为 idc。
+	if c.AuthMethod != "idc" {
+		t.Errorf("AuthMethod = %q, 期望 idc", c.AuthMethod)
+	}
+}
+
+func TestParseKiroRsCredentialsJSONL(t *testing.T) {
+	raw := "{\"refreshToken\":\"a\"}\n{\"refreshToken\":\"b\"}\n\n{\"refreshToken\":\"c\"}"
+	creds, err := ParseKiroRsCredentials(raw)
+	if err != nil {
+		t.Fatalf("解析 JSONL 失败: %v", err)
+	}
+	if len(creds) != 3 {
+		t.Fatalf("期望 3 条，实际 %d", len(creds))
+	}
+}
+
+func TestParseKiroRsCredentialsKebabAndUpperCaseKeys(t *testing.T) {
+	raw := `{"refresh-token":"rt1","Auth-Method":"social","API_REGION":"eu-west-1"}`
+	creds, err := ParseKiroRsCredentials(raw)
+	if err != nil {
+		t.Fatalf("解析 kebab-case 失败: %v", err)
+	}
+	c := creds[0]
+	if c.RefreshToken != "rt1" {
+		t.Errorf("RefreshToken = %q，kebab-case 未归一", c.RefreshToken)
+	}
+	if c.AuthMethod != "social" {
+		t.Errorf("AuthMethod = %q", c.AuthMethod)
+	}
+	if c.APIRegion != "eu-west-1" {
+		t.Errorf("APIRegion = %q，大写下划线未归一", c.APIRegion)
+	}
+}
+
+func TestParseKiroRsCredentialsTimestampNormalization(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{"秒级数字", `{"refreshToken":"r","expiresAt":1767148365}`, "2025-12-31T02:32:45Z"},
+		{"毫秒级数字", `{"refreshToken":"r","expiresAt":1767148365000}`, "2025-12-31T02:32:45Z"},
+		{"数字字符串", `{"refreshToken":"r","expiresAt":"1767148365"}`, "2025-12-31T02:32:45Z"},
+		{"ISO 原样保留", `{"refreshToken":"r","expiresAt":"2025-12-31T02:32:45Z"}`, "2025-12-31T02:32:45Z"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			creds, err := ParseKiroRsCredentials(tc.raw)
+			if err != nil {
+				t.Fatalf("解析失败: %v", err)
+			}
+			if creds[0].ExpiresAt != tc.want {
+				t.Errorf("ExpiresAt = %q, 期望 %q", creds[0].ExpiresAt, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseKiroRsCredentialsProfileArnRegion(t *testing.T) {
+	raw := `{"refreshToken":"r","profileArn":"arn:aws:codewhisperer:us-east-2:699475941385:profile/ABC"}`
+	creds, err := ParseKiroRsCredentials(raw)
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if creds[0].APIRegion != "us-east-2" {
+		t.Errorf("APIRegion = %q, 期望从 profileArn 反解出 us-east-2", creds[0].APIRegion)
+	}
+	// 非 codewhisperer ARN 不应瞎猜。
+	creds2, err := ParseKiroRsCredentials(`{"refreshToken":"r","profileArn":"arn:aws:s3:us-east-2:1:bucket/x"}`)
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if creds2[0].APIRegion != "" {
+		t.Errorf("APIRegion = %q, 非 codewhisperer ARN 不应反解", creds2[0].APIRegion)
+	}
+}
+
+func TestParseKiroRsCredentialsSkipsInvalidEntries(t *testing.T) {
+	// 坏条目跳过但不中断，且必须能说清跳过了什么。
+	raw := `[{"refreshToken":"good1"},{"note":"没有凭证字段"},{"refreshToken":"good2"}]`
+	result, err := ParseKiroRsCredentialsDetailed(raw)
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if len(result.Credentials) != 2 {
+		t.Errorf("期望 2 条有效凭证，实际 %d", len(result.Credentials))
+	}
+	if len(result.Skipped) != 1 {
+		t.Fatalf("期望 1 条跳过记录，实际 %d", len(result.Skipped))
+	}
+	if result.Skipped[0].Index != 2 {
+		t.Errorf("跳过条目的序号 = %d, 期望 2", result.Skipped[0].Index)
+	}
+	if result.Skipped[0].Reason == "" {
+		t.Error("跳过原因为空，用户无法排查")
+	}
+}
+
+func TestParseKiroRsPlainTextAllOrNothing(t *testing.T) {
+	// 含非 ksk_ 行时必须整体降级，绝不能逐行吞成垃圾密钥。
+	raw := "```json\n{\"refreshToken\":\"r\"}\n```"
+	creds, err := ParseKiroRsCredentials(raw)
+	if err != nil {
+		t.Fatalf("围栏包裹的 JSON 应能解析: %v", err)
+	}
+	if len(creds) != 1 || creds[0].RefreshToken != "r" {
+		t.Fatalf("期望解析出 1 条 refreshToken 凭证，实际 %+v", creds)
+	}
+	for _, c := range creds {
+		if c.AuthMethod == "api_key" {
+			t.Error("围栏行被当成了 API 密钥，这正是要避免的静默垃圾数据")
+		}
+	}
+
+	// 明显不是密钥也不是 JSON 的内容应当报错，而不是造出账号。
+	if _, err := ParseKiroRsCredentials("这是一段说明文字\n随便写的"); err == nil {
+		t.Error("普通文本应解析失败")
+	}
+}

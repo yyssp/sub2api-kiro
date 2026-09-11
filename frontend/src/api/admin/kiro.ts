@@ -59,8 +59,16 @@ export interface KiroRsImportEntry extends KiroImportEntry {
   disabled: boolean
 }
 
+/** 无法识别的条目：跳过而非中断整批导入，但要能在预览里逐条说明原因。 */
+export interface KiroRsSkippedEntry {
+  index: number
+  reason: string
+  sample?: string
+}
+
 export interface KiroRsImportResult {
   entries: KiroRsImportEntry[]
+  skipped?: KiroRsSkippedEntry[]
 }
 
 export async function generateAuthUrl(payload: {

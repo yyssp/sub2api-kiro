@@ -7,18 +7,23 @@
     @close="handleClose"
   >
     <div class="space-y-4">
-      <!-- 来源切换：不同来源的解析规则不同，先选来源再贴内容。 -->
+      <!-- 按数据形态分 tab：用户拿到的是一坨数据，他知道那是 JSON 还是一串 ksk，
+           但未必分得清那是「KAM 导出」还是「kiro.rs 凭证」，所以不按来源分。 -->
       <div>
-        <label class="input-label">{{ t('admin.accounts.kiroImportSource') }}</label>
-        <div class="flex flex-wrap gap-2">
+        <div
+          class="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-800"
+          role="tablist"
+        >
           <button
             v-for="opt in sourceOptions"
             :key="opt.value"
             type="button"
-            class="rounded-lg border px-3 py-2 text-sm transition-colors"
+            role="tab"
+            :aria-selected="source === opt.value"
+            class="flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
             :class="source === opt.value
-              ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-900/30 dark:text-primary-300'
-              : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:bg-dark-700'"
+              ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300'
+              : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'"
             @click="selectSource(opt.value)"
           >
             {{ opt.label }}
@@ -126,6 +131,27 @@
         </div>
       </div>
 
+      <!-- 跳过的条目：坏数据不该中断整批导入，但也不能静默消失。 -->
+      <div
+        v-if="skippedEntries.length"
+        class="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
+      >
+        <div class="text-sm font-medium text-amber-800 dark:text-amber-300">
+          {{ t('admin.accounts.kiroImportSkipped', { count: skippedEntries.length }) }}
+        </div>
+        <div class="max-h-40 overflow-auto space-y-1">
+          <div
+            v-for="item in skippedEntries"
+            :key="item.index"
+            class="text-xs text-amber-700 dark:text-amber-400"
+          >
+            <span class="font-medium">#{{ item.index }}</span>
+            {{ item.reason }}
+            <code v-if="item.sample" class="ml-1 opacity-70">{{ item.sample }}</code>
+          </div>
+        </div>
+      </div>
+
       <div v-if="importResult" class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-700">
         <div class="text-sm font-medium text-gray-900 dark:text-white">
           {{ t('admin.accounts.kiroImportResult') }}
@@ -169,7 +195,12 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
-import { importKiroRsCredentials, importToken, type KiroRsImportEntry } from '@/api/admin/kiro'
+import {
+  importKiroRsCredentials,
+  importToken,
+  type KiroRsImportEntry,
+  type KiroRsSkippedEntry
+} from '@/api/admin/kiro'
 import { batchCreate } from '@/api/admin/accounts'
 import type { CreateAccountRequest } from '@/types'
 
@@ -179,13 +210,18 @@ const emit = defineEmits<{ close: []; imported: [] }>()
 const { t } = useI18n()
 
 /**
- * 导入来源。两种来源的解析规则不同，不能混用：
- * - kiro_rs: kiro.rs 凭证文件，只有 refreshToken 或仅 kiroApiKey，走宽松解析 + 自动补齐
- * - kiro_ide: Kiro IDE 导出，要求 accessToken + refreshToken + 运行时元数据，走严格解析
+ * 导入 tab，按**数据形态**划分而非按来源：
+ * - json:     一切 JSON 系（单对象/数组/JSONL/accounts 包装/KAM 新旧格式），宽松解析
+ * - apikey:   ksk_xxx|region 纯文本清单
+ * - token:    裸 refreshToken 文本，每行一条
+ * - kiro_ide: Kiro IDE 导出，走**严格**解析器，与上面三者互斥
+ *
+ * 前三个 tab 共用后端宽松解析链，差别只在给用户的提示与文件类型；
+ * kiro_ide 必须单独保留：放宽它会让「任意 OAuth JSON 被当成 Kiro 账号」的防护失效。
  */
-type ImportSource = 'kiro_rs' | 'kiro_ide'
+type ImportSource = 'json' | 'apikey' | 'token' | 'kiro_ide'
 
-const source = ref<ImportSource>('kiro_rs')
+const source = ref<ImportSource>('json')
 const content = ref('')
 const fileName = ref('')
 const dragActive = ref(false)
@@ -195,33 +231,51 @@ const importing = ref(false)
 const parseError = ref('')
 const entries = ref<KiroRsImportEntry[]>([])
 const entryNames = ref<string[]>([])
+// 无法识别的条目：不中断导入，但必须让用户看到少了什么、为什么少。
+const skippedEntries = ref<KiroRsSkippedEntry[]>([])
 const skipDisabled = ref(true)
 const importResult = ref<{ success: number; failed: number } | null>(null)
 const importErrors = ref<string[]>([])
 
 const sourceOptions = computed(() => [
-  { value: 'kiro_rs' as const, label: t('admin.accounts.kiroImportSourceKiroRs') },
-  { value: 'kiro_ide' as const, label: t('admin.accounts.kiroImportSourceKiroIde') }
+  { value: 'json' as const, label: t('admin.accounts.kiroImportTabJson') },
+  { value: 'apikey' as const, label: t('admin.accounts.kiroImportTabApiKey') },
+  { value: 'token' as const, label: t('admin.accounts.kiroImportTabToken') },
+  { value: 'kiro_ide' as const, label: t('admin.accounts.kiroImportTabKiroIde') }
 ])
 
-const currentSourceHint = computed(() =>
-  source.value === 'kiro_rs'
-    ? t('admin.accounts.kiroImportHintKiroRs')
-    : t('admin.accounts.kiroImportHintKiroIde')
-)
+const currentSourceHint = computed(() => {
+  switch (source.value) {
+    case 'json':
+      return t('admin.accounts.kiroImportHintJson')
+    case 'apikey':
+      return t('admin.accounts.kiroImportHintApiKey')
+    case 'token':
+      return t('admin.accounts.kiroImportHintToken')
+    default:
+      return t('admin.accounts.kiroImportHintKiroIde')
+  }
+})
 
-const currentPlaceholder = computed(() =>
-  source.value === 'kiro_rs'
-    ? '{\n  "refreshToken": "...",\n  "authMethod": "social"\n}'
-    : '{\n  "accessToken": "...",\n  "refreshToken": "...",\n  "profileArn": "..."\n}'
-)
+const currentPlaceholder = computed(() => {
+  switch (source.value) {
+    case 'json':
+      return '[\n  { "refreshToken": "...", "authMethod": "social" },\n  { "kiroApiKey": "ksk_..." }\n]'
+    case 'apikey':
+      return 'ksk_xxxxxxxx\nksk_yyyyyyyy|us-east-2\n# 井号开头为注释'
+    case 'token':
+      return 'eyJhbGciOi...\neyJhbGciOi...'
+    default:
+      return '{\n  "accessToken": "...",\n  "refreshToken": "...",\n  "profileArn": "..."\n}'
+  }
+})
 
-// kiro.rs 额外支持 ksk_xxx|region 纯文本清单。
+// 只有严格的 Kiro IDE 导出必须是 JSON，其余三个 tab 都接受纯文本。
 const acceptAttr = computed(() =>
-  source.value === 'kiro_rs' ? 'application/json,.json,.txt' : 'application/json,.json'
+  source.value === 'kiro_ide' ? 'application/json,.json' : 'application/json,.json,.txt,.jsonl'
 )
 const acceptHint = computed(() =>
-  source.value === 'kiro_rs' ? 'JSON (.json) / TXT (.txt)' : 'JSON (.json)'
+  source.value === 'kiro_ide' ? 'JSON (.json)' : 'JSON / JSONL / TXT'
 )
 
 const creatableCount = computed(
@@ -237,6 +291,7 @@ const selectSource = (value: ImportSource) => {
 const resetPreview = () => {
   entries.value = []
   entryNames.value = []
+  skippedEntries.value = []
   parseError.value = ''
   importResult.value = null
   importErrors.value = []
@@ -285,18 +340,44 @@ const buildEntryName = (entry: KiroRsImportEntry, idx: number): string => {
   return suffix ? `kiro-${entry.auth_method}-${suffix}` : `kiro-${entry.auth_method}-${idx + 1}`
 }
 
+/**
+ * Token tab：把每行裸 refreshToken 包成 JSON 对象再交给后端。
+ *
+ * 后端的纯文本通道只认 ksk_ 前缀（这是刻意的「全有或全无」判定，
+ * 防止格式错误的 JSON 被逐行吞成垃圾密钥），所以裸 token 在这里转换，
+ * 而不是去放宽后端那条判定。
+ */
+const buildTokenListPayload = (raw: string): string => {
+  const items = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+    .map((line) => {
+      // 同样支持 token|region 的写法，与 ksk 清单保持一致。
+      const [token, region] = line.split('|', 2)
+      const item: Record<string, string> = { refreshToken: token.trim() }
+      if (region?.trim()) item.region = region.trim()
+      return item
+    })
+  return JSON.stringify(items)
+}
+
 const handleParse = async () => {
   parsing.value = true
   parseError.value = ''
+  skippedEntries.value = []
   try {
     let parsed: KiroRsImportEntry[]
-    if (source.value === 'kiro_rs') {
-      const res = await importKiroRsCredentials({ content: content.value })
-      parsed = res.entries
-    } else {
+    if (source.value === 'kiro_ide') {
       // Kiro IDE 导出没有 endpoint/priority/disabled，补成默认值以复用同一张预览表。
       const res = await importToken({ token_json: content.value })
       parsed = res.entries.map((e) => ({ ...e, priority: 0, disabled: false }))
+    } else {
+      const payload =
+        source.value === 'token' ? buildTokenListPayload(content.value) : content.value
+      const res = await importKiroRsCredentials({ content: payload })
+      parsed = res.entries
+      skippedEntries.value = res.skipped || []
     }
     entries.value = parsed
     entryNames.value = parsed.map((e, i) => buildEntryName(e, i))

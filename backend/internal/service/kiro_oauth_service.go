@@ -146,6 +146,16 @@ type KiroRsImportInput struct {
 
 type KiroRsImportResult struct {
 	Entries []*KiroRsImportEntry `json:"entries"`
+	// Skipped 记录无法识别的条目，供前端在预览里逐条标注。
+	// 坏数据不中断整批导入，但不能让用户不知道少了什么。
+	Skipped []*KiroRsSkippedEntry `json:"skipped,omitempty"`
+}
+
+// KiroRsSkippedEntry 是一条被跳过的记录及原因。
+type KiroRsSkippedEntry struct {
+	Index  int    `json:"index"`
+	Reason string `json:"reason"`
+	Sample string `json:"sample,omitempty"`
 }
 
 // KiroRsImportEntry 在通用导入条目之上附带 kiro.rs 特有的调度属性，
@@ -566,11 +576,19 @@ func (s *KiroOAuthService) ImportKiroRsCredentials(input *KiroRsImportInput) (*K
 	if input == nil {
 		return nil, fmt.Errorf("kiro.rs import input is required")
 	}
-	creds, err := kiropkg.ParseKiroRsCredentials(input.Content)
+	parsed, err := kiropkg.ParseKiroRsCredentialsDetailed(input.Content)
 	if err != nil {
 		return nil, err
 	}
+	creds := parsed.Credentials
 	result := &KiroRsImportResult{Entries: make([]*KiroRsImportEntry, 0, len(creds))}
+	for _, skipped := range parsed.Skipped {
+		result.Skipped = append(result.Skipped, &KiroRsSkippedEntry{
+			Index:  skipped.Index,
+			Reason: skipped.Reason,
+			Sample: skipped.Sample,
+		})
+	}
 	for _, cred := range creds {
 		entry := &KiroRsImportEntry{
 			KiroImportEntry: &KiroImportEntry{KiroTokenInfo: toKiroTokenInfo(cred.TokenData)},
