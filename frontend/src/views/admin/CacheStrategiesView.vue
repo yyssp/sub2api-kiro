@@ -1436,7 +1436,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { useDebounceFn } from "@vueuse/core";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 
 import BaseDialog from "@/components/common/BaseDialog.vue";
@@ -1709,6 +1710,17 @@ function openCreate() {
     updated_at: "",
   };
 }
+
+// 搜索框此前只把输入写进 searchQuery，没有任何地方监听它，
+// 所以输入名称/描述不会触发请求 —— 只有刷新等动作顺带带上关键字才生效。
+// 后端 List 已经按 name/description 做大小写不敏感匹配，这里补上防抖触发即可。
+const debouncedSearch = useDebounceFn(() => {
+  void load();
+}, 300);
+
+watch(searchQuery, () => {
+  debouncedSearch();
+});
 
 async function load() {
   loading.value = true;

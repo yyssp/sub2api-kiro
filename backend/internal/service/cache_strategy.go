@@ -137,19 +137,22 @@ func DefaultCacheUsagePolicy() CacheUsagePolicy {
 		// （ui/src/lib/runtime-config-defaults.ts:84）。此前这里全留 0（不限制），
 		// 等于把参考实现的护栏整组丢掉：上报值可以无限涨，也不会有触顶抖动。
 		//
-		// 读取上限 70 万在参考实现里没配扣减区间（两端都是 0），我们照搬 ——
-		// 那条路径靠 cap_jitter 在更早的阶段就把 reported_input 打散了。
+		// 三组上限统一都配波动区间：参考实现的读取上限两端留 0，靠更早阶段的
+		// cap_jitter 打散 reported_input，但那样触顶记录仍会挤在同一个数字上，
+		// 与「每个上限波动区间都要有值」的要求不符，这里统一给到 12345~45312。
 		FinalCacheReadMaxTokens:           700000,
+		FinalCacheReadJitterMinTokens:     12345,
+		FinalCacheReadJitterMaxTokens:     45312,
 		FinalCacheCreationMaxTokens:       400000,
-		FinalCacheCreationJitterMinTokens: 20000,
-		FinalCacheCreationJitterMaxTokens: 45000,
+		FinalCacheCreationJitterMinTokens: 12345,
+		FinalCacheCreationJitterMaxTokens: 45312,
 		OutputUpliftEnabled:               boolPtr(true),
 		OutputUpliftMinTokens:             1000,
 		OutputUpliftPercent:               50,
 		FinalOutputGuardEnabled:           boolPtr(true),
 		FinalOutputMaxTokens:              200000,
-		FinalOutputJitterMinTokens:        5000,
-		FinalOutputJitterMaxTokens:        12000,
+		FinalOutputJitterMinTokens:        12345,
+		FinalOutputJitterMaxTokens:        45312,
 	}
 }
 

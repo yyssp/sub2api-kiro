@@ -95,18 +95,18 @@ export function createDefaultCacheStrategyConfig(
       // 上限与扣减区间对齐 kiro.rs 的 pathPolicy()。此前全留 0（不限制），
       // 等于把参考实现的护栏整组丢掉。读取上限在参考实现里不配扣减区间，照搬。
       final_cache_read_max_tokens: 700000,
-      final_cache_read_jitter_min_tokens: 0,
-      final_cache_read_jitter_max_tokens: 0,
+      final_cache_read_jitter_min_tokens: 12345,
+      final_cache_read_jitter_max_tokens: 45312,
       final_cache_creation_max_tokens: 400000,
-      final_cache_creation_jitter_min_tokens: 20000,
-      final_cache_creation_jitter_max_tokens: 45000,
+      final_cache_creation_jitter_min_tokens: 12345,
+      final_cache_creation_jitter_max_tokens: 45312,
       output_uplift_enabled: true,
       output_uplift_min_tokens: 1000,
       output_uplift_percent: 50,
       final_output_guard_enabled: true,
       final_output_max_tokens: 200000,
-      final_output_jitter_min_tokens: 5000,
-      final_output_jitter_max_tokens: 12000,
+      final_output_jitter_min_tokens: 12345,
+      final_output_jitter_max_tokens: 45312,
     },
     // 创建控制对齐 kiro.rs 的 PromptCacheCreationControlConfig 默认值
     // （5 分钟窗口 12 万、单次 3 万、增量下限 1.2 万、最小间隔 60 秒、
@@ -154,19 +154,21 @@ function highCacheConfig(): CacheStrategyConfig {
   config.cap_jitter_max_tokens = 24000;
   config.preserve_upstream_cache_usage = false;
   config.usage.preserve_upstream_cache_usage = false;
-  // 三组上限都配上扣减区间，触顶记录才不会全是同一个数字。
+  // 三组上限都配上波动区间（统一 12345~45312），触顶记录才不会全是同一个数字。
+  // 输出上限 16384 小于波动上限，后端 normalize 会把区间夹成 12345~16384，
+  // 仍是一段有效区间，不会塌缩成单值。
   config.usage.final_cache_read_max_tokens = 700000;
-  config.usage.final_cache_read_jitter_min_tokens = 20000;
-  config.usage.final_cache_read_jitter_max_tokens = 45000;
+  config.usage.final_cache_read_jitter_min_tokens = 12345;
+  config.usage.final_cache_read_jitter_max_tokens = 45312;
   config.usage.final_cache_creation_max_tokens = 400000;
-  config.usage.final_cache_creation_jitter_min_tokens = 20000;
-  config.usage.final_cache_creation_jitter_max_tokens = 45000;
+  config.usage.final_cache_creation_jitter_min_tokens = 12345;
+  config.usage.final_cache_creation_jitter_max_tokens = 45312;
   config.usage.output_uplift_enabled = true;
   config.usage.output_uplift_min_tokens = 1000;
   config.usage.output_uplift_percent = 50;
   config.usage.final_output_max_tokens = 16384;
-  config.usage.final_output_jitter_min_tokens = 512;
-  config.usage.final_output_jitter_max_tokens = 1300;
+  config.usage.final_output_jitter_min_tokens = 12345;
+  config.usage.final_output_jitter_max_tokens = 45312;
   return config;
 }
 
@@ -189,17 +191,17 @@ function steadyGrowthConfig(): CacheStrategyConfig {
   config.creation_control.creation_budget_window_seconds = 0;
   config.creation_control.max_creation_tokens_per_window = 0;
   config.usage.final_cache_read_max_tokens = 650000;
-  config.usage.final_cache_read_jitter_min_tokens = 23456;
-  config.usage.final_cache_read_jitter_max_tokens = 54321;
+  config.usage.final_cache_read_jitter_min_tokens = 12345;
+  config.usage.final_cache_read_jitter_max_tokens = 45312;
   config.usage.final_cache_creation_max_tokens = 300000;
-  config.usage.final_cache_creation_jitter_min_tokens = 23456;
-  config.usage.final_cache_creation_jitter_max_tokens = 54321;
+  config.usage.final_cache_creation_jitter_min_tokens = 12345;
+  config.usage.final_cache_creation_jitter_max_tokens = 45312;
   config.usage.output_uplift_enabled = true;
   config.usage.output_uplift_min_tokens = 1000;
   config.usage.output_uplift_percent = 50;
   config.usage.final_output_max_tokens = 64000;
-  config.usage.final_output_jitter_min_tokens = 2000;
-  config.usage.final_output_jitter_max_tokens = 5000;
+  config.usage.final_output_jitter_min_tokens = 12345;
+  config.usage.final_output_jitter_max_tokens = 45312;
   return config;
 }
 
@@ -221,17 +223,17 @@ function rapidGrowthConfig(): CacheStrategyConfig {
   config.creation_control.creation_budget_window_seconds = 300;
   config.creation_control.max_creation_tokens_per_window = 2000000;
   config.usage.final_cache_read_max_tokens = 650000;
-  config.usage.final_cache_read_jitter_min_tokens = 23456;
-  config.usage.final_cache_read_jitter_max_tokens = 54321;
+  config.usage.final_cache_read_jitter_min_tokens = 12345;
+  config.usage.final_cache_read_jitter_max_tokens = 45312;
   config.usage.final_cache_creation_max_tokens = 300000;
-  config.usage.final_cache_creation_jitter_min_tokens = 23456;
-  config.usage.final_cache_creation_jitter_max_tokens = 54321;
+  config.usage.final_cache_creation_jitter_min_tokens = 12345;
+  config.usage.final_cache_creation_jitter_max_tokens = 45312;
   config.usage.output_uplift_enabled = true;
   config.usage.output_uplift_min_tokens = 1000;
   config.usage.output_uplift_percent = 50;
   config.usage.final_output_max_tokens = 64000;
-  config.usage.final_output_jitter_min_tokens = 2000;
-  config.usage.final_output_jitter_max_tokens = 5000;
+  config.usage.final_output_jitter_min_tokens = 12345;
+  config.usage.final_output_jitter_max_tokens = 45312;
   return config;
 }
 
