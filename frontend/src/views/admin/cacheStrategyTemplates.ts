@@ -66,9 +66,13 @@ export function createDefaultCacheStrategyConfig(
     min_cacheable_tokens: 1024,
     reported_input_min_tokens: 0,
     reported_input_max_tokens: 0,
-    token_scale: 1,
-    scale_min_input_tokens: 0,
-    max_simulated_input_tokens: 0,
+    // 模拟与触顶参数对齐 kiro.rs 顶层默认值：token_scale 1.6、
+    // 起算阈值 20000、模拟上限 30 万、触顶抖动 12000~24000。
+    // 这几项此前留 0，等于把「本地模拟」整组关掉，空白策略建出来不具备
+    // 参考实现的默认形态。
+    token_scale: 1.6,
+    scale_min_input_tokens: 20000,
+    max_simulated_input_tokens: 300000,
     default_ttl_seconds: 300,
     hour_ttl_seconds: 3600,
     // 容量与生命周期对齐 kiro.rs 页面默认值：单作用域 200 条、全局 20000 条、
@@ -77,8 +81,8 @@ export function createDefaultCacheStrategyConfig(
     max_entries_global: 20000,
     estimated_bytes_limit: 268435456,
     expire_after_idle_seconds: 3600,
-    cap_jitter_min_tokens: 0,
-    cap_jitter_max_tokens: 0,
+    cap_jitter_min_tokens: 12000,
+    cap_jitter_max_tokens: 24000,
     preserve_upstream_cache_usage: true,
     usage: {
       enabled: true,
@@ -104,14 +108,18 @@ export function createDefaultCacheStrategyConfig(
       final_output_jitter_min_tokens: 5000,
       final_output_jitter_max_tokens: 12000,
     },
+    // 创建控制对齐 kiro.rs 的 PromptCacheCreationControlConfig 默认值
+    // （5 分钟窗口 12 万、单次 3 万、增量下限 1.2 万、最小间隔 60 秒、
+    // 最少间隔 3 次成功请求）。原来整组留 0 且 enabled=false，等于不限流，
+    // 缓存会无节制增长。
     creation_control: {
-      enabled: false,
-      min_creation_delta_tokens: 0,
-      min_successful_requests_between: 0,
-      min_creation_interval_seconds: 0,
-      max_creation_tokens_per_event: 0,
-      creation_budget_window_seconds: 0,
-      max_creation_tokens_per_window: 0,
+      enabled: true,
+      min_creation_delta_tokens: 12000,
+      min_successful_requests_between: 3,
+      min_creation_interval_seconds: 60,
+      max_creation_tokens_per_event: 30000,
+      creation_budget_window_seconds: 300,
+      max_creation_tokens_per_window: 120000,
     },
   };
 

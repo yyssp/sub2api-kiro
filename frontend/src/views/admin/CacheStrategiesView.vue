@@ -535,7 +535,7 @@
                   {{ t("admin.cacheStrategies.form.outputUpliftEnabled") }}
                 </span>
               </label>
-              <p class="form-hint">
+              <p class="text-xs leading-5 text-gray-500 dark:text-dark-400">
                 {{ t("admin.cacheStrategies.form.outputUpliftEnabledHint") }}
               </p>
               <div class="grid gap-3 sm:grid-cols-2">
