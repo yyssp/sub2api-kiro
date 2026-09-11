@@ -166,3 +166,6 @@ output/
 kiro-credentials-*.json
 **/__pycache__/
 *.pyc
+
+# 本地缓存策略测试的运行目录（配置、日志、导出的样本数据）
+.cachetest/

@@ -14,22 +14,32 @@
 
 ## 二、本地环境配置
 
-### PostgreSQL 16 (Windows 服务)
+依赖服务跑在 Docker 里（macOS 下用 colima 管理 Docker，`colima start`）。
+不要装宿主机原生的 PostgreSQL / Redis：本机同时开着多个项目，各自的库版本和
+端口不一样，走容器才能互相隔离。
+
+```bash
+colima status || colima start
+```
+
+### PostgreSQL
 
 | 配置项 | 值 |
 |--------|-----|
-| 端口 | 5432 |
-| psql 路径 | `C:\Program Files\PostgreSQL\16\bin\psql.exe` |
-| pg_hba.conf | `C:\Program Files\PostgreSQL\16\data\pg_hba.conf` |
+| 端口 | 5432（容器映射到宿主机；被占用时换高位端口） |
+| 连接方式 | `docker exec -it <容器名> psql -U <用户> -d <库名>` |
 | 数据库凭据 | user=`sub2api`, password=`sub2api`, dbname=`sub2api` |
-| 超级用户 | user=`postgres`, password=`postgres` |
 
 ### Redis
 
 | 配置项 | 值 |
 |--------|-----|
-| 端口 | 6379 |
+| 端口 | 6379（容器映射到宿主机） |
 | 密码 | 无 |
+
+> 宿主机通常没有 `psql` 命令，用 `docker exec` 进容器执行；
+> 数据库端口、库名、用户都以实际启动的 compose / 容器为准，
+> 通过环境变量 `DATABASE_*` 传给后端，不要写死在代码里。
 
 ### 开发工具
 
@@ -97,65 +107,32 @@ git commit -m "chore: update pnpm-lock.yaml"
 **解决**：
 ```bash
 cd frontend
-rm -rf node_modules  # 或 PowerShell: Remove-Item -Recurse -Force node_modules
+rm -rf node_modules
 pnpm install
 ```
 
 ---
 
-### 坑 3：PowerShell 中 bcrypt hash 的 `$` 被转义
+### 坑 3：宿主机没有 psql 命令
 
-**问题**：bcrypt hash 格式如 `$2a$10$xxx...`，PowerShell 把 `$2a` 当变量解析，导致数据丢失。
+**问题**：数据库跑在容器里，macOS 宿主机通常没装 PostgreSQL 客户端，
+直接敲 `psql` 报 `command not found`。
 
-**解决**：将 SQL 写入文件，用 `psql -f` 执行：
+**解决**：进容器执行，不用在宿主机装客户端：
 ```bash
-# 错误示范（PowerShell 会吃掉 $）
-psql -c "INSERT INTO users ... VALUES ('$2a$10$...')"
+# 查容器名和它的库/用户
+docker ps --format "{{.Names}}\t{{.Ports}}"
+docker inspect <容器名> --format '{{range .Config.Env}}{{println .}}{{end}}' | grep POSTGRES
 
-# 正确做法
-echo "INSERT INTO users ... VALUES ('\$2a\$10\$...')" > temp.sql
-psql -U sub2api -h 127.0.0.1 -d sub2api -f temp.sql
+docker exec -it <容器名> psql -U <用户> -d <库名>
+
+# 非交互执行单条 SQL
+docker exec <容器名> psql -U <用户> -d <库名> -tAc "select count(*) from users;"
 ```
 
 ---
 
-### 坑 4：psql 不支持中文路径
-
-**问题**：`psql -f "D:\中文路径\file.sql"` 报错找不到文件。
-
-**解决**：复制到纯英文路径再执行：
-```bash
-cp "D:\中文路径\file.sql" "C:\temp.sql"
-psql -f "C:\temp.sql"
-```
-
----
-
-### 坑 5：PostgreSQL 密码重置流程
-
-**场景**：忘记 PostgreSQL 密码。
-
-**步骤**：
-1. 修改 `C:\Program Files\PostgreSQL\16\data\pg_hba.conf`
-   ```
-   # 将 scram-sha-256 改为 trust
-   host    all    all    127.0.0.1/32    trust
-   ```
-2. 重启 PostgreSQL 服务
-   ```powershell
-   Restart-Service postgresql-x64-16
-   ```
-3. 无密码登录并重置
-   ```bash
-   psql -U postgres -h 127.0.0.1
-   ALTER USER sub2api WITH PASSWORD 'sub2api';
-   ALTER USER postgres WITH PASSWORD 'postgres';
-   ```
-4. 改回 `scram-sha-256` 并重启
-
----
-
-### 坑 6：Go interface 新增方法后 test stub 必须补全
+### 坑 4：Go interface 新增方法后 test stub 必须补全
 
 **问题**：给 interface 新增方法后，编译报错 `does not implement interface (missing method XXX)`。
 
@@ -173,30 +150,7 @@ grep -r "type.*Mock.*struct" internal/
 
 ---
 
-### 坑 7：Windows 上 psql 连 localhost 的 IPv6 问题
-
-**问题**：psql 连 `localhost` 先尝试 IPv6 (::1)，可能报错后再回退 IPv4。
-
-**建议**：直接用 `127.0.0.1` 代替 `localhost`。
-
----
-
-### 坑 8：Windows 没有 make 命令
-
-**问题**：CI 里用 `make test-unit`，本地 Windows 没有 make。
-
-**解决**：直接用 Makefile 里的原始命令：
-```bash
-# 代替 make test-unit
-go test -tags=unit ./...
-
-# 代替 make test-integration
-go test -tags=integration ./...
-```
-
----
-
-### 坑 9：Ent Schema 修改后必须重新生成
+### 坑 5：Ent Schema 修改后必须重新生成
 
 **问题**：修改 `ent/schema/*.go` 后，代码不生效。
 
@@ -209,7 +163,7 @@ git add ent/       # 生成的文件也要提交
 
 ---
 
-### 坑 10：前端测试看似正常，但后端调用失败（模型映射被批量误改）
+### 坑 6：前端测试看似正常，但后端调用失败（模型映射被批量误改）
 
 **典型现象**：
 - 前端按钮点测看起来正常；
@@ -232,7 +186,7 @@ git add ent/       # 生成的文件也要提交
 
 ---
 
-### 坑 11：PR 提交前检查清单
+### 坑 7：PR 提交前检查清单
 
 提交 PR 前务必本地验证：
 
@@ -247,18 +201,22 @@ git add ent/       # 生成的文件也要提交
 
 ### 数据库操作
 
+数据库在容器里，宿主机一般没有 `psql`，统一用 `docker exec`（见坑 3）。
+下面的 `<容器名>` / `<用户>` / `<库名>` 以实际启动的容器为准。
+
 ```bash
-# 连接数据库
-psql -U sub2api -h 127.0.0.1 -d sub2api
+# 连接数据库（交互式）
+docker exec -it <容器名> psql -U <用户> -d <库名>
 
-# 查看所有用户
-psql -U postgres -h 127.0.0.1 -c "\du"
+# 执行单条 SQL（-tAc: 去表头、不对齐，便于脚本取值）
+docker exec <容器名> psql -U <用户> -d <库名> -tAc "select count(*) from users;"
 
-# 查看所有数据库
-psql -U postgres -h 127.0.0.1 -c "\l"
+# 查看所有库 / 所有角色
+docker exec <容器名> psql -U <用户> -d <库名> -c "\l"
+docker exec <容器名> psql -U <用户> -d <库名> -c "\du"
 
-# 执行 SQL 文件
-psql -U sub2api -h 127.0.0.1 -d sub2api -f migration.sql
+# 执行 SQL 文件（宿主机文件用 stdin 喂进去，免得先 docker cp）
+docker exec -i <容器名> psql -U <用户> -d <库名> < migration.sql
 ```
 
 ### Git 操作
@@ -295,8 +253,16 @@ pnpm build
 ### 后端操作
 
 ```bash
-# 运行服务器
+# 开发时用 air 热重载（改 .go 自动重编译重启），不要用 go run：
+# go run 每次改代码都得手动 Ctrl-C 再重启，本项目启动要跑迁移和一堆后台任务，
+# 一次冷启动十几秒，手动重启会严重拖慢开发。
 cd backend
+air                      # 读取 backend/.air.toml
+
+# 没装 air 的话先装一次
+go install github.com/air-verse/air@latest
+
+# 一次性运行（不需要热重载时，比如 CI 里验证能否启动）
 go run ./cmd/server/
 
 # 生成 Ent 代码

@@ -1,0 +1,29 @@
+# 后端开发热重载配置（air）。
+# 用法: cd backend && air
+# 安装: go install github.com/air-verse/air@latest
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/server ./cmd/server"
+  bin = "./tmp/server"
+  include_ext = ["go", "tpl", "tmpl", "html", "yaml", "yml"]
+  # ent/ 是 go generate 的产物，internal/web/dist 是前端构建产物，
+  # 监听它们只会造成无意义的重启。
+  exclude_dir = ["ent", "internal/web/dist", "tmp", "vendor", "testdata"]
+  exclude_regex = ["_test\\.go$", "_gen\\.go$"]
+  # Go 编译较慢，给足延迟，避免保存到一半就触发构建。
+  delay = 1000
+  stop_on_error = true
+  # 优雅关闭：本服务启动了插件管理器、定时任务等后台组件，
+  # 直接 KILL 会留下没释放的数据库连接。
+  send_interrupt = true
+  kill_delay = 2000
+
+[log]
+  time = true
+
+[misc]
+  # 保留 tmp 目录，重启 air 时不用全量重新编译。
+  clean_on_exit = false
