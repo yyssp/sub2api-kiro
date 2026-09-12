@@ -52,7 +52,7 @@ func envOr(k, def string) string {
 // Client Cursor 上游客户端。每账号独立连接池, 避免共享 MAX_CONCURRENT_STREAMS 互相饿死。
 type Client struct {
 	mu           sync.Mutex
-	perCred      map[int]*http.Client
+	perCred      map[int64]*http.Client
 	shared       *http.Client
 	agentTimeout time.Duration // 单轮对话硬上限
 	firstToken   time.Duration // 首字硬墙(无任何真实产出即快速失败转移)
@@ -60,7 +60,7 @@ type Client struct {
 
 func NewClient() *Client {
 	return &Client{
-		perCred:      map[int]*http.Client{},
+		perCred:      map[int64]*http.Client{},
 		shared:       newH2Client(),
 		agentTimeout: 600 * time.Second,
 		firstToken:   90 * time.Second,
@@ -738,7 +738,7 @@ func logSandUsageDebug(a *Account, format string, args ...interface{}) {
 	if !agentDebug {
 		return
 	}
-	id := 0
+	var id int64
 	if a != nil {
 		id = a.ID
 	}

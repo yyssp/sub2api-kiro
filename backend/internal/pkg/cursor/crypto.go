@@ -185,3 +185,15 @@ func genChecksum(machID, macMachID string) string {
 	}
 	return enc.String() + machID
 }
+
+// ── 业务层入口（sub2api 新增）─────────────────────────────────────────
+
+// JWTExpiry 返回 token 的 exp 时间；零值表示无 exp 或解析失败。
+// ⚠️ 不校验签名，只用于「该不该提前刷新」的本地判断，不可用于鉴权。
+func JWTExpiry(token string) time.Time { return jwtExpiry(token) }
+
+// JWTEmail 返回 token 中的 email（可能为空），用于导入账号时回填身份。
+func JWTEmail(token string) string { return jwtEmail(token) }
+
+// JWTSubject 返回 token 的 sub，用于账号去重。
+func JWTSubject(token string) string { return jwtSubject(token) }

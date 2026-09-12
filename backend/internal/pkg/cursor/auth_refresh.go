@@ -133,3 +133,48 @@ func firstJSONString(m map[string]any, keys ...string) string {
 // 在 sub2api 侧由 service 层写 accounts 表取代（见 cursor_token_provider.go /
 // cursor_token_refresher.go）。本文件只保留「是否该刷新」的判定与实际的
 // token 兑换调用，保持协议层无状态。
+
+// ── 业务层入口（sub2api 新增）─────────────────────────────────────────
+
+// AuthRefreshSkew 是「提前多久刷新」的推荐提前量，供业务层复用，
+// 避免 service 层另写一个漂移的常量。
+const AuthRefreshSkew = cursorAuthRefreshSkew
+
+// AuthRefreshDue 判断账号是否到了该刷新 access token 的时刻。
+// AccountExpiry 为零值（未知有效期）时返回 false：宁可等 401 再刷，
+// 也不要对每个未解析出 exp 的账号无条件打刷新接口。
+func AuthRefreshDue(a Account, now time.Time, skew time.Duration) bool {
+	return authRefreshDue(a, now, skew)
+}
+
+// AuthRefreshExpired 判断 access token 是否已经过期。
+func AuthRefreshExpired(a Account, now time.Time) bool {
+	return authRefreshExpired(a, now)
+}
+
+// ConfirmedAuthRefreshFailure 区分「凭证确认失效」与「临时故障」。
+//
+// ⚠️ 业务层必须用它决定是否 SetError 停用账号：网络抖动、代理 EOF、5xx
+// 都不在此列，只应短暂冷却。把临时故障当成确认失效会批量误停号池。
+func ConfirmedAuthRefreshFailure(err error) bool {
+	return confirmedAuthRefreshFailure(err)
+}
+
+// AuthRefreshFailureReason 返回可写入 accounts.error_message 的中文原因。
+func AuthRefreshFailureReason(err error) string {
+	return authRefreshFailureReason(err)
+}
+
+// RefreshAuthToken 用 refresh token 兑换新的 access token。
+// 第二个返回值是上游轮换后的新 refresh token，可能为空（表示不轮换，沿用旧值）。
+func RefreshAuthToken(refreshToken string) (accessToken, rotatedRefreshToken string, err error) {
+	return cursorAuthRefreshFn(refreshToken)
+}
+
+// SetAuthRefreshFnForTest 替换 token 兑换实现，仅供测试使用；
+// 返回一个恢复原实现的函数。
+func SetAuthRefreshFnForTest(fn func(refreshToken string) (string, string, error)) func() {
+	prev := cursorAuthRefreshFn
+	cursorAuthRefreshFn = fn
+	return func() { cursorAuthRefreshFn = prev }
+}

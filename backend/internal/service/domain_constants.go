@@ -52,6 +52,8 @@ const (
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
 	PlatformKiro = domain.PlatformKiro
+	// PlatformCursor 走 Anthropic 协议网关（同 Kiro），账号为 session token 制。
+	PlatformCursor = domain.PlatformCursor
 )
 
 // 账号接入模式（国产供应商）：按量付费 vs Coding Plan。

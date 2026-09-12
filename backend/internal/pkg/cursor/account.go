@@ -18,7 +18,7 @@ import "time"
 // readCursorQuota/writeCursorQuota）。协议层只读不写这些字段。
 type Account struct {
 	// 身份
-	ID    int    // 仅用于日志/追踪关联，对应 sub2api 的 accounts.id
+	ID    int64  // 仅用于日志/追踪关联，对应 sub2api 的 accounts.id
 	Email string // 可选，日志脱敏展示用
 
 	// 凭证
