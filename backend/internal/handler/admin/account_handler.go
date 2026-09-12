@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	cursorpkg "github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
@@ -55,6 +56,7 @@ type AccountHandler struct {
 	geminiOAuthService      *service.GeminiOAuthService
 	antigravityOAuthService *service.AntigravityOAuthService
 	kiroOAuthService        *service.KiroOAuthService
+	cursorOAuthService      *service.CursorOAuthService
 	grokOAuthService        service.GrokOAuthTokenService
 	rateLimitService        *service.RateLimitService
 	accountUsageService     *service.AccountUsageService
@@ -71,6 +73,12 @@ type AccountHandler struct {
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
+func (h *AccountHandler) SetCursorOAuthService(svc *service.CursorOAuthService) {
+	if h != nil {
+		h.cursorOAuthService = svc
+	}
+}
+
 func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamBillingProbeService) {
 	h.upstreamBillingProbe = probe
 }
@@ -1489,6 +1497,15 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 				newCredentials[k] = v
 			}
 		}
+	} else if account.Platform == service.PlatformCursor {
+		if h.cursorOAuthService == nil {
+			return nil, "", fmt.Errorf("cursor oauth service is not configured")
+		}
+		tokenInfo, err := h.cursorOAuthService.RefreshAccountToken(ctx, account)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to refresh Cursor credentials: %w", err)
+		}
+		newCredentials = service.MergeCredentials(account.Credentials, h.cursorOAuthService.BuildAccountCredentials(tokenInfo))
 	} else if account.Platform == service.PlatformGrok {
 		if h.grokOAuthService == nil {
 			return nil, "", fmt.Errorf("grok oauth service is not configured")
@@ -2910,6 +2927,12 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	if account.Platform == service.PlatformAntigravity {
 		// 直接复用 antigravity.DefaultModels()，与 /v1/models 端点保持同步
 		response.Success(c, antigravity.DefaultModels())
+		return
+	}
+
+	// Handle Cursor accounts：只暴露标准 Claude Code 模型名。
+	if account.Platform == service.PlatformCursor {
+		response.Success(c, cursorpkg.AdminModels())
 		return
 	}
 

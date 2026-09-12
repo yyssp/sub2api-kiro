@@ -258,6 +258,13 @@ type UsageInfo struct {
 	KiroRuntimeReason    string              `json:"kiro_runtime_reason,omitempty"`
 	KiroRuntimeResetAt   *time.Time          `json:"kiro_runtime_reset_at,omitempty"`
 
+	// Cursor 三桶额度快照。
+	//
+	// ⚠️ 不复用 FiveHour/SevenDay：Cursor 的额度按**计费周期**而非滑动窗口结算，
+	// 上游不返回 resetsAt，塞进 UsageProgress 会凭空捏造一个重置时间。
+	CursorQuota      *CursorQuota `json:"cursor_quota,omitempty"`
+	CursorMembership string       `json:"cursor_membership,omitempty"`
+
 	// Antigravity 废弃模型转发规则 (old_model_id -> new_model_id)
 	ModelForwardingRules map[string]string `json:"model_forwarding_rules,omitempty"`
 
@@ -343,6 +350,8 @@ type AccountUsageService struct {
 	kiroCooldownStore       KiroCooldownStore
 	agentIdentityTaskMu     sync.Mutex
 	agentIdentityWS         agentIdentityWSConnectionInvalidator
+	cursorTokenProvider     *CursorTokenProvider
+	cursorFetcher           *CursorUsageFetcher
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -377,6 +386,13 @@ func NewAccountUsageService(
 func (s *AccountUsageService) SetKiroTokenProvider(provider KiroUsageTokenProvider) *AccountUsageService {
 	if s != nil {
 		s.kiroTokenProvider = provider
+	}
+	return s
+}
+
+func (s *AccountUsageService) SetCursorTokenProvider(provider *CursorTokenProvider) *AccountUsageService {
+	if s != nil {
+		s.cursorTokenProvider = provider
 	}
 	return s
 }
@@ -430,6 +446,14 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 
 	if isKiroDirectModeAccount(account) {
 		return s.getKiroUsage(ctx, account, "active", false)
+	}
+
+	if isCursorDirectModeAccount(account) {
+		usage, err := s.getCursorUsage(ctx, account)
+		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
 	}
 
 	// Antigravity 平台：使用 AntigravityQuotaFetcher 获取额度
@@ -660,6 +684,12 @@ func (s *AccountUsageService) getPassiveUsageForAccount(ctx context.Context, acc
 			return nil, fmt.Errorf("passive usage only supported for Kiro OAuth/APIKey accounts")
 		}
 		return s.getKiroUsage(ctx, account, "passive", false)
+	}
+
+	// Cursor 没有被动用量概念：上游不回传可信 token 用量，额度只能主动拉取。
+	// 这里直接复用主动路径，避免落到 Anthropic 分支报 "only supported for Anthropic"。
+	if account != nil && account.Platform == PlatformCursor {
+		return s.getCursorUsage(ctx, account)
 	}
 
 	if !supportsAnthropicPassiveUsage(account) {

@@ -207,7 +207,10 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 func isConcreteRequestPlatform(platform string) bool {
 	switch platform {
 	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformKiro, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
+		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax,
+		// cursor 与 kiro 同理：模型名是 claude-* / gpt-*，DetectModelPlatform 推断不出，
+		// 只能通过显式 composite_model_routes 路由行命中。
+		PlatformCursor:
 		return true
 	default:
 		return false

@@ -277,6 +277,10 @@ func (a *Account) IsKiro() bool {
 	return a.Platform == PlatformKiro
 }
 
+func (a *Account) IsCursor() bool {
+	return a.Platform == PlatformCursor
+}
+
 func (a *Account) IsGrok() bool {
 	return a.Platform == PlatformGrok
 }

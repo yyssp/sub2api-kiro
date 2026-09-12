@@ -143,6 +143,7 @@ type AccountTestService struct {
 	geminiTokenProvider       *GeminiTokenProvider
 	claudeTokenProvider       *ClaudeTokenProvider
 	kiroTokenProvider         *KiroTokenProvider
+	cursorTokenProvider       *CursorTokenProvider
 	grokTokenProvider         *GrokTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
 	httpUpstream              HTTPUpstream
@@ -159,6 +160,12 @@ type AccountTestService struct {
 	// grokWSDialer is optional; realtime account tests use the default OpenAI-style
 	// WS dialer when nil (supports proxy + coder/websocket handshake).
 	grokWSDialer openAIWSClientDialer
+}
+
+func (s *AccountTestService) SetCursorTokenProvider(provider *CursorTokenProvider) {
+	if s != nil {
+		s.cursorTokenProvider = provider
+	}
 }
 
 func (s *AccountTestService) SetSettingService(settingService *SettingService) {
@@ -388,6 +395,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	if isKiroDirectModeAccount(account) {
 		return s.testKiroAccountConnection(c, account, modelID)
+	}
+
+	if isCursorDirectModeAccount(account) {
+		return s.testCursorAccountConnection(c, account, modelID)
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)

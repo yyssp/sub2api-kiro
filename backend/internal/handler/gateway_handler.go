@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
@@ -1527,6 +1528,9 @@ func defaultModelIDsForPlatform(platform string) []string {
 			ids = append(ids, model.ID)
 		}
 		return ids
+	case service.PlatformCursor:
+		// 对外只暴露标准 Claude Code 模型名，不暴露 Cursor 原生 ID。
+		return cursor.ClaudeCodeModelIDs()
 	case service.PlatformAnthropic:
 		return claude.DefaultModelIDs()
 	case service.PlatformGrok:

@@ -794,3 +794,18 @@ func modelTier(id string) string {
 
 // ⚠️ 已移除 ModelsHandler：ai2api 的 /cursor/v1/models HTTP 端点。
 // sub2api 的模型列表由既有 /v1/models 与 defaultModelIDsForPlatform 提供。
+
+// AdminModels 返回管理台账号详情页要展示的 Cursor 模型清单。
+//
+// ⚠️ 与 ClaudeCodeModelIDs 的区别：后者是**对外网关协议**暴露的标准 Claude
+// Code 模型名；这里要展示的是 Cursor 上游实际返回的完整清单（含 composer /
+// grok 等无法映射成 Claude 名字的模型），所以走 liveModelsSnapshot，
+// 拉取失败时回落静态兜底 DefaultModels。两者混用会让管理台少列一半模型。
+func AdminModels() []ModelMeta {
+	if live := liveModelsSnapshot(); len(live) > 0 {
+		return live
+	}
+	out := make([]ModelMeta, len(DefaultModels))
+	copy(out, DefaultModels)
+	return out
+}
