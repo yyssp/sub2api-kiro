@@ -98,6 +98,7 @@ type KiroRefreshTokenRequest struct {
 	ClientSecret  string `json:"client_secret"`
 	StartURL      string `json:"start_url"`
 	Region        string `json:"region"`
+	AuthRegion    string `json:"auth_region"`
 	APIRegion     string `json:"api_region"`
 	ProfileArn    string `json:"profile_arn"`
 	TokenEndpoint string `json:"token_endpoint"`
@@ -120,6 +121,7 @@ func (h *KiroOAuthHandler) RefreshToken(c *gin.Context) {
 		ClientSecret:  req.ClientSecret,
 		StartURL:      req.StartURL,
 		Region:        req.Region,
+		AuthRegion:    req.AuthRegion,
 		APIRegion:     req.APIRegion,
 		ProfileArn:    req.ProfileArn,
 		TokenEndpoint: req.TokenEndpoint,

@@ -153,8 +153,8 @@ func TestParseKiroRsCredentialsMultipleExample(t *testing.T) {
 	}
 
 	first := creds[0]
-	if first.AuthMethod != "social" || first.Priority != 0 || first.Disabled {
-		t.Errorf("第 1 条: method=%q priority=%d disabled=%v", first.AuthMethod, first.Priority, first.Disabled)
+	if first.AuthMethod != "social" || first.Priority == nil || *first.Priority != 0 || first.Disabled {
+		t.Errorf("第 1 条: method=%q priority=%v disabled=%v", first.AuthMethod, first.Priority, first.Disabled)
 	}
 	if first.Endpoint != "ide" {
 		t.Errorf("第 1 条 Endpoint = %q", first.Endpoint)
@@ -164,8 +164,8 @@ func TestParseKiroRsCredentialsMultipleExample(t *testing.T) {
 	if second.AuthMethod != "idc" {
 		t.Errorf("第 2 条 AuthMethod = %q, 期望 idc", second.AuthMethod)
 	}
-	if second.Priority != 1 {
-		t.Errorf("第 2 条 Priority = %d, 期望 1", second.Priority)
+	if second.Priority == nil || *second.Priority != 1 {
+		t.Errorf("第 2 条 Priority = %v, 期望 1", second.Priority)
 	}
 	if !second.Disabled {
 		t.Error("第 2 条 Disabled 应为 true")
@@ -238,9 +238,39 @@ func TestParseKiroRsCredentialsPlainText(t *testing.T) {
 		if c.AuthMethod != "api_key" {
 			t.Errorf("第 %d 条 AuthMethod = %q", i+1, c.AuthMethod)
 		}
+		if c.Priority != nil {
+			t.Errorf("第 %d 条未提供 priority 时应保持 nil，实际 %v", i+1, *c.Priority)
+		}
 		if c.Endpoint != KiroRsAPIKeyDefaultEndpoint {
 			t.Errorf("第 %d 条 Endpoint = %q", i+1, c.Endpoint)
 		}
+	}
+}
+
+func TestParseKiroRsCredentialsAPIKeyRegionPopulatesAllRegionSlots(t *testing.T) {
+	creds, err := ParseKiroRsCredentials(`{"kiroApiKey":"ksk_test|eu-west-1"}`)
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if len(creds) != 1 {
+		t.Fatalf("期望 1 条凭证，实际 %d", len(creds))
+	}
+	credential := creds[0]
+	if credential.APIKey != "ksk_test" {
+		t.Fatalf("APIKey = %q, 期望拆出 pipe 后的 key", credential.APIKey)
+	}
+	if credential.Region != "eu-west-1" || credential.AuthRegion != "eu-west-1" || credential.APIRegion != "eu-west-1" {
+		t.Fatalf("region slots = region:%q auth:%q api:%q", credential.Region, credential.AuthRegion, credential.APIRegion)
+	}
+}
+
+func TestParseKiroRsCredentialsPreservesExplicitZeroPriority(t *testing.T) {
+	creds, err := ParseKiroRsCredentials(`{"refreshToken":"r","priority":0}`)
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if creds[0].Priority == nil || *creds[0].Priority != 0 {
+		t.Fatalf("Priority = %v, 期望显式 0", creds[0].Priority)
 	}
 }
 

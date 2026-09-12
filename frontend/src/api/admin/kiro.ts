@@ -25,6 +25,7 @@ export interface KiroTokenInfo {
   email?: string
   start_url?: string
   region?: string
+  auth_region?: string
   api_region?: string
   machine_id?: string
   subscription_title?: string
@@ -55,7 +56,7 @@ export interface KiroImportTokenResult {
 /** kiro.rs 凭证补齐后的条目，额外带该系统特有的调度属性。 */
 export interface KiroRsImportEntry extends KiroImportEntry {
   endpoint?: string
-  priority: number
+  priority?: number
   disabled: boolean
 }
 
@@ -108,6 +109,7 @@ export async function refreshToken(payload: {
   client_secret?: string
   start_url?: string
   region?: string
+  auth_region?: string
   api_region?: string
   profile_arn?: string
   token_endpoint?: string

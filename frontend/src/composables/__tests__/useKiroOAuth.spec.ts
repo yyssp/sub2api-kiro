@@ -174,7 +174,7 @@ describe('useKiroOAuth', () => {
           account_type: 'apikey',
           api_key: 'ksk_synthetic_key',
           auth_method: 'api_key',
-          api_region: 'eu-west-1',
+          region: 'eu-west-1',
           machine_id: 'synthetic-machine',
           subscription_title: 'Kiro Pro'
         }
@@ -194,8 +194,29 @@ describe('useKiroOAuth', () => {
     expect(kiroOAuth.buildImportedAPIKeyCredentials(entries![1])).toEqual({
       api_key: 'ksk_synthetic_key',
       api_region: 'eu-west-1',
+      region: 'eu-west-1',
+      auth_region: 'eu-west-1',
       machine_id: 'synthetic-machine',
       subscription_title: 'Kiro Pro'
+    })
+  })
+
+  it('preserves explicit auth region when building API-key credentials', () => {
+    const kiroOAuth = useKiroOAuth()
+    expect(
+      kiroOAuth.buildImportedAPIKeyCredentials({
+        account_type: 'apikey',
+        api_key: 'ksk_key',
+        region: 'us-east-1',
+        auth_region: 'eu-west-1',
+        api_region: 'us-east-1',
+        disabled: false
+      })
+    ).toMatchObject({
+      api_key: 'ksk_key',
+      region: 'us-east-1',
+      auth_region: 'eu-west-1',
+      api_region: 'us-east-1'
     })
   })
 })

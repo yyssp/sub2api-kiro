@@ -37,8 +37,11 @@ const (
 	cacheMinTokensGPT        = 1024
 	cachePrefixLookbackLimit = 10
 	// Hard safety ceiling used when the model capability registry does not
-	// provide a context window. Strategy values can further reduce it.
-	cacheAbsoluteMaxInputTokens = 1_000_000
+	// provide a context window. Strategy values can further reduce it. Keep
+	// this above the combined 700k read + 500k creation stress boundary; a
+	// 1M ceiling would silently force the second bucket back toward 30k even
+	// when the strategy explicitly allows a larger simulated input.
+	cacheAbsoluteMaxInputTokens = 4_000_000
 	// capJitterCapRatio 限制触顶抖动最多能把上报值拉低多少，取值对齐 kiro.rs
 	// cap_jitter() 里的 `max_simulated_input_tokens * 0.08`
 	// （src/anthropic/cache.rs:1053）。
@@ -74,6 +77,16 @@ type cacheControlState struct {
 	lastCreationAt          time.Time
 	windowStart             time.Time
 	windowTokens            int
+	// pendingCreationTokens mirrors kiro.rs's pending_creation_tokens:
+	// creation suppressed by request spacing, the minimum delta, an event cap,
+	// or the window budget is carried forward instead of being discarded.
+	pendingCreationTokens int
+}
+
+type cacheCreationControlDecision struct {
+	enabled   bool
+	attempted int
+	allowed   int
 }
 
 var globalCacheTracker = &cacheTracker{
@@ -91,9 +104,10 @@ type cacheEmulationPlan struct {
 	// nonStream 取自请求体的 stream 字段（缺失按非流式算，与各网关的默认一致）。
 	// 只用来判断 skip_non_stream_usage_projection 是否命中：投影的调用点散落在
 	// 二十来处流式/非流式处理函数里，在计划上记一次比逐个透传参数可靠。
-	nonStream   bool
-	usagePolicy CacheUsagePolicy
-	committed   atomic.Bool
+	nonStream               bool
+	usagePolicy             CacheUsagePolicy
+	creationControlDecision cacheCreationControlDecision
+	committed               atomic.Bool
 }
 
 // skipProjection 表示这次响应应当原样透传上游 usage：非流式拿得到完整 usage，
@@ -109,6 +123,18 @@ func (p *cacheEmulationPlan) result() *cacheEmulationUsage {
 	return p.usage
 }
 
+// usageSeed is request-scoped rather than conversation-scoped. cacheKey is
+// intentionally stable for a conversation so the tracker can find its prefix,
+// but using it alone for usage projection made every capped turn emit the same
+// jittered number. Mixing the canonical request body keeps retries stable while
+// allowing successive turns and independent sessions to vary.
+func (p *cacheEmulationPlan) usageSeed() uint64 {
+	if p == nil {
+		return 0
+	}
+	return splitmix64(p.cacheKey ^ profileJitterSeed(p.profile))
+}
+
 func (p *cacheEmulationPlan) commit() {
 	if p == nil || p.profile == nil || p.cacheKey == 0 {
 		return
@@ -117,42 +143,10 @@ func (p *cacheEmulationPlan) commit() {
 		return
 	}
 	globalCacheTracker.update(p.cacheKey, p.profile)
-	creationTokens := 0
-	if p.usage != nil {
-		creationTokens = p.usage.CacheCreationInputTokens
+	if p.creationControlDecision.enabled {
+		globalCacheTracker.recordSuccess(p.cacheKey, p.creationControlDecision.attempted,
+			p.creationControlDecision.allowed)
 	}
-	globalCacheTracker.recordSuccess(p.cacheKey, creationTokens)
-}
-
-// mergeCacheUsageIntoClaudeUsage fills synthetic cache usage only when the
-// upstream did not provide authoritative cache buckets. The runtime owns the
-// local prefix state, while upstream usage remains the source of truth when it
-// is present (this prevents double counting on native Anthropic providers).
-func mergeCacheUsageIntoClaudeUsage(dst *ClaudeUsage, simulated *cacheEmulationUsage) {
-	if dst == nil || simulated == nil {
-		return
-	}
-	if dst.CacheReadInputTokens > 0 || dst.CacheCreationInputTokens > 0 ||
-		dst.CacheCreation5mTokens > 0 || dst.CacheCreation1hTokens > 0 {
-		return
-	}
-	dst.InputTokens = simulated.InputTokens
-	dst.CacheReadInputTokens = simulated.CacheReadInputTokens
-	dst.CacheCreationInputTokens = simulated.CacheCreationInputTokens
-	dst.CacheCreation5mTokens = simulated.CacheCreation5mInputTokens
-	dst.CacheCreation1hTokens = simulated.CacheCreation1hInputTokens
-}
-
-func mergeCacheUsageIntoOpenAIUsage(dst *OpenAIUsage, simulated *cacheEmulationUsage) {
-	if dst == nil || simulated == nil {
-		return
-	}
-	if dst.CacheReadInputTokens > 0 || dst.CacheCreationInputTokens > 0 {
-		return
-	}
-	dst.InputTokens = simulated.InputTokens + simulated.CacheReadInputTokens + simulated.CacheCreationInputTokens
-	dst.CacheReadInputTokens = simulated.CacheReadInputTokens
-	dst.CacheCreationInputTokens = simulated.CacheCreationInputTokens
 }
 
 func projectClaudeUsage(dst *ClaudeUsage, simulated *cacheEmulationUsage, policy CacheUsagePolicy, seed uint64) {
@@ -200,7 +194,7 @@ func applyUsageProjectionClaude(dst *ClaudeUsage, rawInput, rawOutput int, polic
 		input = rawInput
 	}
 	cacheEvidence := hadReadEvidence || dst.CacheReadInputTokens > 0 || dst.CacheCreationInputTokens > 0
-	if !(policy.Input.MoveDeltaToCacheRead && !cacheEvidence) {
+	if !policy.Input.MoveDeltaToCacheRead || cacheEvidence {
 		input = projectUsageField(policy.Input, input, seed^0x11)
 	} else if rawInput > 0 {
 		// Without an actual local/upstream cache bucket, keep the authoritative
@@ -223,7 +217,12 @@ func applyUsageProjectionClaude(dst *ClaudeUsage, rawInput, rawOutput int, polic
 	dst.InputTokens = input
 	dst.OutputTokens = projectUsageFieldWithRaw(policy.Output, dst.OutputTokens, rawOutput, seed^0x22)
 	dst.CacheReadInputTokens = projectUsageField(policy.CacheRead, dst.CacheReadInputTokens, seed^0x33)
-	dst.CacheCreationInputTokens = projectUsageField(policy.CacheCreation, dst.CacheCreationInputTokens, seed^0x44)
+	dst.CacheCreationInputTokens = projectCacheCreationField(
+		policy.CacheCreation,
+		dst.CacheCreationInputTokens,
+		dst.CacheReadInputTokens,
+		seed^0x44,
+	)
 	dst.CacheCreation5mTokens, dst.CacheCreation1hTokens = capCacheCreationBreakdown(
 		dst.CacheCreation5mTokens, dst.CacheCreation1hTokens, dst.CacheCreationInputTokens,
 	)
@@ -259,7 +258,7 @@ func applyUsageProjectionOpenAI(dst *OpenAIUsage, rawInput, rawOutput int, polic
 	}
 	cacheEvidence := hadReadEvidence || read > 0 || creation > 0
 	projected := uncached
-	if !(policy.Input.MoveDeltaToCacheRead && !cacheEvidence) {
+	if !policy.Input.MoveDeltaToCacheRead || cacheEvidence {
 		projected = projectUsageField(policy.Input, uncached, seed^0x11)
 	}
 	if projected < uncached && policy.Input.MoveDeltaToCacheRead && cacheEvidence {
@@ -272,7 +271,7 @@ func applyUsageProjectionOpenAI(dst *OpenAIUsage, rawInput, rawOutput int, polic
 	}
 	uncached = projected
 	read = projectUsageField(policy.CacheRead, read, seed^0x33)
-	creation = projectUsageField(policy.CacheCreation, creation, seed^0x44)
+	creation = projectCacheCreationField(policy.CacheCreation, creation, read, seed^0x44)
 	read = applyFinalCapWithJitter(read, policy.FinalCacheReadMaxTokens,
 		policy.FinalCacheReadJitterMinTokens, policy.FinalCacheReadJitterMaxTokens, seed^0x66)
 	creation = applyFinalCapWithJitter(creation, policy.FinalCacheCreationMaxTokens,
@@ -352,6 +351,100 @@ func projectUsageField(policy CacheUsageFieldPolicy, current int, seed uint64) i
 	default:
 		return current
 	}
+}
+
+// projectCacheCreationField implements kiro.rs's sample-target creation
+// projection. Unlike a generic field target, cache creation is sampled from
+// different percentage buckets depending on whether this request also hit an
+// existing cache prefix; a cache hit may legitimately report zero creation.
+func projectCacheCreationField(policy CacheUsageFieldPolicy, current, cacheRead int, seed uint64) int {
+	current = cacheMaxInt(current, 0)
+	switch policy.Mode {
+	case CacheUsageFieldRaw, CacheUsageFieldPreserve:
+		return current
+	case CacheUsageFieldSampleMax:
+		if policy.MaxTokens <= 0 || current <= policy.MaxTokens {
+			return current
+		}
+		return sampleMaxWithJitter(policy.MaxTokens, seed^uint64(current))
+	case CacheUsageFieldSampleTarget:
+		if policy.TargetTokens <= 0 || current <= 0 {
+			return current
+		}
+		normalMax := safeScaledTokenLimit(policy.TargetTokens, policy.NormalMaxMultiplier)
+		effectiveMax := min(current, normalMax)
+		if effectiveMax <= 0 {
+			return 0
+		}
+		random := seed ^ 0xd6e8feb86659fd93
+		for _, value := range []int{
+			policy.TargetTokens,
+			current,
+			cacheRead,
+		} {
+			random = splitmix64(random ^ uint64(max(value, 0)))
+		}
+		bucketRoll := int(random % 100)
+		if cacheRead > 0 && bucketRoll < 20 {
+			return 0
+		}
+		var lowPct, highPct int
+		switch {
+		case cacheRead > 0 && bucketRoll < 45:
+			lowPct, highPct = 1, 10
+		case cacheRead > 0 && bucketRoll < 75:
+			lowPct, highPct = 11, 45
+		case cacheRead > 0 && bucketRoll < 93:
+			lowPct, highPct = 46, 85
+		case cacheRead > 0:
+			lowPct, highPct = 86, 100
+		case bucketRoll < 35:
+			lowPct, highPct = 1, 12
+		case bucketRoll < 70:
+			lowPct, highPct = 13, 50
+		case bucketRoll < 92:
+			lowPct, highPct = 51, 88
+		default:
+			lowPct, highPct = 89, 100
+		}
+		low := max(percentOfTokens(normalMax, lowPct), 1)
+		high := max(percentOfTokens(normalMax, highPct), low)
+		return sampleTokenRange(splitmix64(random^0x9e3779b97f4a7c15), low, high, effectiveMax)
+	default:
+		return current
+	}
+}
+
+func safeScaledTokenLimit(target int, multiplier float64) int {
+	target = max(target, 0)
+	if target == 0 {
+		return 0
+	}
+	if math.IsNaN(multiplier) || math.IsInf(multiplier, 0) || multiplier <= 0 {
+		multiplier = 1
+	}
+	scaled := float64(target) * multiplier
+	if scaled >= float64(int(^uint(0)>>1)) {
+		return int(^uint(0) >> 1)
+	}
+	return max(int(math.Round(scaled)), target)
+}
+
+func percentOfTokens(value, percent int) int {
+	if value <= 0 || percent <= 0 {
+		return 0
+	}
+	return int((int64(value) * int64(percent)) / 100)
+}
+
+func sampleTokenRange(random uint64, low, high, effectiveMax int) int {
+	effectiveMax = max(effectiveMax, 1)
+	low = min(max(low, 1), effectiveMax)
+	high = min(max(high, 1), effectiveMax)
+	if low > high {
+		low, high = 1, effectiveMax
+	}
+	return low + int(random%uint64(high-low+1))
 }
 
 func cacheMinInt(a, b int) int {
@@ -521,7 +614,7 @@ func mergeAndCommitCachePlan(c *gin.Context, usage *ClaudeUsage, success bool) {
 	}()
 	if usage != nil && !plan.skipProjection() {
 		upstreamEvidence := claudeUsageHasCacheEvidence(usage)
-		projectClaudeUsage(usage, plan.result(), plan.usagePolicy, plan.cacheKey)
+		projectClaudeUsage(usage, plan.result(), plan.usagePolicy, plan.usageSeed())
 		if !upstreamEvidence {
 			if plan.result() == nil {
 				applyReportedInputWithoutCacheClaude(usage, plan)
@@ -548,7 +641,7 @@ func mergeAndCommitOpenAICachePlan(c *gin.Context, usage *OpenAIUsage, success b
 	}
 	if usage != nil && !plan.skipProjection() {
 		upstreamEvidence := openAIUsageHasCacheEvidence(usage)
-		projectOpenAIUsage(usage, plan.result(), plan.usagePolicy, plan.cacheKey)
+		projectOpenAIUsage(usage, plan.result(), plan.usagePolicy, plan.usageSeed())
 		if !upstreamEvidence {
 			if plan.result() == nil {
 				applyReportedInputWithoutCacheOpenAI(usage, plan)
@@ -715,12 +808,6 @@ func (s *GatewayService) prepareCacheEmulationUsage(ctx context.Context, account
 	return s.prepareCacheEmulationPlanFromProfile(account, group, profile, inputTokens)
 }
 
-func (s *GatewayService) buildResponsesCacheUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *cacheEmulationUsage {
-	plan := s.prepareResponsesCacheUsage(ctx, account, group, body, model, inputTokens)
-	plan.commit()
-	return plan.result()
-}
-
 func (s *GatewayService) prepareResponsesCacheUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *cacheEmulationPlan {
 	NormalizeGroupRuntimeFields(group)
 	if group == nil || account == nil || account.ID <= 0 || len(body) == 0 {
@@ -737,12 +824,6 @@ func (s *GatewayService) prepareResponsesCacheUsage(ctx context.Context, account
 	profile.rawBody = append([]byte(nil), body...)
 	profile.protocolFamily = "openai_responses"
 	return s.prepareCacheEmulationPlanFromProfile(account, group, profile, inputTokens)
-}
-
-func (s *GatewayService) buildChatCompletionsCacheUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *cacheEmulationUsage {
-	plan := s.prepareChatCompletionsCacheUsage(ctx, account, group, body, model, inputTokens)
-	plan.commit()
-	return plan.result()
 }
 
 func (s *GatewayService) prepareChatCompletionsCacheUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *cacheEmulationPlan {
@@ -816,16 +897,7 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(account *Account, 
 		CacheCreation5mInputTokens: result.CacheCreation5mInputTokens,
 		CacheCreation1hInputTokens: result.CacheCreation1hInputTokens,
 	}
-	// 增量下限属于创建控制的一部分，控制整体关掉时它也必须失效。
-	// 之前这里漏判 Enabled，只是因为默认值是 0 才没暴露。
-	if policy.CreationControl.Enabled &&
-		policy.CreationControl.MinCreationDeltaTokens > 0 &&
-		controlUsage.CacheCreationInputTokens < policy.CreationControl.MinCreationDeltaTokens {
-		controlUsage.CacheCreationInputTokens = 0
-		controlUsage.CacheCreation5mInputTokens = 0
-		controlUsage.CacheCreation1hInputTokens = 0
-	}
-	applyCacheCreationControl(cacheKey, policy.CreationControl, controlUsage)
+	creationControlDecision := applyCacheCreationControl(cacheKey, policy.CreationControl, controlUsage)
 	rawCreationTokens = controlUsage.CacheCreationInputTokens
 	if rawCreationTokens <= 0 {
 		controlUsage.CacheCreation5mInputTokens = 0
@@ -873,9 +945,15 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(account *Account, 
 		profile.breakpoints = nil
 		result = nil
 	}
+	if result == nil {
+		// A ratio-disabled or otherwise non-reportable plan must not advance the
+		// creation controller. There was no observable cache write to account for.
+		creationControlDecision = cacheCreationControlDecision{}
+	}
 	return &cacheEmulationPlan{
 		usage: result, cacheKey: cacheKey, profile: profile, usagePolicy: policy.Usage,
-		nonStream: !requestBodyWantsStream(profile.rawBody),
+		nonStream:               !requestBodyWantsStream(profile.rawBody),
+		creationControlDecision: creationControlDecision,
 	}
 }
 
@@ -956,31 +1034,6 @@ func constrainReportedCacheUsage(result *cacheEmulationUsage, reportedTotal int,
 		input = reportedTotal - result.CacheReadInputTokens - result.CacheCreationInputTokens
 	}
 	result.InputTokens = max(input, 0)
-}
-
-// minViableCreationTokens returns the smallest creation amount that still lets
-// limitCacheProfileWriteSet commit at least one breakpoint, or 0 when no
-// breakpoint is committable at all.
-func minViableCreationTokens(profile *cacheProfile, readTokens int) int {
-	if profile == nil {
-		return 0
-	}
-	readTokens = max(readTokens, 0)
-	best := 0
-	for _, breakpoint := range profile.breakpoints {
-		if breakpoint.blockIndex < 0 || breakpoint.blockIndex >= len(profile.blocks) {
-			continue
-		}
-		tokens := profile.cacheTokensForBreakpoint(profile.blocks[breakpoint.blockIndex].cumulativeTokens)
-		need := tokens - readTokens
-		if need <= 0 {
-			continue
-		}
-		if best == 0 || need < best {
-			best = need
-		}
-	}
-	return best
 }
 
 // creationControlSuppressedReportableWrite reports whether a write really
@@ -1450,10 +1503,6 @@ type pendingCacheBlock struct {
 	isMessageEnd  bool
 }
 
-func buildCacheProfile(ctx context.Context, body []byte, model string, inputTokens int) (*cacheProfile, bool) {
-	return buildCacheProfileWithMin(ctx, body, model, inputTokens, minimumCacheableTokens(model))
-}
-
 func buildCacheProfileWithMin(ctx context.Context, body []byte, model string, inputTokens int, minCacheable int) (*cacheProfile, bool) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -1492,10 +1541,6 @@ func buildCacheProfileWithMin(ctx context.Context, body []byte, model string, in
 		profile.defaultedBreakpoints = defaultedBreakpoints
 	}
 	return profile, ok
-}
-
-func buildResponsesCacheProfile(ctx context.Context, body []byte, model string, inputTokens int) (*cacheProfile, bool) {
-	return buildResponsesCacheProfileWithMin(ctx, body, model, inputTokens, minimumCacheableTokens(model))
 }
 
 func buildResponsesCacheProfileWithMin(ctx context.Context, body []byte, model string, inputTokens int, minCacheable int) (*cacheProfile, bool) {
@@ -1544,10 +1589,6 @@ func buildResponsesCacheProfileWithMin(ctx context.Context, body []byte, model s
 	return profile, ok
 }
 
-func buildChatCompletionsCacheProfile(ctx context.Context, body []byte, model string, inputTokens int) (*cacheProfile, bool) {
-	return buildChatCompletionsCacheProfileWithMin(ctx, body, model, inputTokens, minimumCacheableTokens(model))
-}
-
 func buildChatCompletionsCacheProfileWithMin(ctx context.Context, body []byte, model string, inputTokens int, minCacheable int) (*cacheProfile, bool) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -1587,10 +1628,6 @@ func buildChatCompletionsCacheProfileWithMin(ctx context.Context, body []byte, m
 		profile.defaultedBreakpoints = true
 	}
 	return profile, ok
-}
-
-func buildCacheProfileFromBlocks(model string, totalTokens int, preludeValue any, blocks []pendingCacheBlock) (*cacheProfile, bool) {
-	return buildCacheProfileFromBlocksWithMin(model, totalTokens, preludeValue, blocks, minimumCacheableTokens(model))
 }
 
 func buildCacheProfileFromBlocksWithMin(model string, totalTokens int, preludeValue any, blocks []pendingCacheBlock, minCacheable int) (*cacheProfile, bool) {
@@ -1859,13 +1896,24 @@ func applyDefaultCacheBreakpoints(blocks []pendingCacheBlock, ttl time.Duration)
 			blocks[i].breakpointTTL = &ttl
 		}
 	}
-	// Keep a stable prelude cacheable even when the request has no historical
-	// message boundary (for example, system/instructions plus the first user
-	// turn). The final dynamic user turn is intentionally handled separately.
+	// Keep the first stable prelude block cacheable on every turn. The previous
+	// implementation marked only the newest block before the current user turn.
+	// On the first request that was usually the system block, but on later turns
+	// it moved to the previous assistant message; the already-written system
+	// prefix then had no matching breakpoint and a large conversation appeared
+	// to have cache_read=0 forever. The prelude fingerprint is stable and must
+	// remain a breakpoint while history grows.
 	lastMessage := -1
 	for _, block := range blocks {
 		if block.messageIndex != nil && *block.messageIndex > lastMessage {
 			lastMessage = *block.messageIndex
+		}
+	}
+	for i := range blocks {
+		if blocks[i].messageIndex == nil ||
+			(lastMessage >= 0 && blocks[i].messageIndex != nil && *blocks[i].messageIndex < lastMessage) {
+			blocks[i].breakpointTTL = &ttl
+			break
 		}
 	}
 	for i := len(blocks) - 1; i >= 0; i-- {
@@ -2254,7 +2302,7 @@ func (t *cacheTracker) controlState(cacheKey uint64) cacheControlState {
 	return state
 }
 
-func (t *cacheTracker) recordSuccess(cacheKey uint64, creationTokens int) {
+func (t *cacheTracker) recordSuccess(cacheKey uint64, attemptedCreationTokens, allowedCreationTokens int) {
 	if t == nil || cacheKey == 0 {
 		return
 	}
@@ -2266,45 +2314,74 @@ func (t *cacheTracker) recordSuccess(cacheKey uint64, creationTokens int) {
 	}
 	state := t.controls[cacheKey]
 	state.successfulRequests++
-	if creationTokens > 0 {
+	attemptedCreationTokens = max(attemptedCreationTokens, 0)
+	allowedCreationTokens = min(max(allowedCreationTokens, 0), attemptedCreationTokens)
+	if allowedCreationTokens > 0 {
 		state.lastCreationAt = now
 		state.successfulSinceCreation = 0
+		// Match kiro.rs: once a creation is allowed, previously pending
+		// suppressed tokens are consumed; only this event's remainder stays
+		// pending when the event cap/window trimmed it.
+		state.pendingCreationTokens = 0
+		if allowedCreationTokens < attemptedCreationTokens {
+			state.pendingCreationTokens = attemptedCreationTokens - allowedCreationTokens
+		}
 	} else {
 		state.successfulSinceCreation++
+		state.pendingCreationTokens = saturatingAddInt(state.pendingCreationTokens, attemptedCreationTokens)
 	}
 	if state.windowStart.IsZero() {
 		state.windowStart = now
 	}
-	state.windowTokens += max(creationTokens, 0)
+	state.windowTokens = saturatingAddInt(state.windowTokens, allowedCreationTokens)
 	t.controls[cacheKey] = state
 }
 
-func applyCacheCreationControl(cacheKey uint64, control CacheCreationControl, usage *cacheEmulationUsage) {
-	if usage == nil || !control.Enabled || usage.CacheCreationInputTokens <= 0 {
-		return
+func applyCacheCreationControl(cacheKey uint64, control CacheCreationControl, usage *cacheEmulationUsage) cacheCreationControlDecision {
+	decision := cacheCreationControlDecision{
+		enabled: control.Enabled,
+	}
+	if usage == nil {
+		return decision
+	}
+	decision.attempted = max(usage.CacheCreationInputTokens, 0)
+	decision.allowed = decision.attempted
+	if !control.Enabled || decision.attempted <= 0 {
+		return decision
 	}
 	state := globalCacheTracker.controlState(cacheKey)
 	now := time.Now()
 	if control.MinSuccessfulRequestsBetween > 0 &&
 		!state.lastCreationAt.IsZero() &&
 		state.successfulSinceCreation < control.MinSuccessfulRequestsBetween {
-		usage.CacheCreationInputTokens = 0
-		usage.CacheCreation5mInputTokens = 0
-		usage.CacheCreation1hInputTokens = 0
-		return
+		setCreationControlUsage(usage, 0)
+		decision.allowed = 0
+		return decision
 	}
 	if control.MinCreationIntervalSeconds > 0 &&
 		!state.lastCreationAt.IsZero() &&
 		now.Sub(state.lastCreationAt) < time.Duration(control.MinCreationIntervalSeconds)*time.Second {
-		usage.CacheCreationInputTokens = 0
-		usage.CacheCreation5mInputTokens = 0
-		usage.CacheCreation1hInputTokens = 0
-		return
+		setCreationControlUsage(usage, 0)
+		decision.allowed = 0
+		return decision
+	}
+	// The minimum delta is a release threshold, not a per-event cap. A
+	// suppressed event contributes to pendingCreationTokens and the next
+	// eligible event may release its current creation once the accumulated
+	// amount reaches the threshold, matching kiro.rs.
+	if control.MinCreationDeltaTokens > 0 &&
+		!state.lastCreationAt.IsZero() &&
+		saturatingAddInt(state.pendingCreationTokens, decision.attempted) < control.MinCreationDeltaTokens {
+		setCreationControlUsage(usage, 0)
+		decision.allowed = 0
+		return decision
 	}
 	if control.MaxCreationTokensPerEvent > 0 && usage.CacheCreationInputTokens > control.MaxCreationTokensPerEvent {
-		usage.CacheCreationInputTokens = control.MaxCreationTokensPerEvent
-		usage.CacheCreation5mInputTokens, usage.CacheCreation1hInputTokens =
-			scaleCacheCreationTTLToTotal(usage.CacheCreation5mInputTokens, usage.CacheCreation1hInputTokens, usage.CacheCreationInputTokens)
+		cap := jitteredCreationLimit(
+			control.MaxCreationTokensPerEvent,
+			creationControlSeed(cacheKey, state, control, decision.attempted, 0x9b6d9f4321a40f17),
+		)
+		setCreationControlUsage(usage, min(usage.CacheCreationInputTokens, cap))
 	}
 	if control.CreationBudgetWindowSeconds > 0 {
 		window := time.Duration(control.CreationBudgetWindowSeconds) * time.Second
@@ -2317,15 +2394,72 @@ func applyCacheCreationControl(cacheKey uint64, control CacheCreationControl, us
 	if control.MaxCreationTokensPerWindow > 0 {
 		remaining := control.MaxCreationTokensPerWindow - state.windowTokens
 		if remaining <= 0 {
-			usage.CacheCreationInputTokens = 0
-			usage.CacheCreation5mInputTokens = 0
-			usage.CacheCreation1hInputTokens = 0
+			setCreationControlUsage(usage, 0)
 		} else if usage.CacheCreationInputTokens > remaining {
-			usage.CacheCreationInputTokens = remaining
-			usage.CacheCreation5mInputTokens, usage.CacheCreation1hInputTokens =
-				scaleCacheCreationTTLToTotal(usage.CacheCreation5mInputTokens, usage.CacheCreation1hInputTokens, usage.CacheCreationInputTokens)
+			cap := jitteredCreationLimit(
+				remaining,
+				creationControlSeed(cacheKey, state, control, decision.attempted, 0xc2a45d138e9f62b7),
+			)
+			setCreationControlUsage(usage, min(usage.CacheCreationInputTokens, cap))
 		}
 	}
+	decision.allowed = max(usage.CacheCreationInputTokens, 0)
+	return decision
+}
+
+func setCreationControlUsage(usage *cacheEmulationUsage, allowed int) {
+	if usage == nil {
+		return
+	}
+	usage.CacheCreationInputTokens = max(allowed, 0)
+	usage.CacheCreation5mInputTokens, usage.CacheCreation1hInputTokens =
+		scaleCacheCreationTTLToTotal(
+			usage.CacheCreation5mInputTokens,
+			usage.CacheCreation1hInputTokens,
+			usage.CacheCreationInputTokens,
+		)
+}
+
+// jitteredCreationLimit mirrors kiro.rs's per-event/window cap. The cap
+// remains an upper bound, but a deterministic 1/33..12% deduction avoids
+// a column of identical 30k/100k values while preserving retry stability.
+func jitteredCreationLimit(maxTokens int, seed uint64) int {
+	maxTokens = max(maxTokens, 0)
+	if maxTokens <= 1 {
+		return maxTokens
+	}
+	minJitter := min(max(maxTokens/33, 1), maxTokens-1)
+	maxJitter := min(max(maxTokens*12/100, minJitter), maxTokens-1)
+	return max(maxTokens-jitterWithin(minJitter, maxJitter, seed), 0)
+}
+
+func creationControlSeed(cacheKey uint64, state cacheControlState, control CacheCreationControl, attempted int, salt uint64) uint64 {
+	seed := cacheKey ^ salt
+	for _, value := range []uint64{
+		uint64(max(state.successfulRequests, 0)),
+		uint64(max(state.successfulSinceCreation, 0)),
+		uint64(max(state.pendingCreationTokens, 0)),
+		uint64(max(state.windowTokens, 0)),
+		uint64(max(control.MaxCreationTokensPerEvent, 0)),
+		uint64(max(control.MaxCreationTokensPerWindow, 0)),
+		uint64(max(attempted, 0)),
+	} {
+		seed = splitmix64(seed ^ value)
+	}
+	return seed
+}
+
+func saturatingAddInt(a, b int) int {
+	if a <= 0 {
+		return max(b, 0)
+	}
+	if b <= 0 {
+		return a
+	}
+	if a > int(^uint(0)>>1)-b {
+		return int(^uint(0) >> 1)
+	}
+	return a + b
 }
 
 func (t *cacheTracker) setControlState(cacheKey uint64, state cacheControlState) {
@@ -2811,7 +2945,7 @@ func looksLikeUUID(value string) bool {
 			}
 			continue
 		}
-		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F')) {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') && (char < 'A' || char > 'F') {
 			return false
 		}
 	}

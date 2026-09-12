@@ -41,62 +41,9 @@ colima status || colima start
 > 数据库端口、库名、用户都以实际启动的 compose / 容器为准，
 > 通过环境变量 `DATABASE_*` 传给后端，不要写死在代码里。
 
-### 本地开发/测试管理员账号
+### 本地开发/测试账号
 
-仅用于本机开发库，**不要用在任何公网部署上**。
-
-| 项 | 值 |
-|--------|-----|
-| 邮箱 | `dev-admin@local.test` |
-| 密码 | `KiroImport#2026` |
-| 适用库 | 缓存测试库 `sub2api_cache_smoke`（容器 `kiro-rs-postgres-local`，端口 25432） |
-| 后端地址 | `http://127.0.0.1:48788`（`.cachetest/env.sh` 里的 `SERVER_PORT`） |
-
-密码不在配置文件里，也不从 `admin_password` 读取：首次安装时 `createAdminUser`
-（`backend/internal/setup/setup.go`）在没有任何管理员的情况下随机生成 16 字节密码，
-**只往 stdout 打印一次、不落库明文**。错过那次输出就只能重置，没有别的办法找回。
-
-> `deploy/config.example.yaml` 里的 `admin_password` 是历史遗留字段，
-> 不参与管理员创建，改它没有任何效果。
-
-重置方式（bcrypt 单向，改不了只能覆盖）：
-
-```bash
-# 1) 生成哈希：cost 必须与 backend/internal/model/user.go 里一致（DefaultCost）
-cat > /tmp/genhash/main.go <<'GO'
-package main
-
-import (
-	"fmt"
-
-	"golang.org/x/crypto/bcrypt"
-)
-
-func main() {
-	pw := "KiroImport#2026"
-	h, _ := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
-	// 生成后自验一次，避免把不可用的哈希写进库
-	if err := bcrypt.CompareHashAndPassword(h, []byte(pw)); err != nil {
-		panic(err)
-	}
-	fmt.Println(string(h))
-}
-GO
-go run /tmp/genhash/main.go
-
-# 2) 写库（$2a$ 里的 $ 在 shell 里要转义）
-docker exec -e PGPASSWORD=kiro_rs_dev_password kiro-rs-postgres-local \
-  psql -U kiro_rs -d sub2api_cache_smoke \
-  -c "UPDATE users SET password_hash = '<上一步的哈希>' WHERE email = 'dev-admin@local.test';"
-```
-
-登录取 token：
-
-```bash
-curl -s -X POST http://127.0.0.1:48788/api/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"dev-admin@local.test","password":"KiroImport#2026"}'
-```
+`dev-admin@local.test` / `KiroImport#2026`
 
 ### 开发工具
 

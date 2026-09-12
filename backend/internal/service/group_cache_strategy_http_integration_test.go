@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,11 +49,17 @@ func newCacheStrategyHTTPServer(t *testing.T, response string) (*httptest.Server
 	return server, mock
 }
 
-func newCacheStrategyHTTPService(t *testing.T) *GatewayService {
+func newCacheStrategyHTTPService(t *testing.T, servers ...*httptest.Server) *GatewayService {
 	t.Helper()
+	roots := x509.NewCertPool()
+	for _, server := range servers {
+		if server != nil {
+			roots.AddCert(server.Certificate())
+		}
+	}
 	client := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // local mock servers only
+			TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},
 		},
 	}
 	cfg := &config.Config{}
@@ -168,7 +175,7 @@ func TestGroupCacheStrategyHTTPMultiAccountAndRevisionIsolation(t *testing.T) {
 	responseBody := anthropicCacheStreamResponse(10, 0, 0, 5)
 	serverA, mockA := newCacheStrategyHTTPServer(t, responseBody)
 	serverB, mockB := newCacheStrategyHTTPServer(t, responseBody)
-	service := newCacheStrategyHTTPService(t)
+	service := newCacheStrategyHTTPService(t, serverA, serverB)
 
 	accountA := newCacheStrategyAccount(99111, "account-a", serverA.URL)
 	accountB := newCacheStrategyAccount(99112, "account-b", serverB.URL)
@@ -280,7 +287,7 @@ func TestGroupCacheStrategyHTTPUsagePolicyShapesUpstreamCacheBuckets(t *testing.
 	})
 
 	server, _ := newCacheStrategyHTTPServer(t, anthropicPromptTokensStreamResponse(20, 11, 4, 9))
-	service := newCacheStrategyHTTPService(t)
+	service := newCacheStrategyHTTPService(t, server)
 	account := newCacheStrategyAccount(99152, "account-usage", server.URL)
 	group := newCacheStrategyGroup(99153, strategyID)
 
@@ -357,7 +364,7 @@ func TestGroupCacheStrategyHTTPMultipleStrategyProfiles(t *testing.T) {
 		registerCacheStrategyProfile(t, strategyID, "prefix-high-cache", cfg)
 
 		server, _ := newCacheStrategyHTTPServer(t, anthropicCacheStreamResponse(10, 0, 0, 5))
-		svc := newCacheStrategyHTTPService(t)
+		svc := newCacheStrategyHTTPService(t, server)
 		group := newCacheStrategyGroup(99211, strategyID)
 		body := []byte(`{"model":"claude-sonnet-4-6","prompt_cache_key":"prefix-high-cache","input":"stable prefix cache shaping test with enough repeated content to produce a reusable prefix","stream":false}`)
 
@@ -442,7 +449,7 @@ func TestGroupCacheStrategyHTTPMultipleStrategyProfiles(t *testing.T) {
 		registerCacheStrategyProfile(t, strategyID, "tool-aware-group-session", cfg)
 
 		server, _ := newCacheStrategyHTTPServer(t, anthropicPromptTokensStreamResponse(20, 11, 4, 9))
-		svc := newCacheStrategyHTTPService(t)
+		svc := newCacheStrategyHTTPService(t, server)
 		group := newCacheStrategyGroup(99212, strategyID)
 		body := []byte(`{"model":"claude-sonnet-4-6","metadata":{"session_id":"usage-policy-session"},"messages":[{"role":"user","content":"stable cache policy test"}],"stream":false}`)
 
@@ -483,7 +490,7 @@ func TestGroupCacheStrategyHTTPMultipleStrategyProfiles(t *testing.T) {
 		registerCacheStrategyProfile(t, strategyID, "disabled-cache", cfg)
 
 		server, _ := newCacheStrategyHTTPServer(t, anthropicCacheStreamResponse(10, 0, 0, 5))
-		svc := newCacheStrategyHTTPService(t)
+		svc := newCacheStrategyHTTPService(t, server)
 		group := newCacheStrategyGroup(99213, strategyID)
 		body := []byte(`{"model":"claude-sonnet-4-6","prompt_cache_key":"disabled-cache","input":"stable prompt that should not produce shaped cache usage","stream":false}`)
 

@@ -1558,6 +1558,8 @@ export interface CreateAccountRequest {
   concurrency?: number;
   load_factor?: number | null;
   priority?: number;
+  status?: "active" | "inactive" | "error";
+  schedulable?: boolean;
   rate_multiplier?: number; // Account billing multiplier (>=0, 0 means free)
   group_ids?: number[];
   expires_at?: number | null;

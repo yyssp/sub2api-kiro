@@ -112,43 +112,117 @@ export default {
       cacheNamespaceHint:
         'Cache namespaces are isolated by group, session, strategy revision, and protocol by default (scope "group + session"), so switching accounts within a session still hits the existing prefix. Choosing "group + account + session" adds per-account isolation, which starts a new cache on every account switch.',
       coverageRatio: "Cache-evidence coverage ratio",
+      coverageRatioHint:
+        "The share of the stable prefix eligible for caching; lowering it reduces both later reads and writes.",
       usageRatio: "Cache-evidence total ratio",
+      usageRatioHint:
+        "Scales reported cache-read/create evidence; it mainly changes usage numbers, not tracker capacity.",
       ratioMode: "Cache-evidence ratio mode",
+      ratioModeHint:
+        "Uniform applies one ratio to read and creation; independent lets you control them separately.",
       readRatio: "Read-evidence ratio",
+      readRatioHint:
+        "Only used in independent mode; lowering it reduces reported cache_read without deleting cached prefixes.",
       creationRatio: "Creation-evidence ratio",
+      creationRatioHint:
+        "Only used in independent mode; lowering it reduces reported cache_creation, not the hard write limit.",
       breakpointMode: "Breakpoint mode",
+      breakpointModeHint:
+        "Chooses client, automatic, or hybrid breakpoints; without a usable breakpoint there is no cache read/write.",
       minCacheableTokens: "Minimum cacheable tokens",
+      minCacheableTokensHint:
+        "Breakpoints below this size stay out of the tracker; small requests are not padded up to this value.",
       maxCoverageTokens: "Maximum coverage tokens",
+      maxCoverageTokensHint:
+        "Absolute cap on the cached prefix; reads can continue after it is reached while new creation tapers to zero.",
       maxCreationTokens: "Maximum creation tokens per request",
+      maxCreationTokensHint:
+        "Hard cap on the real prefix added by one request; distinct from the final usage write cap.",
       defaultTtlSeconds: "Default TTL (seconds)",
+      defaultTtlSecondsHint:
+        "Lifetime of ordinary cache breakpoints; after expiry the next request must create them again.",
       hourTtlSeconds: "1-hour TTL (seconds)",
+      hourTtlSecondsHint:
+        "Lifetime for breakpoints marked as one-hour; it must be at least the default TTL and remains system-bounded.",
       tokenScale: "Token scale",
+      tokenScaleHint:
+        "Scales long-input usage simulation after the threshold; it does not change the prompt sent upstream.",
       scaleMinInputTokens: "Minimum input tokens for scaling",
+      scaleMinInputTokensHint:
+        "Token scaling starts only after this input size; short requests are left at their normal scale.",
       maxSimulatedInputTokens: "Maximum simulated input tokens",
+      maxSimulatedInputTokensHint:
+        "Total usage-simulation ceiling; large-window templates need enough headroom for read and creation together.",
       capJitterMinTokens: "Input cap jitter min",
+      capJitterMinTokensHint:
+        "Minimum deterministic deduction when the simulated input cap is actually reached.",
       capJitterMaxTokens: "Input cap jitter max",
+      capJitterMaxTokensHint:
+        "Maximum deterministic deduction at the simulated input cap; keep it below the cap.",
       maxEntriesPerScope: "Maximum entries per scope",
+      maxEntriesPerScopeHint:
+        "Maximum entries for one group/session scope; older entries are evicted after the limit.",
       maxEntriesGlobal: "Maximum global entries",
+      maxEntriesGlobalHint:
+        "Total entries across all scopes; old entries are evicted when the global limit is exceeded.",
       estimatedBytesLimit: "Estimated cache byte limit",
+      estimatedBytesLimitHint:
+        "Approximate memory ceiling for the tracker; reaching it evicts old entries without changing usage math.",
       expireAfterIdleSeconds: "Idle expiration (seconds)",
+      expireAfterIdleSecondsHint:
+        "Deletes entries that have been idle for this long; dormant sessions usually need a new creation on return.",
       currentUserStablePrefix: "Cache current-user stable prefix",
+      currentUserStablePrefixHint:
+        "Includes a stable prefix of the current user message; it can raise large-window writes/next-turn reads but is less conservative.",
       currentUserStablePrefixMaxTokens: "Maximum user-prefix tokens",
+      currentUserStablePrefixMaxTokensHint:
+        "Maximum tokens taken from the current user stable prefix; effective only when the toggle is enabled.",
       scopeMode: "Cache scope",
+      scopeModeHint:
+        "Group + session allows cross-account reuse; adding account isolation recreates the cache after account switches.",
       dynamicContentMode: "Dynamic content handling",
+      dynamicContentModeHint:
+        "Excluding dynamic fields is usually more stable; allowing them can lower hit rate and repeat creation.",
       allowDerivedSession: "Allow derived sessions",
+      allowDerivedSessionHint:
+        "Creates a derived scope when the request has no session id; this covers more traffic but weakens boundaries.",
       preserveUpstreamCacheUsage: "Prefer upstream cache usage",
       incrementalCreation: "Enable incremental creation",
+      incrementalCreationHint:
+        "Allows new stable prefixes after a hit; disabling it stops additions without deleting existing reads.",
       cacheSystem: "Cache system",
+      cacheSystemHint:
+        "System content enters the stable prefix; larger system prompts usually raise the base size of later cache reads and writes.",
       cacheTools: "Cache tools",
+      cacheToolsHint:
+        "Tool definitions enter the stable prefix; stable definitions improve hits, while frequent changes reduce prefix stability.",
       cacheHistory: "Cache message history",
+      cacheHistoryHint:
+        "Message history enters the stable prefix; in long sessions it is often the main source of cache_read tokens.",
       cacheToolResults: "Cache tool results",
+      cacheToolResultsHint:
+        "Tool results enter the stable prefix; dynamic IDs, timestamps, and similar fields can cause repeated creation.",
       creationControlEnabled: "Enable creation throttling",
+      creationControlEnabledHint:
+        "Controls creation frequency, per-event release, and window budget; it does not limit existing cache reads.",
       minCreationDeltaTokens: "Minimum creation delta tokens",
+      minCreationDeltaTokensHint:
+        "Attempts below this delta wait and can accumulate for a later release; larger values usually mean fewer writes.",
       minSuccessfulRequestsBetween: "Successful requests between creations",
+      minSuccessfulRequestsBetweenHint:
+        "Successful requests required between creation releases; intervening requests may still read cache.",
       minCreationIntervalSeconds: "Minimum creation interval (seconds)",
+      minCreationIntervalSecondsHint:
+        "Shortest time between creation releases; rapid requests are more likely to be suppressed.",
       maxCreationTokensPerEvent: "Maximum creation tokens per event",
+      maxCreationTokensPerEventHint:
+        "Maximum creation value released to usage for one event; use the per-request limit as well to cap real additions.",
       creationBudgetWindowSeconds: "Creation budget window (seconds)",
+      creationBudgetWindowSecondsHint:
+        "Length of the window used to count creation budget; the budget is recalculated after the window ends.",
       maxCreationTokensPerWindow: "Maximum creation tokens per window",
+      maxCreationTokensPerWindowHint:
+        "Total creation allowed to be released in one window; once exhausted, creation may be zero while reads remain.",
     },
     kinds: {
       prefix: "Prefix cache",
@@ -166,21 +240,43 @@ export default {
     templates: {
       blank: {
         name: "Blank custom strategy",
+        description:
+          "Start from the defaults and configure cache scope, read/write ratios, usage shaping, and creation pacing yourself.",
       },
       highCache: {
         name: "High cache (default)",
         description:
-          "Mirrors the reference project's default high-cache path: stable prefix, 98% usage ratio, long-input token scaling and final usage caps. Its 30k per-event creation cap makes it a usage-shaping template rather than a growth one.",
+          "A general Claude Code-compatible high-cache baseline: stable prefixes, 98% evidence ratios, long-input scaling, and final usage caps. The 100k per-event creation cap fits normal production traffic.",
       },
       steadyGrowth: {
         name: "Steady growth",
         description:
-          "Writes a constant amount每turn so the cache climbs in a straight line. Measured over 24 turns: 30k created per turn, reads rising linearly to about 846k. Pacing comes solely from the per-event cap; the minimum interval and window budget are zeroed so growth never stalls.",
+          "Writes up to a 100k per-event cap so the cache climbs steadily. Minimum interval, request count, and window budget limits are disabled for growth-oriented observation.",
       },
       rapidGrowth: {
         name: "Rapid growth",
         description:
-          "Reaches a large value within a few turns with irregular per-turn increments. Measured over 24 turns: about 56k created on the first turn and about 921k read by the last, with per-turn creation drifting between 40k and 56k. The allowance follows the 98% coverage ratio instead of being flattened by a per-event cap.",
+          "Reaches a large value within a few turns with irregular increments. A 120k per-event cap and 2M window budget fit high-throughput stress runs.",
+      },
+      largeWindow: {
+        name: "Large read/write (700k read / 500k write)",
+        description:
+          "Allows both buckets to reach large values: a 700k final cache-read cap and a 500k final cache-creation cap. Raw creation and relaxed pacing expose near-cap values without forcing every turn to the same number.",
+      },
+      largeReadControlledWrite: {
+        name: "Large read, controlled write (700k read / 120k target write)",
+        description:
+          "Keeps 700k cache-read capacity while shaping creation around a 120k target with a 180k cap and paced release. Use when high hit volume matters but every turn should not write a large usage bucket.",
+      },
+      largeReadSmallWrite: {
+        name: "Large read, small write (700k read / ~30k write)",
+        description:
+          "Allows cache reads up to 700k while targeting roughly 30k creation with a 60k cap and small budget. Use when cache hits are valuable but write cost or write frequency must stay low.",
+      },
+      largeWriteControlledRead: {
+        name: "Large write, controlled read (500k write / 250k read)",
+        description:
+          "Keeps 500k cache-creation capacity while limiting final cache-read reporting to 250k. The read limit only shapes downstream usage; it does not delete cached prefixes from the tracker.",
       },
     },
     ratioModes: {

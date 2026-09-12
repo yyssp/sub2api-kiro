@@ -75,6 +75,25 @@ func TestParseImportedExternalIdpTokenRejectsMissingRequiredFields(t *testing.T)
 	}
 }
 
+func TestParseImportedExternalIdpTokenDerivesMicrosoftDefaults(t *testing.T) {
+	token, err := ParseImportedToken(`{
+		"accessToken":"access-token",
+		"refreshToken":"1.msal-refresh-token",
+		"authMethod":"external_idp",
+		"clientId":"client-id",
+		"issuerUrl":"https://login.microsoftonline.com/tenant-abc/v2.0"
+	}`, "")
+	if err != nil {
+		t.Fatalf("ParseImportedToken() error = %v", err)
+	}
+	if token.TokenEndpoint != "https://login.microsoftonline.com/tenant-abc/oauth2/v2.0/token" {
+		t.Fatalf("TokenEndpoint = %q", token.TokenEndpoint)
+	}
+	if token.Scopes != "api://client-id/codewhisperer:conversations api://client-id/codewhisperer:completions offline_access" {
+		t.Fatalf("Scopes = %q", token.Scopes)
+	}
+}
+
 func TestDiscoverExternalIdpRejectsDisallowedIssuerHost(t *testing.T) {
 	_, err := DiscoverExternalIdp(context.Background(), "", "https://login.example.com/tenant/v2.0")
 

@@ -293,6 +293,21 @@ func TestKiroOAuthService_BuildAccountCredentialsPreservesExternalIdpMetadata(t 
 	require.Equal(t, "openid profile offline_access", credentials["scopes"])
 }
 
+func TestKiroOAuthService_BuildAccountCredentialsPreservesAuthRegion(t *testing.T) {
+	svc := NewKiroOAuthService(nil)
+
+	credentials := svc.BuildAccountCredentials(&KiroTokenInfo{
+		AuthMethod: "idc",
+		Region:     "us-east-1",
+		AuthRegion: "eu-west-1",
+		APIRegion:  "us-east-1",
+	})
+
+	require.Equal(t, "us-east-1", credentials["region"])
+	require.Equal(t, "eu-west-1", credentials["auth_region"])
+	require.Equal(t, "us-east-1", credentials["api_region"])
+}
+
 func TestKiroOAuthService_ImportTokenClassifiesMixedCredentialEntries(t *testing.T) {
 	svc := NewKiroOAuthService(nil)
 

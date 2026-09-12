@@ -635,7 +635,7 @@ func rewriteAnthropicPassthroughUsageEvent(data string, accumulated *ClaudeUsage
 	}
 	projected := *accumulated
 	upstreamEvidence := claudeUsageHasCacheEvidence(&projected)
-	projectClaudeUsage(&projected, plan.result(), plan.usagePolicy, plan.cacheKey)
+	projectClaudeUsage(&projected, plan.result(), plan.usagePolicy, plan.usageSeed())
 	if plan.result() != nil && !upstreamEvidence {
 		constrainClaudeUsageTotal(&projected, plan.profile.reportedInputTokens, plan.profile.policy.ReportedInputMinTokens)
 	}

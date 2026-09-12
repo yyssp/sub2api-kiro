@@ -277,7 +277,7 @@ type UsageLogFilters struct {
 	// 日志里同时存了 cache_strategy_name，但按 ID 过滤才不受后续改名影响。
 	CacheStrategyID int64
 	RequestID       string
-	Model     string
+	Model           string
 	// ModelFilterSource controls how Model is matched. Empty preserves raw usage_logs.model semantics.
 	ModelFilterSource     string
 	RequestType           *int16

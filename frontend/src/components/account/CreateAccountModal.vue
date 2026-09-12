@@ -7726,8 +7726,9 @@ const handleKiroImport = async () => {
         entry.account_type === 'apikey'
           ? buildKiroImportedAPIKeyCredentials(entry)
           : buildKiroCredentials(entry)
-      // endpoint 是 kiro.rs 特有的自定义上游，buildCredentials 不认，这里补上。
-      if (entry.endpoint) credentials.endpoint = entry.endpoint
+      // kiro.rs 的 ide/cli 是来源端协议标记，不等同于本项目分组级
+      // q/krs/auto 模式。保留为来源元数据，避免伪装成运行时会读取的字段。
+      if (entry.endpoint) credentials.kiro_rs_endpoint = entry.endpoint
       if (!applyTempUnschedConfig(credentials)) return
       accounts.push({
         name,
@@ -7741,6 +7742,8 @@ const handleKiroImport = async () => {
         load_factor: form.load_factor ?? undefined,
         // 单条凭证自带的优先级优先于表单默认值：kiro.rs 的导出里这是有意义的调度属性。
         priority: entry.priority ?? form.priority,
+        status: entry.disabled ? ('inactive' as const) : undefined,
+        schedulable: entry.disabled ? false : undefined,
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
         expires_at: form.expires_at,

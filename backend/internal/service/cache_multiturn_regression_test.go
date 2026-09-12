@@ -116,6 +116,52 @@ func TestCreationControlDeltaAboveEventCapIsRejected(t *testing.T) {
 	require.Contains(t, err.Error(), "min_creation_delta_tokens")
 }
 
+func TestCreationControlAccumulatesPendingAndJittersEventCap(t *testing.T) {
+	resetCacheTracker()
+	control := CacheCreationControl{
+		Enabled:                      true,
+		MinCreationDeltaTokens:       12000,
+		MinSuccessfulRequestsBetween: 0,
+		MinCreationIntervalSeconds:   0,
+		MaxCreationTokensPerEvent:    100000,
+	}
+
+	// The first creation is released immediately, just like kiro.rs. Later
+	// sub-threshold creations accumulate instead of disappearing forever.
+	first := &cacheEmulationUsage{CacheCreationInputTokens: 5000}
+	decision := applyCacheCreationControl(101, control, first)
+	require.Equal(t, 5000, decision.allowed)
+	globalCacheTracker.recordSuccess(101, decision.attempted, decision.allowed)
+
+	second := &cacheEmulationUsage{CacheCreationInputTokens: 2000}
+	decision = applyCacheCreationControl(101, control, second)
+	require.Zero(t, decision.allowed)
+	globalCacheTracker.recordSuccess(101, decision.attempted, decision.allowed)
+
+	third := &cacheEmulationUsage{CacheCreationInputTokens: 5000}
+	decision = applyCacheCreationControl(101, control, third)
+	require.Zero(t, decision.allowed)
+	globalCacheTracker.recordSuccess(101, decision.attempted, decision.allowed)
+
+	fourth := &cacheEmulationUsage{CacheCreationInputTokens: 6000}
+	decision = applyCacheCreationControl(101, control, fourth)
+	require.Equal(t, 6000, decision.allowed,
+		"pending 7k + current 6k reaches the 12k release threshold")
+
+	// A capped event is never a fixed 100k. Different request/cache keys get
+	// different stable deductions while remaining inside the kiro.rs band.
+	seen := map[int]struct{}{}
+	for key := uint64(1); key <= 200; key++ {
+		usage := &cacheEmulationUsage{CacheCreationInputTokens: 150000}
+		decision := applyCacheCreationControl(key+1000, control, usage)
+		require.GreaterOrEqual(t, decision.allowed, 88000)
+		require.LessOrEqual(t, decision.allowed, 100000-100000/33)
+		require.NotEqual(t, 100000, decision.allowed)
+		seen[decision.allowed] = struct{}{}
+	}
+	require.Greater(t, len(seen), 10, "event cap jitter must produce multiple stable values")
+}
+
 // 缓存是旁路能力：畸形请求体、离谱配置都不能让请求失败。
 func TestCachePlanNeverFailsRequestOnMalformedBody(t *testing.T) {
 	resetCacheTracker()
@@ -294,7 +340,7 @@ func TestCreationControlSuppressionDoesNotStallCacheGrowth(t *testing.T) {
 		plan.commit()
 	}
 
-	// 60 秒最小间隔意味着 6 轮里只有第 1 轮能上报创建，后面全被压制 ——
+	// 默认 6 秒最小间隔意味着这组无等待调用里只有第 1 轮能上报创建，后面全被压制 ——
 	// 而 cache_read 必须照常跟着上下文往上走。
 	//
 	// 前两轮不做断言：断点位置由 token 估算推导，上下文体量变化时会整体平移，
@@ -455,6 +501,42 @@ func TestSampleMaxJitterSpreadsCappedValues(t *testing.T) {
 	}, 0, 3), "原始 0 不应被抖动成正数")
 }
 
+func TestSampleTargetCacheCreationMatchesKiroBuckets(t *testing.T) {
+	policy := CacheUsageFieldPolicy{
+		Mode:                CacheUsageFieldSampleTarget,
+		TargetTokens:        50000,
+		NormalMaxMultiplier: 1.5,
+	}
+
+	seen := map[int]struct{}{}
+	zeros := 0
+	for seed := uint64(1); seed <= 200; seed++ {
+		got := projectCacheCreationField(policy, 120000, 80000, seed)
+		if got == 0 {
+			zeros++
+			continue
+		}
+		require.LessOrEqual(t, got, 75000)
+		require.Greater(t, got, 0)
+		seen[got] = struct{}{}
+	}
+	require.Greater(t, zeros, 10,
+		"with an existing cache read, sample-target should retain kiro.rs's ~20%% zero bucket")
+	require.Greater(t, len(seen), 10,
+		"sample-target creation should vary across request fingerprints")
+
+	require.Equal(t,
+		projectCacheCreationField(policy, 120000, 80000, 17),
+		projectCacheCreationField(policy, 120000, 80000, 17),
+		"same request seed must be stable for retries")
+
+	for seed := uint64(1); seed <= 20; seed++ {
+		got := projectCacheCreationField(policy, 60000, 0, seed)
+		require.Greater(t, got, 0, "cold sample-target creation should not use the read-only zero bucket")
+		require.LessOrEqual(t, got, 60000)
+	}
+}
+
 func TestFinalCapJitterNormalizationKeepsSmallCapsPositiveAndVariable(t *testing.T) {
 	minJitter, maxJitter := normalizeFinalCapJitter(8000, 12345, 45312)
 	require.Less(t, minJitter, maxJitter)
@@ -476,6 +558,34 @@ func TestFinalCapJitterNormalizationKeepsSmallCapsPositiveAndVariable(t *testing
 			require.LessOrEqual(t, got, capTokens)
 		}
 	}
+}
+
+func TestUsageProjectionSeedVariesByRequestBodyButRetriesStayStable(t *testing.T) {
+	first := &cacheEmulationPlan{
+		cacheKey: 42,
+		profile:  &cacheProfile{rawBody: []byte(`{"round":1}`), model: "m"},
+	}
+	retry := &cacheEmulationPlan{
+		cacheKey: 42,
+		profile:  &cacheProfile{rawBody: []byte(`{"round":1}`), model: "m"},
+	}
+	nextTurn := &cacheEmulationPlan{
+		cacheKey: 42,
+		profile:  &cacheProfile{rawBody: []byte(`{"round":2}`), model: "m"},
+	}
+	require.Equal(t, first.usageSeed(), retry.usageSeed())
+	require.NotEqual(t, first.usageSeed(), nextTurn.usageSeed())
+
+	policy := DefaultCacheUsagePolicy()
+	policy.FinalCacheReadMaxTokens = 80000
+	policy.FinalCacheReadJitterMinTokens = 12000
+	policy.FinalCacheReadJitterMaxTokens = 24000
+	a := &ClaudeUsage{InputTokens: 1, CacheReadInputTokens: 200000}
+	b := &ClaudeUsage{InputTokens: 1, CacheReadInputTokens: 200000}
+	projectClaudeUsage(a, nil, policy, first.usageSeed())
+	projectClaudeUsage(b, nil, policy, nextTurn.usageSeed())
+	require.NotEqual(t, a.CacheReadInputTokens, b.CacheReadInputTokens,
+		"capped cache-read values must not be conversation-wide constants")
 }
 
 func TestNormalizeCacheStrategyConfigScalesCollapsedFinalCapJitter(t *testing.T) {

@@ -76,6 +76,7 @@ type KiroTokenInfo struct {
 	Email             string `json:"email,omitempty"`
 	StartURL          string `json:"start_url,omitempty"`
 	Region            string `json:"region,omitempty"`
+	AuthRegion        string `json:"auth_region,omitempty"`
 	APIRegion         string `json:"api_region,omitempty"`
 	MachineID         string `json:"machine_id,omitempty"`
 	SubscriptionTitle string `json:"subscription_title,omitempty"`
@@ -112,6 +113,7 @@ type KiroRefreshTokenInput struct {
 	ClientSecret  string
 	StartURL      string
 	Region        string
+	AuthRegion    string
 	APIRegion     string
 	ProfileArn    string
 	TokenEndpoint string
@@ -163,7 +165,7 @@ type KiroRsSkippedEntry struct {
 type KiroRsImportEntry struct {
 	*KiroImportEntry
 	Endpoint string `json:"endpoint,omitempty"`
-	Priority int    `json:"priority"`
+	Priority *int   `json:"priority,omitempty"`
 	Disabled bool   `json:"disabled"`
 }
 
@@ -458,7 +460,11 @@ func (s *KiroOAuthService) RefreshToken(ctx context.Context, input *KiroRefreshT
 		if clientID == "" || clientSecret == "" {
 			return nil, fmt.Errorf("kiro idc refresh requires client_id and client_secret")
 		}
-		token, err = kiropkg.RefreshIDCToken(ctx, proxyURL, clientID, clientSecret, refreshToken, input.Region, input.StartURL, input.Provider)
+		authRegion := strings.TrimSpace(input.AuthRegion)
+		if authRegion == "" {
+			authRegion = strings.TrimSpace(input.Region)
+		}
+		token, err = kiropkg.RefreshIDCToken(ctx, proxyURL, clientID, clientSecret, refreshToken, authRegion, input.StartURL, input.Provider)
 	default:
 		token, err = kiropkg.RefreshSocialToken(ctx, proxyURL, refreshToken, input.Provider)
 	}
@@ -482,6 +488,17 @@ func (s *KiroOAuthService) RefreshToken(ctx context.Context, input *KiroRefreshT
 	}
 	if token.Region == "" {
 		token.Region = input.Region
+	}
+	if token.AuthRegion == "" {
+		token.AuthRegion = input.AuthRegion
+	}
+	if strings.TrimSpace(input.Region) != "" {
+		token.Region = strings.TrimSpace(input.Region)
+	}
+	if strings.TrimSpace(input.AuthRegion) != "" {
+		token.AuthRegion = strings.TrimSpace(input.AuthRegion)
+	} else if token.AuthRegion == "" {
+		token.AuthRegion = token.Region
 	}
 	if token.APIRegion == "" {
 		token.APIRegion = input.APIRegion
@@ -533,6 +550,7 @@ func (s *KiroOAuthService) RefreshAccountToken(ctx context.Context, account *Acc
 		ClientSecret:  account.GetCredential("client_secret"),
 		StartURL:      account.GetCredential("start_url"),
 		Region:        account.GetCredential("region"),
+		AuthRegion:    account.GetCredential("auth_region"),
 		APIRegion:     account.GetCredential("api_region"),
 		ProfileArn:    account.GetCredential("profile_arn"),
 		TokenEndpoint: account.GetCredential("token_endpoint"),
@@ -649,6 +667,9 @@ func (s *KiroOAuthService) BuildAccountCredentials(tokenInfo *KiroTokenInfo) map
 	if tokenInfo.Region != "" {
 		creds["region"] = tokenInfo.Region
 	}
+	if tokenInfo.AuthRegion != "" {
+		creds["auth_region"] = tokenInfo.AuthRegion
+	}
 	if tokenInfo.APIRegion != "" {
 		creds["api_region"] = tokenInfo.APIRegion
 	}
@@ -688,6 +709,7 @@ func toKiroTokenInfo(token *kiropkg.TokenData) *KiroTokenInfo {
 		Email:             token.Email,
 		StartURL:          token.StartURL,
 		Region:            token.Region,
+		AuthRegion:        token.AuthRegion,
 		APIRegion:         token.APIRegion,
 		MachineID:         token.MachineID,
 		SubscriptionTitle: token.SubscriptionTitle,

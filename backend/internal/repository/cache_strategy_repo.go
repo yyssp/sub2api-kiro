@@ -195,7 +195,7 @@ func (r *cacheStrategyRepository) setGroupBindings(ctx context.Context, id int64
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		found := make(map[int64]bool, len(ids))
 		for rows.Next() {

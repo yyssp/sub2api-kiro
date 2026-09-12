@@ -267,8 +267,29 @@
               <Select
                 v-model="selectedTemplateId"
                 :options="templateOptions"
+                :match-trigger-width="true"
                 @update:model-value="applyTemplate"
-              />
+              >
+                <template #option="{ option, selected }">
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate font-medium">
+                      {{ option.label }}
+                    </div>
+                    <div
+                      v-if="option.description"
+                      class="mt-0.5 whitespace-normal break-words text-xs leading-4 text-gray-500 dark:text-dark-400"
+                    >
+                      {{ option.description }}
+                    </div>
+                  </div>
+                  <Icon
+                    v-if="selected"
+                    name="check"
+                    size="sm"
+                    class="flex-shrink-0 text-primary-500"
+                  />
+                </template>
+              </Select>
               <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
                 {{ t("admin.cacheStrategies.templateHint") }}
               </p>
@@ -935,6 +956,9 @@
                 max="1"
                 step="0.01"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.coverageRatioHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -948,6 +972,9 @@
                 max="1"
                 step="0.01"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.usageRatioHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -957,6 +984,9 @@
                 v-model="editing.config.ratio_mode"
                 :options="ratioModeOptions"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.ratioModeHint") }}
+              </p>
             </div>
             <div v-if="editing.config.ratio_mode === 'independent'">
               <label class="input-label">
@@ -970,6 +1000,9 @@
                 max="1"
                 step="0.01"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.readRatioHint") }}
+              </p>
             </div>
             <div v-if="editing.config.ratio_mode === 'independent'">
               <label class="input-label">
@@ -983,6 +1016,9 @@
                 max="1"
                 step="0.01"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.creationRatioHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -992,6 +1028,9 @@
                 v-model="editing.config.breakpoint_mode"
                 :options="breakpointOptions"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.breakpointModeHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1001,6 +1040,9 @@
                 v-model="editing.config.scope_mode"
                 :options="scopeModeOptions"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.scopeModeHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1010,15 +1052,23 @@
                 v-model="editing.config.dynamic_content_mode"
                 :options="dynamicContentModeOptions"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.dynamicContentModeHint") }}
+              </p>
             </div>
-            <label
-              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
-            >
-              <span class="text-sm text-gray-700 dark:text-gray-200">
-                {{ t("admin.cacheStrategies.form.allowDerivedSession") }}
-              </span>
-              <Toggle v-model="editing.config.allow_derived_session" />
-            </label>
+            <div>
+              <label
+                class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+              >
+                <span class="text-sm text-gray-700 dark:text-gray-200">
+                  {{ t("admin.cacheStrategies.form.allowDerivedSession") }}
+                </span>
+                <Toggle v-model="editing.config.allow_derived_session" />
+              </label>
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.allowDerivedSessionHint") }}
+              </p>
+            </div>
           </div>
         </section>
 
@@ -1046,6 +1096,9 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.minCacheableTokensHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1057,6 +1110,9 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.maxCoverageTokensHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1070,6 +1126,9 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.maxCreationTokensHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1082,6 +1141,9 @@
                 min="1"
                 max="3600"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.defaultTtlSecondsHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1094,6 +1156,9 @@
                 min="1"
                 max="3600"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.hourTtlSecondsHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1107,6 +1172,9 @@
                 max="3"
                 step="0.01"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.tokenScaleHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1118,6 +1186,9 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.scaleMinInputTokensHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1129,6 +1200,9 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.maxSimulatedInputTokensHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1140,6 +1214,9 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.capJitterMinTokensHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1151,6 +1228,9 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.capJitterMaxTokensHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1162,6 +1242,9 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.maxEntriesPerScopeHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1173,6 +1256,9 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.maxEntriesGlobalHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1184,6 +1270,9 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.estimatedBytesLimitHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1195,6 +1284,9 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.expireAfterIdleSecondsHint") }}
+              </p>
             </div>
           </div>
         </section>
@@ -1213,56 +1305,86 @@
           </div>
 
           <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <label
-              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
-            >
-              <span class="text-sm text-gray-700 dark:text-gray-200">
-                {{ t("admin.cacheStrategies.form.cacheSystem") }}
-              </span>
-              <Toggle v-model="editing.config.cache_system" />
-            </label>
-            <label
-              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
-            >
-              <span class="text-sm text-gray-700 dark:text-gray-200">
-                {{ t("admin.cacheStrategies.form.cacheTools") }}
-              </span>
-              <Toggle v-model="editing.config.cache_tools" />
-            </label>
-            <label
-              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
-            >
-              <span class="text-sm text-gray-700 dark:text-gray-200">
-                {{ t("admin.cacheStrategies.form.cacheHistory") }}
-              </span>
-              <Toggle v-model="editing.config.cache_history" />
-            </label>
-            <label
-              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
-            >
-              <span class="text-sm text-gray-700 dark:text-gray-200">
-                {{ t("admin.cacheStrategies.form.cacheToolResults") }}
-              </span>
-              <Toggle v-model="editing.config.cache_tool_results" />
-            </label>
-            <label
-              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
-            >
-              <span class="text-sm text-gray-700 dark:text-gray-200">
-                {{ t("admin.cacheStrategies.form.currentUserStablePrefix") }}
-              </span>
-              <Toggle
-                v-model="editing.config.cache_current_user_stable_prefix"
-              />
-            </label>
-            <label
-              class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
-            >
-              <span class="text-sm text-gray-700 dark:text-gray-200">
-                {{ t("admin.cacheStrategies.form.incrementalCreation") }}
-              </span>
-              <Toggle v-model="editing.config.incremental_create_enabled" />
-            </label>
+            <div>
+              <label
+                class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+              >
+                <span class="text-sm text-gray-700 dark:text-gray-200">
+                  {{ t("admin.cacheStrategies.form.cacheSystem") }}
+                </span>
+                <Toggle v-model="editing.config.cache_system" />
+              </label>
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.cacheSystemHint") }}
+              </p>
+            </div>
+            <div>
+              <label
+                class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+              >
+                <span class="text-sm text-gray-700 dark:text-gray-200">
+                  {{ t("admin.cacheStrategies.form.cacheTools") }}
+                </span>
+                <Toggle v-model="editing.config.cache_tools" />
+              </label>
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.cacheToolsHint") }}
+              </p>
+            </div>
+            <div>
+              <label
+                class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+              >
+                <span class="text-sm text-gray-700 dark:text-gray-200">
+                  {{ t("admin.cacheStrategies.form.cacheHistory") }}
+                </span>
+                <Toggle v-model="editing.config.cache_history" />
+              </label>
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.cacheHistoryHint") }}
+              </p>
+            </div>
+            <div>
+              <label
+                class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+              >
+                <span class="text-sm text-gray-700 dark:text-gray-200">
+                  {{ t("admin.cacheStrategies.form.cacheToolResults") }}
+                </span>
+                <Toggle v-model="editing.config.cache_tool_results" />
+              </label>
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.cacheToolResultsHint") }}
+              </p>
+            </div>
+            <div>
+              <label
+                class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+              >
+                <span class="text-sm text-gray-700 dark:text-gray-200">
+                  {{ t("admin.cacheStrategies.form.currentUserStablePrefix") }}
+                </span>
+                <Toggle
+                  v-model="editing.config.cache_current_user_stable_prefix"
+                />
+              </label>
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.currentUserStablePrefixHint") }}
+              </p>
+            </div>
+            <div>
+              <label
+                class="flex items-center justify-between gap-3 rounded-lg bg-gray-50/60 px-3 py-2.5 dark:bg-dark-800/40"
+              >
+                <span class="text-sm text-gray-700 dark:text-gray-200">
+                  {{ t("admin.cacheStrategies.form.incrementalCreation") }}
+                </span>
+                <Toggle v-model="editing.config.incremental_create_enabled" />
+              </label>
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.incrementalCreationHint") }}
+              </p>
+            </div>
           </div>
 
           <div
@@ -1282,6 +1404,13 @@
               class="input"
               min="0"
             />
+            <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+              {{
+                t(
+                  "admin.cacheStrategies.form.currentUserStablePrefixMaxTokensHint",
+                )
+              }}
+            </p>
           </div>
         </section>
 
@@ -1306,6 +1435,9 @@
             </span>
             <Toggle v-model="editing.config.creation_control.enabled" />
           </div>
+          <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+            {{ t("admin.cacheStrategies.form.creationControlEnabledHint") }}
+          </p>
 
           <div
             v-if="editing.config.creation_control.enabled"
@@ -1323,6 +1455,13 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{
+                  t(
+                    "admin.cacheStrategies.form.minCreationDeltaTokensHint",
+                  )
+                }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1339,6 +1478,13 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{
+                  t(
+                    "admin.cacheStrategies.form.minSuccessfulRequestsBetweenHint",
+                  )
+                }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1352,6 +1498,13 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{
+                  t(
+                    "admin.cacheStrategies.form.minCreationIntervalSecondsHint",
+                  )
+                }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1365,6 +1518,13 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{
+                  t(
+                    "admin.cacheStrategies.form.maxCreationTokensPerEventHint",
+                  )
+                }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1380,6 +1540,13 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{
+                  t(
+                    "admin.cacheStrategies.form.creationBudgetWindowSecondsHint",
+                  )
+                }}
+              </p>
             </div>
             <div>
               <label class="input-label">
@@ -1393,6 +1560,13 @@
                 class="input"
                 min="0"
               />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{
+                  t(
+                    "admin.cacheStrategies.form.maxCreationTokensPerWindowHint",
+                  )
+                }}
+              </p>
             </div>
           </div>
         </section>
@@ -1668,10 +1842,12 @@ const templateOptions = computed(() => [
   {
     value: "blank",
     label: t("admin.cacheStrategies.templates.blank.name"),
+    description: t("admin.cacheStrategies.templates.blank.description"),
   },
   ...cacheStrategyTemplates.map((template) => ({
     value: template.id,
     label: t(template.nameKey),
+    description: t(template.descriptionKey),
   })),
 ]);
 

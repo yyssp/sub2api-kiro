@@ -1222,7 +1222,7 @@ func rewriteClaudeSSEUsageEvent(event map[string]any, accumulated *ClaudeUsage, 
 
 	projected := *accumulated
 	upstreamEvidence := claudeUsageHasCacheEvidence(&projected)
-	projectClaudeUsage(&projected, plan.result(), plan.usagePolicy, plan.cacheKey)
+	projectClaudeUsage(&projected, plan.result(), plan.usagePolicy, plan.usageSeed())
 	if plan.result() != nil && !upstreamEvidence {
 		constrainClaudeUsageTotal(&projected, plan.profile.reportedInputTokens, plan.profile.policy.ReportedInputMinTokens)
 	}
@@ -1573,7 +1573,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	// returned usage object in sync for non-streaming Messages requests.
 	if plan := cachePlanFromContext(c); plan != nil && !plan.skipProjection() {
 		upstreamEvidence := claudeUsageHasCacheEvidence(&response.Usage)
-		projectClaudeUsage(&response.Usage, plan.result(), plan.usagePolicy, plan.cacheKey)
+		projectClaudeUsage(&response.Usage, plan.result(), plan.usagePolicy, plan.usageSeed())
 		if plan.result() != nil && !upstreamEvidence {
 			constrainClaudeUsageTotal(&response.Usage, plan.profile.reportedInputTokens, plan.profile.policy.ReportedInputMinTokens)
 		}

@@ -33,8 +33,11 @@ const (
 type KiroRsCredential struct {
 	*TokenData
 	Endpoint string `json:"endpoint,omitempty"`
-	Priority int    `json:"priority"`
-	Disabled bool   `json:"disabled"`
+	// Priority is nil when the source did not provide one. Keeping that
+	// distinction lets the account form apply its own default priority while
+	// preserving an explicit source value of 0.
+	Priority *int `json:"priority,omitempty"`
+	Disabled bool `json:"disabled"`
 }
 
 // KiroRsSkipped 记录一条被跳过的条目及原因。
@@ -187,17 +190,19 @@ func extractKiroRsItems(value json.RawMessage) []json.RawMessage {
 	if err := json.Unmarshal(value, &obj); err != nil {
 		return nil
 	}
+	canonical := canonicalizeKeys(obj)
 
 	// 容器字段：只有当它确实是数组时才下钻，否则 {"credentials":{...}} 这种
 	// 单账号嵌套写法会被误当成容器而丢失。
 	for _, key := range []string{"credentials", "accounts"} {
-		if inner, ok := obj[key]; ok && strings.HasPrefix(strings.TrimSpace(string(inner)), "[") {
+		if inner, ok := canonical[key]; ok && strings.HasPrefix(strings.TrimSpace(string(inner)), "[") {
 			return extractKiroRsItems(inner)
 		}
 	}
-	if data, ok := obj["data"]; ok {
+	if data, ok := canonical["data"]; ok {
 		var dataObj map[string]json.RawMessage
 		if err := json.Unmarshal(data, &dataObj); err == nil {
+			dataObj = canonicalizeKeys(dataObj)
 			for _, key := range []string{"credentials", "accounts"} {
 				if inner, ok := dataObj[key]; ok && strings.HasPrefix(strings.TrimSpace(string(inner)), "[") {
 					return extractKiroRsItems(inner)
@@ -411,7 +416,7 @@ func parseKiroRsPlainText(raw string) ([]*KiroRsCredential, bool) {
 			AuthMethod: "api_key",
 			Region:     region,
 		}
-		result = append(result, completeKiroRsCredential(token, KiroRsAPIKeyDefaultEndpoint, 0, false))
+		result = append(result, completeKiroRsCredential(token, KiroRsAPIKeyDefaultEndpoint, nil, false))
 	}
 	if len(result) == 0 {
 		return nil, false
@@ -511,7 +516,7 @@ func parseKiroRsObject(data []byte) (*KiroRsCredential, error) {
 	// 平铺字段与 credentials 嵌套字段合并：KAM 旧版是嵌套的，新版是平铺的，
 	// 平铺优先（新版格式更权威），嵌套用作兜底。
 	merged := canonicalizeKeys(raw)
-	if nested, ok := raw["credentials"]; ok {
+	if nested, ok := merged["credentials"]; ok {
 		var nestedMap map[string]json.RawMessage
 		if err := json.Unmarshal(nested, &nestedMap); err == nil {
 			for key, value := range canonicalizeKeys(nestedMap) {
@@ -551,9 +556,10 @@ func parseKiroRsObject(data []byte) (*KiroRsCredential, error) {
 		ClientID:          readString("clientid"),
 		ClientSecret:      readString("clientsecret"),
 		ClientIDHash:      readString("clientidhash"),
-		Email:             readString("email", "nickname"),
+		Email:             readString("email", "nickname", "label"),
 		StartURL:          readString("starturl"),
 		Region:            readString("region"),
+		AuthRegion:        readString("authregion"),
 		APIRegion:         readString("apiregion"),
 		MachineID:         readString("machineid"),
 		SubscriptionTitle: readString("subscriptiontitle"),
@@ -568,8 +574,19 @@ func parseKiroRsObject(data []byte) (*KiroRsCredential, error) {
 	// API key 也支持 `ksk_xxx|region` 的带区域写法。
 	if key, region, found := strings.Cut(token.APIKey, "|"); found {
 		token.APIKey = strings.TrimSpace(key)
-		if region = strings.TrimSpace(region); region != "" && token.Region == "" {
-			token.Region = region
+		if region = strings.TrimSpace(region); region != "" {
+			if err := validateKiroRsRegion(region); err != nil {
+				return nil, fmt.Errorf("API key 区域无效: %w", err)
+			}
+			if token.Region == "" {
+				token.Region = region
+			}
+			if token.AuthRegion == "" {
+				token.AuthRegion = region
+			}
+			if token.APIRegion == "" {
+				token.APIRegion = region
+			}
 		}
 	}
 
@@ -582,31 +599,45 @@ func parseKiroRsObject(data []byte) (*KiroRsCredential, error) {
 		return nil, fmt.Errorf("缺少凭证内容: 需要 refreshToken、accessToken 或 kiroApiKey 之一")
 	}
 
+	priority, hasPriority := readKiroRsInt(merged, "priority")
+	disabled := readKiroRsBool(merged, "disabled")
+	status := strings.ToLower(strings.TrimSpace(readString("status")))
+	if status == "disabled" || status == "inactive" || status == "error" {
+		disabled = true
+	}
+	var sourcePriority *int
+	if hasPriority {
+		if priority < 0 {
+			priority = 0
+		}
+		sourcePriority = &priority
+	}
+
 	return completeKiroRsCredential(
 		token,
 		readString("endpoint"),
-		readKiroRsInt(merged, "priority"),
-		readKiroRsBool(merged, "disabled"),
+		sourcePriority,
+		disabled,
 	), nil
 }
 
-func readKiroRsInt(raw map[string]json.RawMessage, key string) int {
+func readKiroRsInt(raw map[string]json.RawMessage, key string) (int, bool) {
 	value, ok := raw[key]
 	if !ok {
-		return 0
+		return 0, false
 	}
 	var num int
 	if err := json.Unmarshal(value, &num); err == nil {
-		return num
+		return num, true
 	}
 	// 容忍字符串形式的数字。
 	var text string
 	if err := json.Unmarshal(value, &text); err == nil {
 		if parsed, err := strconv.Atoi(strings.TrimSpace(text)); err == nil {
-			return parsed
+			return parsed, true
 		}
 	}
-	return 0
+	return 0, false
 }
 
 func readKiroRsBool(raw map[string]json.RawMessage, key string) bool {
@@ -627,13 +658,21 @@ func readKiroRsBool(raw map[string]json.RawMessage, key string) bool {
 }
 
 // completeKiroRsCredential 按 kiro.rs 的默认值补齐缺失字段。
-func completeKiroRsCredential(token *TokenData, endpoint string, priority int, disabled bool) *KiroRsCredential {
+func completeKiroRsCredential(token *TokenData, endpoint string, priority *int, disabled bool) *KiroRsCredential {
 	token.AuthMethod = resolveKiroRsAuthMethod(token)
 
 	// region 默认 us-east-1；kiro.rs 的 effective_* 逻辑在请求期按
 	// authRegion > region 取值，这里只保证 region 有兜底值。
 	if token.Region == "" {
 		token.Region = defaultIDCRegion
+	}
+	if token.AuthMethod == "api_key" {
+		if token.AuthRegion == "" {
+			token.AuthRegion = token.Region
+		}
+		if token.APIRegion == "" {
+			token.APIRegion = token.Region
+		}
 	}
 
 	// machineId 补齐规则同 kiro.rs：优先凭证自带，其次按凭证类型派生。
@@ -650,8 +689,9 @@ func completeKiroRsCredential(token *TokenData, endpoint string, priority int, d
 		}
 	}
 
-	if priority < 0 {
-		priority = 0
+	if priority != nil && *priority < 0 {
+		normalized := 0
+		priority = &normalized
 	}
 
 	// profileArn 刻意不补齐：kiro.rs 也是在请求期按 authMethod 解析的，

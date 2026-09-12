@@ -94,7 +94,7 @@ describe('useKiroCredentialImport', () => {
 
   it('kiro_ide tab 走严格解析器并补齐预览字段', async () => {
     mocks.importToken.mockResolvedValue({
-      entries: [{ account_type: 'oauth', auth_method: 'social' }]
+      entries: [{ account_type: 'oauth', auth_method: 'social', priority: undefined }]
     })
 
     const importer = useKiroCredentialImport()
@@ -103,7 +103,8 @@ describe('useKiroCredentialImport', () => {
     await importer.parse('empty')
 
     expect(mocks.importKiroRsCredentials).not.toHaveBeenCalled()
-    expect(importer.entries.value[0]).toMatchObject({ priority: 0, disabled: false })
+    expect(importer.entries.value[0]).toMatchObject({ disabled: false })
+    expect(importer.entries.value[0].priority).toBeUndefined()
   })
 
   it('缺 clientId/clientSecret 的 IDE 导出要求补设备注册信息', () => {

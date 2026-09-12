@@ -21,6 +21,12 @@ func newTestBillingServiceForResolver() *BillingService {
 		CacheReadPricePerToken:     0.3e-6,
 		SupportsCacheBreakdown:     false,
 	}
+	bs.fallbackPrices["gpt-5.6-luna"] = &ModelPricing{
+		InputPricePerToken:         0.2e-6,
+		OutputPricePerToken:        1.2e-6,
+		CacheCreationPricePerToken: 0.25e-6,
+		CacheReadPricePerToken:     0.02e-6,
+	}
 	return bs
 }
 

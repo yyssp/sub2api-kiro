@@ -196,6 +196,9 @@ type TokenData struct {
 	StartURL     string `json:"startUrl,omitempty"`
 	// Region is the IAM Identity Center/OIDC region used for token refresh.
 	Region string `json:"region,omitempty"`
+	// AuthRegion is the explicit OIDC region used for token refresh. Some Kiro
+	// exports keep it separate from the general credential region.
+	AuthRegion string `json:"authRegion,omitempty"`
 	// APIRegion is the Kiro runtime API region. It must remain distinct from
 	// Region because Kiro IDE social exports use apiRegion without IDC data.
 	APIRegion         string `json:"apiRegion,omitempty"`
@@ -243,6 +246,7 @@ func (t *TokenData) UnmarshalJSON(data []byte) error {
 	t.Email = readString("email")
 	t.StartURL = readString("startUrl", "start_url")
 	t.Region = readString("region")
+	t.AuthRegion = readString("authRegion", "auth_region")
 	t.APIRegion = readString("apiRegion", "api_region")
 	t.MachineID = readString("machineId", "machine_id")
 	t.SubscriptionTitle = readString("subscriptionTitle", "subscription_title")
@@ -770,7 +774,12 @@ func parseImportedTokenObject(data []byte, deviceRegistrationJSON string) (*Toke
 			return nil, fmt.Errorf("api key is empty")
 		}
 		token.Provider = strings.TrimSpace(token.Provider)
+		token.Region = strings.TrimSpace(token.Region)
+		token.AuthRegion = strings.TrimSpace(token.AuthRegion)
 		token.APIRegion = strings.TrimSpace(token.APIRegion)
+		if err := normalizeImportedAPIKeyRegion(&token); err != nil {
+			return nil, err
+		}
 		token.MachineID = strings.TrimSpace(token.MachineID)
 		token.SubscriptionTitle = strings.TrimSpace(token.SubscriptionTitle)
 		if token.Provider != "" && !IsValidKiroProvider(token.Provider) {
@@ -795,7 +804,11 @@ func parseImportedTokenObject(data []byte, deviceRegistrationJSON string) (*Toke
 	}
 	token.Provider = strings.TrimSpace(token.Provider)
 	token.Region = strings.TrimSpace(token.Region)
+	token.AuthRegion = strings.TrimSpace(token.AuthRegion)
 	token.APIRegion = strings.TrimSpace(token.APIRegion)
+	if token.Region == "" && token.AuthRegion != "" {
+		token.Region = token.AuthRegion
+	}
 	token.MachineID = strings.TrimSpace(token.MachineID)
 	token.StartURL = strings.TrimSpace(token.StartURL)
 
@@ -828,6 +841,7 @@ func parseImportedTokenObject(data []byte, deviceRegistrationJSON string) (*Toke
 		token.TokenEndpoint = strings.TrimSpace(token.TokenEndpoint)
 		token.IssuerURL = strings.TrimSpace(token.IssuerURL)
 		token.Scopes = strings.TrimSpace(token.Scopes)
+		normalizeImportedExternalIDPDefaults(&token)
 		if strings.TrimSpace(token.RefreshToken) == "" || token.ClientID == "" || token.TokenEndpoint == "" {
 			return nil, fmt.Errorf("kiro external_idp import requires refreshToken, clientId, and tokenEndpoint")
 		}
@@ -852,6 +866,134 @@ func parseImportedTokenObject(data []byte, deviceRegistrationJSON string) (*Toke
 		token.ExpiresAt = normalized
 	}
 	return &token, nil
+}
+
+// normalizeImportedAPIKeyRegion applies the same region semantics as kiro.rs:
+// a pipe suffix populates all three region slots, while an explicit region is
+// propagated to the API/auth slots only when those slots are absent.
+func normalizeImportedAPIKeyRegion(token *TokenData) error {
+	if token == nil {
+		return nil
+	}
+	rawKey := strings.TrimSpace(token.APIKey)
+	if key, region, found := strings.Cut(rawKey, "|"); found {
+		key = strings.TrimSpace(key)
+		region = strings.TrimSpace(region)
+		if region != "" {
+			if err := validateKiroRsRegion(region); err != nil {
+				return fmt.Errorf("invalid api key region: %w", err)
+			}
+			if token.Region == "" {
+				token.Region = region
+			}
+			if token.AuthRegion == "" {
+				token.AuthRegion = region
+			}
+			if token.APIRegion == "" {
+				token.APIRegion = region
+			}
+		}
+		token.APIKey = key
+	}
+	if token.AuthRegion == "" {
+		token.AuthRegion = token.Region
+	}
+	if token.APIRegion == "" {
+		token.APIRegion = token.Region
+	}
+	return nil
+}
+
+// normalizeImportedExternalIDPDefaults accepts the incomplete Microsoft
+// Entra exports commonly produced by Kiro/KAM. The derived values are limited
+// to allow-listed Microsoft issuer hosts and are only used when the export
+// omitted token_endpoint/scopes.
+func normalizeImportedExternalIDPDefaults(token *TokenData) {
+	if token == nil {
+		return
+	}
+	if token.TokenEndpoint == "" {
+		candidates := []string{token.IssuerURL, importedJWTIssuer(token.AccessToken)}
+		for _, candidate := range candidates {
+			if endpoint := microsoftTokenEndpointFromIssuer(candidate); endpoint != "" {
+				token.TokenEndpoint = endpoint
+				break
+			}
+		}
+	}
+	if token.TokenEndpoint == "" && looksLikeMicrosoftRefreshToken(token.RefreshToken) {
+		token.TokenEndpoint = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+	}
+	if token.Scopes == "" && strings.TrimSpace(token.ClientID) != "" {
+		clientID := strings.TrimSpace(token.ClientID)
+		token.Scopes = fmt.Sprintf(
+			"api://%s/codewhisperer:conversations api://%s/codewhisperer:completions offline_access",
+			clientID,
+			clientID,
+		)
+	}
+}
+
+func microsoftTokenEndpointFromIssuer(raw string) string {
+	issuer := strings.TrimSpace(raw)
+	if issuer == "" {
+		return ""
+	}
+	parsed, err := url.Parse(issuer)
+	if err != nil || strings.ToLower(parsed.Scheme) != "https" {
+		return ""
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "" {
+		return ""
+	}
+	allowed := false
+	for _, suffix := range allowedExternalIdpHostSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return ""
+	}
+	for _, segment := range strings.Split(parsed.Path, "/") {
+		segment = strings.TrimSpace(segment)
+		if segment == "" {
+			continue
+		}
+		if strings.EqualFold(segment, "oauth2") {
+			return ""
+		}
+		return fmt.Sprintf("https://%s/%s/oauth2/v2.0/token", host, segment)
+	}
+	return ""
+}
+
+func importedJWTIssuer(raw string) string {
+	parts := strings.Split(strings.TrimSpace(raw), ".")
+	if len(parts) < 2 {
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		payload, err = base64.URLEncoding.DecodeString(parts[1])
+	}
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		Issuer string `json:"iss"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(claims.Issuer)
+}
+
+func looksLikeMicrosoftRefreshToken(raw string) bool {
+	value := strings.TrimSpace(raw)
+	return strings.HasPrefix(value, "1.") || strings.HasPrefix(value, "0.")
 }
 
 // validateKiroCredentialExportShape makes the Kiro importer intentionally
@@ -894,11 +1036,14 @@ func validateKiroCredentialExportShape(data []byte) error {
 	hasKiroCompanion := readString(
 		"profileArn", "profile_arn",
 		"apiRegion", "api_region",
+		"authRegion", "auth_region",
 		"machineId", "machine_id",
 		"subscriptionTitle", "subscription_title",
 		"startUrl", "start_url",
 		"clientIdHash", "client_id_hash",
 		"tokenEndpoint", "token_endpoint",
+		"issuerUrl", "issuer_url",
+		"scopes", "scope",
 	) != ""
 
 	if authMethod == "" && apiKey != "" && accessToken == "" {

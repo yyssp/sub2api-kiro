@@ -109,43 +109,117 @@ export default {
       cacheNamespaceHint:
         "缓存默认按分组、会话、策略版本和协议隔离（作用域「分组 + 会话」）：同一会话切换账号仍可命中，不必重建前缀。改成「分组 + 账号 + 会话」后会额外按账号隔离，换账号即重新创建缓存。",
       coverageRatio: "缓存证据覆盖比例",
+      coverageRatioHint:
+        "实际可纳入缓存的稳定前缀比例；越低会同时减少后续可读和可写的基础量。",
       usageRatio: "缓存证据总比例",
+      usageRatioHint:
+        "统一缩放对外 cache read/create evidence；主要影响 usage 数值，不等同于实际缓存容量。",
       ratioMode: "缓存证据比例模式",
+      ratioModeHint:
+        "统一比例同时作用于读写；独立比例允许分别控制 read 和 creation 的上报量。",
       readRatio: "读取证据比例",
+      readRatioHint:
+        "仅独立比例模式生效；越低，对外 cache_read 数值越小，但不会删除已有缓存。",
       creationRatio: "创建证据比例",
+      creationRatioHint:
+        "仅独立比例模式生效；越低，对外 cache_creation 数值越小，不是实际写入硬上限。",
       breakpointMode: "断点模式",
+      breakpointModeHint:
+        "决定使用客户端断点、自动断点还是混合断点；没有可用断点时不会产生缓存读写。",
       minCacheableTokens: "最小可缓存 Token",
+      minCacheableTokensHint:
+        "小于该值的断点不会进入 tracker；它不会把小请求向上补到这个数值。",
       maxCoverageTokens: "最大覆盖 Token",
+      maxCoverageTokensHint:
+        "实际缓存前缀的绝对上限；达到后 read 可以继续命中，但新的 creation 会逐渐变少或为 0。",
       maxCreationTokens: "单次最大 Creation Token",
+      maxCreationTokensHint:
+        "单请求真实新增缓存前缀的硬上限；与 usage 区域的最终写入上限不同。",
       defaultTtlSeconds: "默认 TTL（秒）",
+      defaultTtlSecondsHint:
+        "普通缓存断点的生命周期；过期后下一次需要重新创建，TTL 不是 usage 上限。",
       hourTtlSeconds: "1 小时 TTL（秒）",
+      hourTtlSecondsHint:
+        "标记为 1 小时的断点生命周期；必须不小于默认 TTL，最长受系统支持范围限制。",
       tokenScale: "Token 缩放系数",
+      tokenScaleHint:
+        "长输入达到阈值后用于 usage 模拟的放大系数，不改变发送给上游的 prompt。",
       scaleMinInputTokens: "启用缩放的最小输入 Token",
+      scaleMinInputTokensHint:
+        "输入达到该值后才启用 token 缩放；短请求不会被强行放大。",
       maxSimulatedInputTokens: "最大模拟输入 Token",
+      maxSimulatedInputTokensHint:
+        "模拟 usage 总输入上限；大窗口模板需要足够大，否则读写合计会提前被压缩。",
       capJitterMinTokens: "输入上限抖动下限",
+      capJitterMinTokensHint:
+        "模拟 input 触顶时向下扣减的最小值；只有真正触顶才生效。",
       capJitterMaxTokens: "输入上限抖动上限",
+      capJitterMaxTokensHint:
+        "模拟 input 触顶时向下扣减的最大值；应小于上限，避免触顶值被压得过低。",
       maxEntriesPerScope: "单作用域最大条目数",
+      maxEntriesPerScopeHint:
+        "单个分组/会话 scope 的缓存条目数量；超出后淘汰旧条目，可能降低后续 read。",
       maxEntriesGlobal: "全局最大条目数",
+      maxEntriesGlobalHint:
+        "所有 scope 合计的缓存条目上限；超出后全局淘汰旧条目。",
       estimatedBytesLimit: "缓存估算字节上限",
+      estimatedBytesLimitHint:
+        "按估算内存控制缓存总容量；达到上限会淘汰旧条目，不改变单次 usage 算法。",
       expireAfterIdleSeconds: "空闲过期时间（秒）",
+      expireAfterIdleSecondsHint:
+        "条目连续空闲超过该时间后删除；长时间不访问的会话恢复时通常需要重写。",
       currentUserStablePrefix: "缓存当前用户稳定前缀",
+      currentUserStablePrefixHint:
+        "是否把当前用户消息的稳定前缀加入缓存；开启可提高大上下文写入/下一轮读取，但更容易缓存动态内容。",
       currentUserStablePrefixMaxTokens: "用户稳定前缀最大 Token",
+      currentUserStablePrefixMaxTokensHint:
+        "当前用户稳定前缀最多缓存的 Token；只在上方开关开启时生效。",
       scopeMode: "缓存作用域",
+      scopeModeHint:
+        "分组+会话允许同会话跨账号命中；加入账号后换账号会重新创建缓存。",
       dynamicContentMode: "动态内容处理",
+      dynamicContentModeHint:
+        "排除动态字段通常更稳定；允许动态内容可能降低命中率并增加重复 creation。",
       allowDerivedSession: "允许从请求派生会话",
+      allowDerivedSessionHint:
+        "请求缺少 session id 时是否生成派生 scope；开启能覆盖更多请求，但会放宽会话边界。",
       preserveUpstreamCacheUsage: "优先保留上游缓存 usage",
       incrementalCreation: "启用增量 Creation",
+      incrementalCreationHint:
+        "命中已有缓存后是否继续为新增稳定前缀写入；关闭只停止新增，不会删除已有 read。",
       cacheSystem: "缓存 System",
+      cacheSystemHint:
+        "System 内容会进入稳定前缀；内容越大，后续缓存读写的基础量通常越高。",
       cacheTools: "缓存 Tools",
+      cacheToolsHint:
+        "Tools 定义会进入稳定前缀；工具定义稳定时更容易命中，频繁变化时会降低前缀稳定性。",
       cacheHistory: "缓存历史消息",
+      cacheHistoryHint:
+        "历史消息会进入稳定前缀；长会话中的 cache_read 通常主要来自这一部分。",
       cacheToolResults: "缓存 Tool Results",
+      cacheToolResultsHint:
+        "工具结果会进入稳定前缀；如果结果包含动态 ID、时间戳等字段，重复 creation 的概率会更高。",
       creationControlEnabled: "启用 Creation 限流",
+      creationControlEnabledHint:
+        "控制 creation 的出现频次、单次显示量和窗口预算；不限制已有 cache_read。",
       minCreationDeltaTokens: "最小 Creation 增量 Token",
+      minCreationDeltaTokensHint:
+        "低于该增量时暂缓释放，后续请求可累积后再释放；越大通常写入频次越低。",
       minSuccessfulRequestsBetween: "两次 Creation 间成功请求数",
+      minSuccessfulRequestsBetweenHint:
+        "两次 creation 之间必须经过的成功请求数；中间请求仍可以命中 read。",
       minCreationIntervalSeconds: "Creation 最小间隔（秒）",
+      minCreationIntervalSecondsHint:
+        "两次 creation 的最短时间间隔；连发请求越容易被压制。",
       maxCreationTokensPerEvent: "单次事件最大 Creation Token",
+      maxCreationTokensPerEventHint:
+        "单次 creation 对外可见的最大值；需要限制真实新增时还要设置单次最大 Creation Token。",
       creationBudgetWindowSeconds: "Creation 预算窗口（秒）",
+      creationBudgetWindowSecondsHint:
+        "统计窗口 creation 预算的时间长度；窗口结束后预算重新计算。",
       maxCreationTokensPerWindow: "窗口最大 Creation Token",
+      maxCreationTokensPerWindowHint:
+        "窗口内允许对外释放的 creation 总量；用尽后 creation 可以为 0，但已有 read 不会消失。",
     },
     kinds: {
       prefix: "前缀缓存",
@@ -161,21 +235,42 @@ export default {
     templates: {
       blank: {
         name: "自定义空白策略",
+        description: "从默认配置开始，自行调整缓存范围、读写比例、usage 整形和创建频控。",
       },
       highCache: {
         name: "高缓存（默认）",
         description:
-          "对应参考项目的默认高缓存路径：稳定前缀、98% usage 比例、长输入 token 缩放和最终 usage 上限。单次创建上限 30k，用途是用量整形而非追求增长速度。",
+          "通用 Claude Code 兼容协议的高缓存基线：稳定前缀、98% 证据比例、长输入缩放和最终 usage 上限。单次创建上限 100k，适合日常生产流量。",
       },
       steadyGrowth: {
         name: "稳步增长",
         description:
-          "每轮写入恒定额度，缓存呈平稳上升的直线。24 轮实测每轮创建 30k、读取线性涨到约 846k。创建节奏只由单次上限决定，最小间隔与窗口预算都置零以免中途停滞。",
+          "每轮写入受 100k 单次上限约束，缓存呈平稳上升。关闭最小间隔、成功次数和窗口预算限制，适合观察缓存逐轮增长。",
       },
       rapidGrowth: {
         name: "快速增长",
         description:
-          "几轮内冲到较大数值，且每轮增量不规整。24 轮实测首轮创建即约 56k、末轮读取约 921k，单轮创建在 40k~56k 间浮动。额度由 98% 覆盖率推导，不被单次上限削平。",
+          "几轮内冲到较大数值，且每轮增量不规整。单次创建上限 120k、窗口预算 2M，适合压测高吞吐会话。",
+      },
+      largeWindow: {
+        name: "大数值读写（700k 读 / 500k 写）",
+        description:
+          "读写都允许进入大数值区间：缓存读取最终上限 700k、写入最终上限 500k，写入保留原始值并关闭创建频控。适合大上下文和边界压测，不建议直接作为低吞吐生产默认。",
+      },
+      largeReadControlledWrite: {
+        name: "大读可控写（700k 读 / 120k 目标写）",
+        description:
+          "缓存读取保留 700k 能力；写入按约 120k 目标、180k 上限整形，并限制创建释放频率。适合希望高命中、但不希望每轮写入占满 usage 的会话。",
+      },
+      largeReadSmallWrite: {
+        name: "大读小写（700k 读 / 约 30k 写）",
+        description:
+          "缓存读取可到 700k；写入以约 30k 为目标、60k 为上限，并保留较小窗口预算。适合需要高缓存命中、但要严格控制写入成本或写入频次的分组。",
+      },
+      largeWriteControlledRead: {
+        name: "大写可控读（500k 写 / 250k 读）",
+        description:
+          "缓存写入保留 500k 能力；cache_read 最终上报限制为 250k。读取限制只影响对外 usage，不会删除 tracker 中已建立的缓存前缀。",
       },
     },
     ratioModes: {

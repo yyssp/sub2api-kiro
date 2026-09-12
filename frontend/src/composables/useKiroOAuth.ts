@@ -129,6 +129,7 @@ export function useKiroOAuth() {
     clientSecret?: string
     startUrl?: string
     region?: string
+    authRegion?: string
     apiRegion?: string
     profileArn?: string
     tokenEndpoint?: string
@@ -147,6 +148,7 @@ export function useKiroOAuth() {
         client_secret: payload.clientSecret,
         start_url: payload.startUrl,
         region: payload.region,
+        auth_region: payload.authRegion,
         api_region: payload.apiRegion,
         profile_arn: payload.profileArn,
         token_endpoint: payload.tokenEndpoint,
@@ -196,6 +198,7 @@ export function useKiroOAuth() {
     email: tokenInfo.email,
     start_url: tokenInfo.start_url,
     region: tokenInfo.region,
+    auth_region: tokenInfo.auth_region,
     api_region: tokenInfo.api_region,
     machine_id: tokenInfo.machine_id,
     subscription_title: tokenInfo.subscription_title,
@@ -207,7 +210,13 @@ export function useKiroOAuth() {
   const buildImportedAPIKeyCredentials = (entry: KiroImportEntry): Record<string, unknown> => {
     const credentials: Record<string, unknown> = {
       api_key: entry.api_key,
-      api_region: entry.api_region || 'us-east-1'
+      api_region: entry.api_region || entry.region || 'us-east-1'
+    }
+    if (entry.region) {
+      credentials.region = entry.region
+    }
+    if (entry.auth_region || entry.region) {
+      credentials.auth_region = entry.auth_region || entry.region
     }
     if (entry.machine_id) {
       credentials.machine_id = entry.machine_id

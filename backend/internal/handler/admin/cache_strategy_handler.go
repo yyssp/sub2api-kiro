@@ -20,11 +20,11 @@ func NewCacheStrategyHandler(svc *service.CacheStrategyService) *CacheStrategyHa
 }
 
 type CacheStrategyRequest struct {
-	Name             string                 `json:"name" binding:"required"`
-	Description      string                 `json:"description"`
-	Enabled          *bool                  `json:"enabled"`
-	Config           map[string]interface{} `json:"config"`
-	ExpectedRevision int64                  `json:"expected_revision"`
+	Name             string         `json:"name" binding:"required"`
+	Description      string         `json:"description"`
+	Enabled          *bool          `json:"enabled"`
+	Config           map[string]any `json:"config"`
+	ExpectedRevision int64          `json:"expected_revision"`
 }
 
 type CacheStrategyBindingsRequest struct {
@@ -274,7 +274,7 @@ func (h *CacheStrategyHandler) ReplaceGroups(c *gin.Context) {
 	response.Success(c, gin.H{"group_ids": req.GroupIDs})
 }
 
-func configFromRequest(raw map[string]interface{}) (service.CacheStrategyConfig, error) {
+func configFromRequest(raw map[string]any) (service.CacheStrategyConfig, error) {
 	if raw == nil {
 		return service.DefaultCacheStrategyConfig(service.CacheStrategyKindPrefix), nil
 	}

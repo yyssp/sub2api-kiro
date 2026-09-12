@@ -229,7 +229,7 @@ func DefaultCacheStrategyConfig(kind string) CacheStrategyConfig {
 		// 带上账号会让每次账号切换都重新建缓存，前缀白白重写一遍。
 		DynamicContentMode: CacheDynamicContentExclude, ScopeMode: CacheScopeModeGroupSession,
 		PreserveUpstreamCacheUsage: true,
-		IncrementalCreateEnabled:   true, MinCacheableTokens: 1024, TokenScale: 1,
+		IncrementalCreateEnabled:   true, MinCacheableTokens: 1024, TokenScale: 2,
 		// 缓存容量与生命周期对齐 kiro.rs 的页面默认值
 		// （ui/src/lib/runtime-config-defaults.ts:516）：条目 TTL 86400 秒、
 		// 单作用域 200 条、全局 20000 条、估算字节上限 256MB。
@@ -240,16 +240,18 @@ func DefaultCacheStrategyConfig(kind string) CacheStrategyConfig {
 		// 触顶抖动。留 0 的话所有触顶请求会上报同一个数值，一眼看去就是伪造的。
 		CapJitterMinTokens: 12000, CapJitterMaxTokens: 24000,
 		UncachedInputMinTokens: 1024, UncachedInputMaxTokens: 4096,
-		// 创建控制的默认限额。全留 0 等于不限流，缓存会无节制增长；
-		// 数值取自 kiro.rs 的 PromptCacheCreationControlConfig 默认值
-		// （5 分钟窗口 12 万、单次 3 万、增量下限 1.2 万、最小间隔 60 秒）。
+		// 创建控制的默认限额对齐线上 kiro.rs 运行配置：
+		// 5 分钟窗口 60 万、单次 10 万、增量下限 1.2 万、最小间隔 6 秒、
+		// 至少间隔 2 次成功请求。旧的 60 秒 / 3 万 / 12 万组合会让快速会话
+		// 看起来像「十几条请求才写一次」，并把大量记录压成 30k。
 		CreationControl: CacheCreationControl{
-			Enabled:                     true,
-			MinCreationDeltaTokens:      12000,
-			MinCreationIntervalSeconds:  60,
-			MaxCreationTokensPerEvent:   30000,
-			CreationBudgetWindowSeconds: 300,
-			MaxCreationTokensPerWindow:  120000,
+			Enabled:                      true,
+			MinCreationDeltaTokens:       12000,
+			MinSuccessfulRequestsBetween: 2,
+			MinCreationIntervalSeconds:   6,
+			MaxCreationTokensPerEvent:    100000,
+			CreationBudgetWindowSeconds:  300,
+			MaxCreationTokensPerWindow:   600000,
 		},
 		Usage: DefaultCacheUsagePolicy(),
 	}
@@ -380,7 +382,7 @@ func NormalizeCacheStrategyConfig(in CacheStrategyConfig) (CacheStrategyConfig, 
 	if err := validateCacheUsagePolicy(in.Usage); err != nil {
 		return in, err
 	}
-	if in.CacheCurrentUserStablePrefix == false {
+	if !in.CacheCurrentUserStablePrefix {
 		in.CurrentUserStablePrefixMaxTokens = 0
 	}
 	if in.Kind == CacheStrategyKindDisabled {
@@ -910,9 +912,5 @@ func cloneIntMap(in map[string]int) map[string]int {
 }
 
 func cloneCacheUsagePolicy(in CacheUsagePolicy) CacheUsagePolicy {
-	in.Input = in.Input
-	in.Output = in.Output
-	in.CacheRead = in.CacheRead
-	in.CacheCreation = in.CacheCreation
 	return in
 }

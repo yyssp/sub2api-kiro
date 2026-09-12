@@ -137,7 +137,11 @@ type Component struct {
 // New 构造组件。调用方需先通过 Validate 校验配置。
 func New(cfg *Config) *Component {
 	// 两个客户端共享同一 Transport，以复用连接池；仅超时语义不同。
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	baseTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		baseTransport = &http.Transport{}
+	}
+	transport := baseTransport.Clone()
 
 	// 不跟随重定向：目标端的 3xx 应原样回传给浏览器，
 	// 由本端代为跟随会绕过调用方对目标地址的预期。

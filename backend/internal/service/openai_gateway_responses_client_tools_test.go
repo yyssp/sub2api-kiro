@@ -386,7 +386,7 @@ func TestOpenAIPassthroughResponsesNonStreamingJSONCommitsCacheUsage(t *testing.
 		return &httpUpstreamRecorder{resp: &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body: io.NopCloser(strings.NewReader(`{"id":"resp_passthrough_json","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":18,"output_tokens":6,"total_tokens":24}}`)),
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_passthrough_json","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":18,"output_tokens":6,"total_tokens":24}}`)),
 		}}
 	}
 	account := &Account{ID: 77113, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}

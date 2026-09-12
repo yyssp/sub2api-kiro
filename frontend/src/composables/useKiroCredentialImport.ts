@@ -156,12 +156,13 @@ export function useKiroCredentialImport() {
     try {
       let parsed: KiroRsImportEntry[]
       if (source.value === 'kiro_ide') {
-        // Kiro IDE 导出没有 endpoint/priority/disabled，补成默认值以复用同一张预览表。
+        // Kiro IDE 导出没有 endpoint/priority/disabled。只补状态字段；
+        // priority 保持 undefined，让宿主表单的优先级真正生效。
         const res = await importToken({
           token_json: content.value,
           device_registration_json: deviceRegistrationJson.value.trim() || undefined
         })
-        parsed = res.entries.map((e) => ({ ...e, priority: 0, disabled: false }))
+        parsed = res.entries.map((e) => ({ ...e, disabled: false }))
       } else {
         const payload =
           source.value === 'token' ? buildTokenListPayload(content.value) : content.value
