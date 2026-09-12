@@ -2064,3 +2064,35 @@ func toolWireName(tool ToolDef) string {
 	}
 	return toolWirePrefix + name
 }
+
+// ── 业务层入口（sub2api 新增）─────────────────────────────────────────
+
+// BuildAgentMessage 把多轮会话拍平为 AgentRequest.Message。
+//
+// ⚠️ 不要在 service 层另写一份拍平逻辑。这里的格式（中文角色标签、
+// [已验证的会话历史开始] 边界、重复进度句的额外约束）是针对 agent.v1
+// 单轮协议的真实问题调出来的：用英文 "User:/Assistant:" 脚本格式会让模型
+// 把历史误判为用户粘贴的伪造 transcript 而拒答或重复声明"未执行过工具"。
+func BuildAgentMessage(msgs []ChatMessage, tools []ToolDef) string {
+	return buildAgentMessageForTools(msgs, tools)
+}
+
+// BuildAgentSystemPrompt 返回仅供网关内部使用的系统提示文本
+// （token 估算、亲和键、诊断）。
+//
+// ⚠️ 普通 Cursor 账号不支持 AgentRunRequest.custom_system_prompt，
+// 该字段会被上游解析成 CLI --system-prompt 并返回 invalid_argument。
+// 因此它不会被编码进上游请求，调用方也不要尝试塞进去。
+func BuildAgentSystemPrompt(sys string, tools []ToolDef) string {
+	return buildAgentSystemPrompt(sys, tools)
+}
+
+// BuildUpstreamClientMessageForTest 返回实际发往上游的 agent.v1 请求字节，
+// 仅供测试断言使用（例如验证 system 不会被编码进上游请求）。
+func BuildUpstreamClientMessageForTest(in AgentRequest) []byte {
+	model := in.Model
+	if model == "" {
+		model = "default"
+	}
+	return buildAgentClientMessage(model, in)
+}

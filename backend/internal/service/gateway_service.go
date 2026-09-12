@@ -786,6 +786,7 @@ type GatewayService struct {
 	concurrencyService    *ConcurrencyService
 	claudeTokenProvider   *ClaudeTokenProvider
 	kiroTokenProvider     *KiroTokenProvider
+	cursorTokenProvider   *CursorTokenProvider
 	kiroCooldownStore     KiroCooldownStore
 	sessionLimitCache     SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
 	rpmCache              RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
@@ -1412,6 +1413,15 @@ func (s *GatewayService) getOAuthToken(ctx context.Context, account *Account) (s
 	// 对于 Anthropic OAuth 账号，使用 ClaudeTokenProvider 获取缓存的 token
 	if account.Platform == PlatformAnthropic && account.Type == AccountTypeOAuth && s.claudeTokenProvider != nil {
 		accessToken, err := s.claudeTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return "", "", err
+		}
+		return accessToken, "oauth", nil
+	}
+
+	// Cursor OAuth: token 由 CursorTokenProvider 负责刷新与缓存。
+	if account.Platform == PlatformCursor && s.cursorTokenProvider != nil {
+		accessToken, err := s.cursorTokenProvider.GetAccessToken(ctx, account)
 		if err != nil {
 			return "", "", err
 		}

@@ -93,3 +93,37 @@ func estimateOutputUsageFromLengths(textLen, toolBytes, toolCalls int) outputUsa
 		ToolCalls:         toolCalls,
 	}
 }
+
+// ── 业务层入口（sub2api 新增）─────────────────────────────────────────
+
+// OutputUsage 是一次回复的输出用量估算（供流式适配层在回调中累计后调用）。
+//
+// ⚠️ Source 恒为 "estimated"：Cursor agent.v1 不返回任何可信的 token 用量字段，
+// 这里是按约 3 字节/token 的启发式推算，不可当作上游精确用量上报。
+type OutputUsage struct {
+	OutputTokens      int
+	VisibleTextTokens int
+	Kind              string
+	Source            string
+	ToolCalls         int
+	CacheReadTokens   int
+	CacheWriteTokens  int
+}
+
+// EstimateOutputUsage 由流式回调累计出的长度推算输出用量。
+// textLen 为可见文本字节数，toolBytes/toolCalls 为工具调用的语义字节数与次数。
+func EstimateOutputUsage(textLen, toolBytes, toolCalls int) OutputUsage {
+	e := estimateOutputUsageFromLengths(textLen, toolBytes, toolCalls)
+	return OutputUsage{
+		OutputTokens:      e.OutputTokens,
+		VisibleTextTokens: e.VisibleTextTokens,
+		Kind:              e.Kind,
+		Source:            e.Source,
+		ToolCalls:         e.ToolCalls,
+		CacheReadTokens:   e.CacheReadTokens,
+		CacheWriteTokens:  e.CacheWriteTokens,
+	}
+}
+
+// ToolCallUsageBytes 返回单次工具调用计入输出用量的语义字节数。
+func ToolCallUsageBytes(tc ToolCall) int { return toolCallUsageBytes(tc) }

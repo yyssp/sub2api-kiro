@@ -739,3 +739,11 @@ func parsePDFLiteralStrings(data []byte) []string {
 // ⚠️ 未移植 oaiToChat：它把 ai2api 自己的 OpenAI 请求结构(oaiReq)转成 ChatMessage。
 // sub2api 侧的入参是 ParsedRequest，这层适配在 service 层的 translate 中实现
 // （见 04-architecture.md §2.1 对 translate.go 的说明）。
+
+// ── 业务层入口（sub2api 新增）─────────────────────────────────────────
+
+// ParseContentBlocks 把 Anthropic 的 content 块解析成纯文本 + 图片 + 文档附件。
+// raw 可以是字符串，也可以是内容块数组。
+func ParseContentBlocks(raw json.RawMessage) (string, []ImageAttachment, []DocumentAttachment) {
+	return rawToStringAndAttachments(raw)
+}
