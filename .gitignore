@@ -147,6 +147,12 @@ docs/*
 !docs/channel-monitor-v2-safe-defaults.md
 !docs/cursor-protocol-hardening.md
 !docs/kiro-protocol-ecosystem-analysis.md
+!docs/kiro-research/
+!docs/kiro-research/*.md
+!docs/kiro-research/findings/
+!docs/kiro-research/findings/*.md
+!docs/kiro-research/repos/
+!docs/kiro-research/repos/*.md
 !docs/legal/
 !docs/legal/*.md
 !docs/screenshots/
