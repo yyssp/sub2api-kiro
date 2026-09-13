@@ -324,7 +324,12 @@ func TestStripPrefix_ResolvesClaudeCodeModel(t *testing.T) {
 	}
 }
 
-func TestStripPrefix_ResolvesAutoAliasToCursorDefault(t *testing.T) {
+// 本测试原名 TestStripPrefix_ResolvesAutoAliasToCursorDefault，断言 auto 会被
+// 翻译成 Cursor 上游的 "default"。该行为已移除并反转：网关不再代为构造服务端
+// 选路别名——auto 的实际服务模型在 agent.v1 响应里查不到，无法按真实模型计费，
+// 因此由 ValidateDownstreamModel 在入口直接拒绝（见
+// models_downstream_model_validation_test.go）。
+func TestStripPrefix_DoesNotManufactureCursorAutoAlias(t *testing.T) {
 	modelMu.Lock()
 	oldLive, oldSet, oldPath := liveModels, liveSet, livePath
 	modelMu.Unlock()
@@ -332,13 +337,8 @@ func TestStripPrefix_ResolvesAutoAliasToCursorDefault(t *testing.T) {
 
 	SetLiveModels([]ModelMeta{{ID: "default", Family: "auto", Vision: true, Tools: true}})
 	for _, input := range []string{"auto", "Auto", "cursor/auto"} {
-		if got := StripPrefix(input); got != "default" {
-			t.Fatalf("Auto 别名 %q 应转换为 Cursor 上游 default, got %q", input, got)
+		if got := StripPrefix(input); got == "default" {
+			t.Fatalf("StripPrefix(%q) 仍翻译成 %q：网关不得代为构造服务端选路别名", input, got)
 		}
-	}
-
-	SetLiveModels([]ModelMeta{{ID: "auto", Family: "auto", Vision: true, Tools: true}})
-	if got := StripPrefix("Auto"); got != "auto" {
-		t.Fatalf("动态清单提供 auto 时应使用规范 ID auto, got %q", got)
 	}
 }

@@ -2,6 +2,8 @@ package cursor
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -215,16 +217,16 @@ func IsCursorModel(model string) bool {
 // ERROR_BAD_MODEL_NAME(继而被网关误当可重试而反复换号刷屏)。
 func normalizeCursorModel(model string) string {
 	m := strings.ToLower(strings.TrimSpace(model))
-	// Claude Code/Cursor clients commonly use the public alias "auto", while
-	// Cursor's agent.v1 protocol exposes the corresponding upstream model as
-	// "default". Prefer a real "auto" entry if a future upstream adds one;
-	// otherwise translate the alias before the protobuf request is built.
-	if m == "auto" {
-		if inModelSet(m) {
-			return "auto"
-		}
-		return "default"
-	}
+	// ⚠️ 这里曾把 "auto" 翻译成 Cursor 协议的 "default" 再发上游。已移除。
+	//
+	// 原因不是翻译写错了，而是**服务端选路的模型不可计费**：Cursor 的
+	// agent.v1 响应信封(AgentServerMessage/InteractionUpdate)没有任何 model
+	// 字段，上游不会告诉我们 auto 最终选了谁；响应流也不带 usage。于是按真实
+	// 模型计价这条路在协议层就不存在，只能整体按最贵模型兜底(见
+	// gateway_usage_billing.go 的 cursorConservativeFallbackBillingModel)。
+	//
+	// 因此网关一律要求显式模型：auto/default/composer 这类 Cursor 服务端选路
+	// 别名不再由我们代为构造，由 ValidateDownstreamModel 在进协议层之前拒绝。
 	if m == "" || inModelSet(m) {
 		return model
 	}
@@ -469,6 +471,55 @@ func claudeCandidateIDs(base, suffix string) []string {
 		}
 	}
 	return out
+}
+
+// ErrServerSideRoutedModel 表示下游显式请求了 Cursor 的服务端选路别名
+// (auto/default/composer)。这类模型由 Cursor 服务端挑选真实模型，而 agent.v1
+// 响应里不含 model 字段，网关无法得知实际服务方，因此无法按真实模型计费。
+var ErrServerSideRoutedModel = errors.New("cursor: server-side routed model is not billable; request an explicit model")
+
+// ErrUnsupportedDownstreamModel 表示模型名无法解析为任何标准 Claude 协议模型。
+// 含 Cursor 自有模型名(composer-2.5)与第三方名(gpt-5)：对下游暴露的必须是各场景
+// 的标准协议模型，Cursor 协议内部名不构成公开契约。
+var ErrUnsupportedDownstreamModel = errors.New("cursor: unsupported model")
+
+// ValidateDownstreamModel 在进入协议层之前校验下游请求的模型名。
+//
+// 必须显式传模型：
+//   - 空模型不再默认成 Cursor 的 "default"(原 agent.go 的兜底)，否则用户什么都
+//     不传就会静默走到服务端选路，落到最贵模型的保守计费上。
+//   - auto/default/composer 一律拒绝，理由见 ErrServerSideRoutedModel。
+//   - 只有能解析到标准 Claude 模型的名字放行；Cursor 协议内部名不对外暴露。
+func ValidateDownstreamModel(model string) error {
+	raw := strings.TrimSpace(model)
+	if raw == "" {
+		return fmt.Errorf("%w: model is required", ErrUnsupportedDownstreamModel)
+	}
+	if strings.HasPrefix(strings.ToLower(raw), "cursor/") {
+		raw = strings.TrimSpace(raw[len("cursor/"):])
+	}
+	if isServerSideRoutedModelAlias(raw) {
+		return fmt.Errorf("%w: %q", ErrServerSideRoutedModel, model)
+	}
+	if _, ok := ResolveClaudeCodeModel(raw); ok {
+		return nil
+	}
+	if _, ok := fallbackClaudeCodeModel(raw); ok {
+		return nil
+	}
+	return fmt.Errorf("%w: %q", ErrUnsupportedDownstreamModel, model)
+}
+
+// isServerSideRoutedModelAlias 判定 Cursor 的服务端选路别名。
+// 与 gateway_usage_billing.go 的 cursorUnpriceableModelAlias 是同一组语义：
+// 那边是「万一漏到计费阶段则按最贵模型兜底」，这边是「在入口就挡住」。
+func isServerSideRoutedModelAlias(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	if m == "auto" || m == "default" {
+		return true
+	}
+	// composer 系整体是 Cursor 自研的服务端选路面，含 composer-2.5 等变体。
+	return strings.HasPrefix(m, "composer")
 }
 
 // ResolveClaudeCodeModel 将 Claude Code 标准模型名解析为当前动态 Cursor

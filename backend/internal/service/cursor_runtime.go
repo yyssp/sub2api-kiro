@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -539,6 +540,22 @@ func (s *GatewayService) forwardCursorMessages(ctx context.Context, c *gin.Conte
 	if next := account.GetMappedModel(originalModel); next != "" {
 		mappedModel = next
 	}
+
+	// ⚠️ 必须在映射之后、进协议层之前校验：网关只接受标准 Claude 协议模型。
+	//
+	// 放行 auto/default/composer 会让 Cursor 服务端自行选路，而 agent.v1 响应
+	// 信封里没有 model 字段，我们无从得知实际服务方，只能整单按最贵模型兜底
+	// 计费——对用户是无声的超额扣费。宁可在入口 400 明确拒绝。
+	//
+	// 校验 mappedModel 而不是 originalModel：映射是管理员配置的最终生效值，
+	// 只校验原始名会让一条 "claude-opus-4-6 -> auto" 的映射绕过整道闸门。
+	if err := cursor.ValidateDownstreamModel(mappedModel); err != nil {
+		// 复用 BetaBlockedError 的契约：handler 对它是 400 invalid_request_error
+		// 且**不 failover**。这点必须保证——模型名是客户端错误，逐个换号重试只会
+		// 把整个号池烧一遍，每个号都失败在同一个原因上。
+		return nil, &BetaBlockedError{Message: cursorInvalidModelMessage(mappedModel, err)}
+	}
+
 	body := parsed.Body.Bytes()
 
 	token, err := s.cursorAccessToken(ctx, account)
@@ -855,4 +872,22 @@ func estimateCursorInputTokens(req cursor.AgentRequest) int {
 	}
 	// ⚠️ 兜底为 1 而不是 0：0 会让计费与限流把请求当成空请求。
 	return 1
+}
+
+// cursorInvalidModelMessage 把协议层的模型校验错误转成面向客户端的文案。
+// 对服务端选路别名要说清「为什么不给用」，否则用户只会反复重试同一个 auto。
+func cursorInvalidModelMessage(model string, err error) string {
+	if errors.Is(err, cursor.ErrServerSideRoutedModel) {
+		return fmt.Sprintf(
+			"Model %q is a Cursor server-side routing alias and is not supported. "+
+				"Cursor does not report which model actually served the request, so usage cannot be billed accurately. "+
+				"Please request an explicit model (e.g. claude-opus-4-6, claude-sonnet-4-5).",
+			model,
+		)
+	}
+	return fmt.Sprintf(
+		"Model %q is not supported on the cursor platform. "+
+			"Please request a standard Claude model (e.g. claude-opus-4-6, claude-sonnet-4-5).",
+		model,
+	)
 }

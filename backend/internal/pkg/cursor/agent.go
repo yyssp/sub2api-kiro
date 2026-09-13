@@ -565,9 +565,13 @@ func (c *Client) RunAgentStream(ctx context.Context, a *Account, in AgentRequest
 	if agentDebug && traceID == "" {
 		traceID = genUUID()
 	}
-	model := in.Model
+	// ⚠️ 这里曾在 model 为空时兜底成 "default"。已移除：那会让「什么都不传」
+	// 静默走到 Cursor 服务端选路，而选路结果不可计费(agent.v1 响应信封里没有
+	// model 字段)。模型必须由调用方显式提供，入口处已由 ValidateDownstreamModel
+	// 校验；这里是纵深防御，防止绕过网关直接调协议层。
+	model := strings.TrimSpace(in.Model)
 	if model == "" {
-		model = "default"
+		return false, fmt.Errorf("%w: model is required", ErrUnsupportedDownstreamModel)
 	}
 	quotaSurface := cursorClientTypeForModel(model)
 	toolByLower := make(map[string]ToolDef, len(in.Tools))
