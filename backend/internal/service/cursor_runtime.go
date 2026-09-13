@@ -4,14 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/anthropictokenizer"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"go.uber.org/zap"
@@ -29,6 +33,18 @@ func sharedCursorClient() *cursor.Client {
 	return cursorClientInst
 }
 
+// cursorTraceIDFromContext 取网关请求 ID 作为协议层 trace。
+//
+// 值由 middleware.RequestLogger 写入 request context；取不到时返回空串，
+// 协议层会退回 trace=none（仅影响日志可读性，不影响请求本身）。
+func cursorTraceIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	requestID, _ := ctx.Value(ctxkey.RequestID).(string)
+	return strings.TrimSpace(requestID)
+}
+
 // cursorRequestFromBody 把 Anthropic /v1/messages 请求体转成协议层的 AgentRequest。
 //
 // ⚠️ 消息拍平必须走 cursor.BuildAgentMessage，不要在这里另写一份：
@@ -39,45 +55,69 @@ func cursorRequestFromBody(body []byte, model string) cursor.AgentRequest {
 	root := gjson.ParseBytes(body)
 
 	var msgs []cursor.ChatMessage
+	var rawMsgs []cursor.AnthropicRawMessage
 	root.Get("messages").ForEach(func(_, msg gjson.Result) bool {
-		role := strings.TrimSpace(msg.Get("role").String())
-		if role == "" {
-			role = "user"
-		}
-		text, images, documents := cursor.ParseContentBlocks(json.RawMessage(msg.Get("content").Raw))
-		// 工具结果块解析后可能没有可见文本，但仍要保留该轮，
-		// 否则历史里会缺一轮、模型会重复调用同一个工具。
-		if strings.TrimSpace(text) == "" && len(images) == 0 && len(documents) == 0 {
-			return true
-		}
-		msgs = append(msgs, cursor.ChatMessage{
-			Role: role, Content: text, Images: images, Documents: documents,
-		})
+		role := msg.Get("role").String()
+		content := json.RawMessage(msg.Get("content").Raw)
+		// ⚠️ 必须走 ParseAnthropicMessage 而不是 ParseContentBlocks：
+		// 后者不认 tool_use / tool_result 块（两者都没有顶层 text 字段），
+		// 会把整轮工具交互解析成空串后丢弃，导致模型重复调用同一个工具。
+		// 一轮消息可能展开成多条（工具结果各占一条），故用 append(..., ...)。
+		msgs = append(msgs, cursor.ParseAnthropicMessage(role, content)...)
+		rawMsgs = append(rawMsgs, cursor.AnthropicRawMessage{Role: role, Content: content})
 		return true
 	})
 
 	tools := cursorToolsFromBody(root)
 
+	// ⚠️ 下面两步的顺序不可调换，且必须在 BuildAgentMessage / 系统提示词构造之前完成。
+	//
+	// 1) 先补齐核心工具：Cursor 上游会返回 shell/read 原生分支，本轮 tools 里
+	//    没有对应定义时 agent.go 抛 ErrUndeclaredUpstreamTool，整轮夭折。
+	// 2) 再抑制本地元工具：Skill 的结果由 Claude Code 本地展开整棵 skill 树，
+	//    透给上游会让**下一轮请求在客户端侧**被判 "Prompt is too long" 而硬卡死。
+	//
+	// 顺序反了会静默失效：抑制摘掉的 Skill/ToolSearch/DeferredToolPlaceholder
+	// 正是补齐逻辑用来判定「这是携带动态工具目录的主 Claude Code 请求」的 marker，
+	// 先抑制会让 marker 数掉到阈值以下，补齐直接不触发。
+	if merged, changed := cursor.MergeClaudeCodeCoreTools(model, tools); changed {
+		tools = merged
+	}
+	if filtered, suppressed := cursor.SuppressClaudeCodeContextExpansionTools(model, tools); len(suppressed) > 0 {
+		tools = filtered
+		// 必须同时注入约束文案：只摘工具不说明，模型会反复 ToolSearch
+		// 去找一个永远拿不到的工具，空转不推进。
+		msgs = cursor.AppendClaudeCodeContextExpansionConstraint(msgs)
+	}
+
 	// system 只用于网关内部（token 估算/诊断）。普通 Cursor 账号不支持
 	// custom_system_prompt，编码进上游会得到 invalid_argument。
 	system := cursor.BuildAgentSystemPrompt(cursorSystemText(root), tools)
 
-	// 只把「当前轮」的附件挂到 selected_context：重放历史图片会让上游
-	// 报 "Image not found"。
-	var images []cursor.ImageAttachment
-	var documents []cursor.DocumentAttachment
-	if n := len(msgs); n > 0 {
-		images = msgs[n-1].Images
-		documents = msgs[n-1].Documents
-	}
+	// 只把「当前轮」（最后一个 assistant 轮之后）的附件挂到 selected_context：
+	// 重放历史图片会让上游报 "Image not found"；而只取最后一条消息会丢掉
+	// 同一轮里由 tool_result 带回的图片。
+	images, documents := cursor.CollectCurrentTurnAttachments(msgs)
+
+	// effort 档位决定 thinking 变体模型名，漏掉会让 output_config.effort 静默失效。
+	resolvedModel := cursor.ApplyClaudeEffortModel(
+		cursor.StripPrefix(model),
+		root.Get("output_config.effort").String(),
+	)
 
 	return cursor.AgentRequest{
-		Model:     cursor.StripPrefix(model),
-		System:    system,
-		Message:   cursor.BuildAgentMessage(msgs, tools),
-		Tools:     tools,
-		Images:    images,
-		Documents: documents,
+		Model:  resolvedModel,
+		System: system,
+		// MaxMode 必须跟随模型名里的 -max 后缀，否则 max 模型按普通模式跑。
+		MaxMode: strings.Contains(strings.ToLower(resolvedModel), "max"),
+		Message: cursor.BuildAgentMessage(msgs, tools),
+		Tools:   tools,
+		// ⚠️ ReadFileContent 不可省：Cursor 原生 Edit 只回传新内容，
+		// 必须靠这张表补出 old_string，查不到会直接抛 ErrMalformedUpstreamTool
+		// 让整个请求失败（终止错误，不降级）。
+		ReadFileContent: cursor.ParseAnthropicReadFileContents(rawMsgs),
+		Images:          images,
+		Documents:       documents,
 	}
 }
 
@@ -138,10 +178,16 @@ type cursorAnthropicEmitter struct {
 	textOpen      bool
 	reasoningOpen bool
 
-	textLen    int
-	toolBytes  int
-	toolCount  int
-	stopReason string
+	// ⚠️ 缓冲正文/思考原文而不是只累计长度：token 必须在流结束后对完整文本
+	// 整体计数。BPE 合并跨越片段边界，逐块计数再求和会严重高估（Cursor 的
+	// text_delta 粒度很细，实测可高估 300%+）。cursorUsageTextCap 兜住内存。
+	textBuf      strings.Builder
+	reasoningBuf strings.Builder
+	textLen      int
+	reasoningLen int
+	toolBytes    int
+	toolCount    int
+	stopReason   string
 
 	firstTokenAt time.Time
 	start        time.Time
@@ -156,6 +202,108 @@ func newCursorAnthropicEmitter(write func(string, any) error, model string, star
 		stopReason: "end_turn",
 		start:      start,
 	}
+}
+
+// cursorUsageTextCap 是为计费缓冲的输出原文上限（字节）。
+//
+// ⚠️ 为什么要设上限：emitter 会把整轮输出留在内存里以便流末整体分词。
+// 不封顶时，超长回复（或上游异常吐流）会让单个请求的驻留内存无界增长，
+// 高并发下直接打爆进程。
+//
+// ⚠️ 为什么取 1MB：远超正常回复（约 25 万 token），正常流量永远碰不到；
+// 真触顶时超出部分回退到 len/3 估算——计费略有偏差，好过 OOM。
+const cursorUsageTextCap = 1 << 20
+
+// appendUsageText 把流式片段追加进计费缓冲，超过上限后停止追加。
+// 调用方必须已持有 emitter 的锁。
+func appendUsageText(buf *strings.Builder, piece string) {
+	if buf.Len() >= cursorUsageTextCap {
+		return
+	}
+	if remain := cursorUsageTextCap - buf.Len(); len(piece) > remain {
+		// ⚠️ 按 rune 边界截断：直接切字节会在多字节字符中间断开，
+		// 留下半个 UTF-8 序列，分词器只能把它当成替换字符处理。
+		piece = piece[:trimToRuneBoundary(piece, remain)]
+	}
+	buf.WriteString(piece)
+}
+
+// trimToRuneBoundary 返回 ≤ n 且落在 UTF-8 字符边界上的最大截断位置。
+func trimToRuneBoundary(s string, n int) int {
+	if n >= len(s) {
+		return len(s)
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return n
+}
+
+// cursorSSEHeartbeatInterval 是首字到达前的 SSE 保活间隔。
+// 取 15s：远小于反代常见的 100s 空闲窗口，也不至于把日志刷爆。
+const cursorSSEHeartbeatInterval = 15 * time.Second
+
+// startPreStreamHeartbeat 在首个真实事件到达之前周期性写入 SSE 注释行保活，
+// 返回停止函数（幂等，必须在 RunAgentStream 返回后立即调用）。
+//
+// ⚠️ 必须和内容事件共用 e.mu：心跳跑在独立 goroutine 上，与 OnText/OnReasoning
+// 并发写同一个 http.ResponseWriter。不加锁会把注释行插进某个 data 帧中间，
+// 产生客户端无法解析的半截事件。
+//
+// ⚠️ 首个真实事件发出后就不再写心跳：此后流本身就在持续产生字节，
+// 继续插注释只是噪音；ensureStarted 置 started 即为分界。
+func (e *cursorAnthropicEmitter) startPreStreamHeartbeat(
+	ctx context.Context, w io.Writer, interval time.Duration,
+) func() {
+	if interval <= 0 {
+		return func() {}
+	}
+
+	// 头已经发出，立刻写一个前导注释：让反代和客户端马上看到字节，
+	// 而不是等到第一次 tick。
+	e.mu.Lock()
+	_, _ = io.WriteString(w, ": processing\n\n")
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	e.mu.Unlock()
+
+	done := make(chan struct{})
+	var once sync.Once
+	stop := func() { once.Do(func() { close(done) }) }
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				e.mu.Lock()
+				if e.started {
+					// 真实事件已经开始推送，心跳完成使命。
+					e.mu.Unlock()
+					return
+				}
+				_, err := io.WriteString(w, ": processing\n\n")
+				if err == nil {
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+				}
+				e.mu.Unlock()
+				if err != nil {
+					// 客户端已断开，继续写没有意义。
+					return
+				}
+			}
+		}
+	}()
+
+	return stop
 }
 
 // ensureStarted 发送 message_start。延迟到第一个内容到达时才发，
@@ -221,6 +369,7 @@ func (e *cursorAnthropicEmitter) OnText(piece string) {
 		return
 	}
 	e.textLen += len(piece)
+	appendUsageText(&e.textBuf, piece)
 }
 
 func (e *cursorAnthropicEmitter) OnReasoning(piece string) {
@@ -245,6 +394,10 @@ func (e *cursorAnthropicEmitter) OnReasoning(piece string) {
 			return
 		}
 	}
+	// ⚠️ 思考内容同样是计费的输出 token。漏记会让 thinking 模型的
+	// output_tokens 被系统性低估（长思考 + 短回答时几乎归零），直接导致少计费。
+	e.reasoningLen += len(piece)
+	appendUsageText(&e.reasoningBuf, piece)
 	_ = e.write("content_block_delta", map[string]any{
 		"type": "content_block_delta", "index": e.blockIdx,
 		"delta": map[string]any{"type": "thinking_delta", "thinking": piece},
@@ -333,10 +486,25 @@ func (e *cursorAnthropicEmitter) failMidStream(errorType, message string) {
 	})
 }
 
+// realOutputWritten 报告是否已经推出过**语义内容**（message_start 及其后的块）。
+//
+// ⚠️ 必须走这个带锁的读取口，不要直接读 e.started：OnText/OnReasoning/OnTool
+// 由上游流的 goroutine 回调，心跳 goroutine 也会读它，裸读是数据竞争
+// （-race 下必挂，生产里则是偶发的错误分支走偏）。
+//
+// ⚠️ 只写过 SSE 保活注释不算真实输出：注释按规范被客户端忽略，
+// 此时这条流还没有任何语义内容，收尾方式与"已经吐了一半答案"完全不同。
+func (e *cursorAnthropicEmitter) realOutputWritten() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.started
+}
+
 func (e *cursorAnthropicEmitter) usage(inputTokens int) ClaudeUsage {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	out := cursor.EstimateOutputUsage(e.textLen, e.toolBytes, e.toolCount)
+	out := cursor.EstimateOutputUsageFromText(
+		e.textBuf.String()+e.reasoningBuf.String(), e.toolBytes, e.toolCount)
 	return ClaudeUsage{InputTokens: inputTokens, OutputTokens: out.OutputTokens}
 }
 
@@ -382,6 +550,11 @@ func (s *GatewayService) forwardCursorMessages(ctx context.Context, c *gin.Conte
 	protoAccount.AccessToken = token
 	agentReq := cursorRequestFromBody(body, mappedModel)
 
+	// TraceID 串上网关请求 ID：协议层的 logAgentDebug 全部以它为前缀。
+	// 不串的话上游调试日志只会打 trace=none，一次线上排障拿到的几十条
+	// [agent] 日志无法归属到具体请求，与网关侧日志也对不上。
+	agentReq.TraceID = cursorTraceIDFromContext(ctx)
+
 	inputTokens := estimateCursorInputTokens(agentReq)
 	cachePlan := prepareCachePlanForContext(
 		ctx, c, account, parsed.Group, body, mappedModel,
@@ -419,22 +592,48 @@ func (s *GatewayService) streamCursorMessages(
 	}
 	emitter := newCursorAnthropicEmitter(write, originalModel, startTime)
 
+	// ⚠️ 头发完就立刻写一个 SSE 注释，并在首个真实事件到达前周期性续写。
+	//
+	// agent.v1 是单轮 agentic 调用，长 prompt 的首字延迟常达数十秒，协议层的
+	// 首字硬墙是 90s；而 Cloudflare 等反代的空闲连接窗口是 100s，且 message_start
+	// 被刻意延后到第一个内容才发（见 ensureStarted：延后才能在出错时改状态码）。
+	// 三者叠加的结果是：慢但正常的请求会在反代处被掐断，客户端看到的是连接重置
+	// 而不是「慢」。SSE 注释行（":" 开头）不是事件，任何合规客户端都会忽略，
+	// 只用来让连接保持活跃。
+	stopHeartbeat := emitter.startPreStreamHeartbeat(ctx, c.Writer, cursorSSEHeartbeatInterval)
+
 	_, runErr := sharedCursorClient().RunAgentStream(ctx, protoAccount, agentReq,
 		emitter.OnText, emitter.OnReasoning, emitter.OnTool)
+	stopHeartbeat()
 
 	usage := emitter.usage(inputTokens)
 	mergeAndCommitCachePlan(c, &usage, true)
 
 	if runErr != nil {
-		classified := classifyCursorError(mappedModel, runErr.Error())
+		classified := classifyCursorRunError(mappedModel, runErr)
 		s.recordCursorFailure(ctx, c, account, classified)
-		if emitter.started {
-			// 已经推流：只能在流内报错，不能再改状态码。
+
+		// ⚠️ 收尾方式按"是否已推出真实内容"分成两条，不能合并。
+		//
+		// 通用 handler 判定能否换号的依据是 c.Writer.Size() 有没有变化，而**不是**
+		// SafeToFailoverAfterWrite（那个字段只有 OpenAI 侧的 handler 会读）。
+		// 而 startPreStreamHeartbeat 在发头之后立刻无条件写了一个 ": processing"，
+		// 于是流式路径的 Writer.Size() 必然已经变化 —— handler 一定走
+		// handleFailoverExhausted，并且它会自己补写一帧 SSE error。
+		//
+		// 所以这里再调一次 failMidStream 就是第二帧 error：客户端连着收到两个
+		// error 事件，严格的 SDK 会直接判协议错误。
+		if realOutput := emitter.realOutputWritten(); realOutput {
+			// 已经开了 content_block：handler 只会追加一帧 error，不会闭合块。
+			// 必须由 emitter 自己闭合，否则客户端停在一个永不收尾的块上。
+			// 这条流已经无法换号（内容撤不回），返回普通 error 即可。
 			emitter.failMidStream(classified.ErrorType, classified.Message)
 			return nil, fmt.Errorf("cursor upstream failed: %s", sanitizeUpstreamErrorMessage(runErr.Error()))
 		}
-		emitter.failMidStream(classified.ErrorType, classified.Message)
-		return nil, fmt.Errorf("cursor upstream failed: %s", sanitizeUpstreamErrorMessage(runErr.Error()))
+
+		// 只写过心跳注释：没有任何待闭合的块，交给 handler 渲染错误帧。
+		// 返回 failover 错误才能让账号进冷却、并在 Writer 未被写时换号重试。
+		return nil, cursorFailoverError(classified, false)
 	}
 
 	if err := emitter.finish(usage); err != nil {
@@ -478,16 +677,22 @@ func (s *GatewayService) blockCursorMessages(
 		})
 
 	if runErr != nil {
-		classified := classifyCursorError(mappedModel, runErr.Error())
+		classified := classifyCursorRunError(mappedModel, runErr)
 		s.recordCursorFailure(ctx, c, account, classified)
-		c.JSON(classified.StatusCode, gin.H{
-			"type":  "error",
-			"error": gin.H{"type": classified.ErrorType, "message": classified.Message},
-		})
-		return nil, fmt.Errorf("cursor upstream failed: %s", sanitizeUpstreamErrorMessage(runErr.Error()))
+		// ⚠️ 这里绝不能自己写响应体。
+		//
+		// 返回 *UpstreamFailoverError 后，handler 会继续换号重试；只有在
+		// failover 全部用尽时才由 handleFailoverExhausted 渲染最终响应。
+		// 若此处先写一份 c.JSON，换号成功的请求会先收到一个错误体、再收到
+		// 正常结果（两份 body 拼在一条响应里），换号失败则是两份错误体。
+		// 这也是 Kiro 的做法：runtime 只返回错误，响应一律交给 handler。
+		//
+		// 非流式路径尚未写出任何字节，换号永远是安全的。
+		return nil, cursorFailoverError(classified, false)
 	}
 
-	out := cursor.EstimateOutputUsage(text.Len(), toolBytes, len(toolCalls))
+	// 思考内容计入输出 token，与流式路径保持一致；漏掉会少计费。
+	out := cursor.EstimateOutputUsageFromText(text.String()+reasoning.String(), toolBytes, len(toolCalls))
 	usage := ClaudeUsage{InputTokens: inputTokens, OutputTokens: out.OutputTokens}
 	mergeAndCommitCachePlan(c, &usage, true)
 
@@ -513,6 +718,13 @@ func (s *GatewayService) blockCursorMessages(
 		content = append(content, map[string]any{
 			"type": "tool_use", "id": id, "name": tc.Name, "input": input,
 		})
+	}
+
+	// Anthropic 的 Message 保证 content 至少有一个块，官方 SDK 直接按
+	// message.content[0] 取值。空轮次（模型什么都没产出）如果回 "content": []
+	// 会让客户端在解包时崩溃，所以补一个空文本块。
+	if len(content) == 0 {
+		content = append(content, map[string]any{"type": "text", "text": ""})
 	}
 
 	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
@@ -551,6 +763,12 @@ func (s *GatewayService) recordCursorFailure(ctx context.Context, c *gin.Context
 		Kind:               classified.Category,
 		Message:            safeErr,
 	})
+
+	// 终端协议错误只上报，不落任何账号状态：它描述的是请求本身不可服务，
+	// 账号是健康的。写账号状态会让一个坏请求污染号池的可调度性。
+	if classified.Terminal {
+		return
+	}
 
 	if cursorShouldDisableAccount(classified) && s.accountRepo != nil {
 		_ = s.accountRepo.SetError(ctx, account.ID, safeErr)
@@ -600,18 +818,36 @@ func (s *GatewayService) cursorAccessToken(ctx context.Context, account *Account
 
 // estimateCursorInputTokens 估算输入 token。
 //
-// ⚠️ Cursor agent.v1 不返回任何可信的 token 用量字段，输入输出都只能估算
-// （约 3 字节/token），不可当作上游精确用量。
+// ⚠️ Cursor agent.v1 不返回任何可信的 token 用量字段，输入输出都只能估算，
+// 不可当作上游精确用量。
+//
+// ⚠️ 用 anthropictokenizer（Anthropic 官方 tokenizer 的本地 BPE 移植）而不是
+// 任何按长度的启发式。此前的「非 ASCII 记 2、ASCII 记 1，再 /4」口径对中文
+// **高估整整一倍**：100 个汉字真实约 25 token，该口径算出 50。中文 prompt
+// 会被系统性多计费一倍，而这恰恰是本项目的主要使用场景。
+//
+// ⚠️ 必须整段计数，不能分段累加后求和：BPE 的合并跨越片段边界，
+// 逐块计数会把每个片段的边界都变成 token 边界（实测按单字符切分时
+// 高估 300%+）。这也是输出侧必须先缓冲再计数的原因。
+//
+// 与 ai2api 的差异（有意）：这里把 tools 的 schema 也计入。工具定义确实随
+// 请求发给上游、确实消耗输入 token，ai2api 漏算了这部分。
 func estimateCursorInputTokens(req cursor.AgentRequest) int {
-	n := len(req.Message) + len(req.System)
+	var sb strings.Builder
+	sb.WriteString(req.Message)
+	sb.WriteString("\n")
+	sb.WriteString(req.System)
 	for _, t := range req.Tools {
-		n += len(t.Name) + len(t.Description) + len(t.InputSchema)
+		sb.WriteString("\n")
+		sb.WriteString(t.Name)
+		sb.WriteString("\n")
+		sb.WriteString(t.Description)
+		sb.WriteString("\n")
+		sb.WriteString(t.InputSchema)
 	}
-	if n <= 0 {
-		return 1
-	}
-	if tokens := n / 3; tokens > 0 {
+	if tokens := anthropictokenizer.CountTokens(sb.String()); tokens > 0 {
 		return tokens
 	}
+	// ⚠️ 兜底为 1 而不是 0：0 会让计费与限流把请求当成空请求。
 	return 1
 }
