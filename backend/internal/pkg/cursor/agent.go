@@ -1124,6 +1124,32 @@ func parseInteractionToolUpdatesWithContext(data []byte, toolByLower map[string]
 	return res, nil
 }
 
+// sanitizeToolCallID 净化上游返回的 tool-call ID。
+//
+// ⚠️ 上游并不保证 ID 是单个干净的标识符：grok 会把两个 ID 用换行拼接后返回
+// （该行为在三个独立的社区实现中被分别修复，属真实上游行为而非个例）。
+// 这个 ID 会经 SSE 下发，并在多轮对话里作为 tool_use_id 往返配对，
+// 还会被拼进 attachments.go 的 "[调用工具 %s(id=%s)]" 文本行——
+// 内嵌换行会破坏该标记行，严格的下游客户端也可能直接拒绝这种 ID。
+//
+// 策略：只取第一个非空行，并剔除其中的控制字符。
+// 净化后为空时返回空串，由 cursor_runtime.go 的兜底逻辑生成 ID。
+func sanitizeToolCallID(raw string) string {
+	for _, line := range strings.FieldsFunc(raw, func(r rune) bool { return r == '\n' || r == '\r' }) {
+		var b strings.Builder
+		for _, r := range line {
+			// 保留可打印字符；控制字符（含 NUL/制表符）一律丢弃。
+			if r > 0x1F && r != 0x7F {
+				b.WriteRune(r)
+			}
+		}
+		if cleaned := strings.TrimSpace(b.String()); cleaned != "" {
+			return cleaned
+		}
+	}
+	return ""
+}
+
 // parseToolCallUpdate 解析 ToolCall{Started,Completed}Update: field1=call_id, field2=具体工具(oneof)。
 func parseToolCallUpdate(data []byte, toolByLower map[string]ToolDef) (call ToolCall, retErr error) {
 	return parseToolCallUpdateWithContext(data, toolByLower, "", nil)
@@ -1139,7 +1165,7 @@ func parseToolCallUpdateWithContext(data []byte, toolByLower map[string]ToolDef,
 		return call, ErrMalformedUpstreamTool
 	}
 	if cid, ok := pbFirst(parts, 1); ok && cid.Wire == 2 {
-		call.ID = string(cid.Data)
+		call.ID = sanitizeToolCallID(string(cid.Data))
 	}
 	tcMsg, ok := pbFirst(parts, 2)
 	if !ok {
