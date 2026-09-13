@@ -93,9 +93,15 @@ func ParseCursorCredential(raw string) (CursorTokenInfo, error) {
 
 // BuildAccountCredentials 把解析结果转成 accounts.credentials 的写入值。
 //
-// machine_id 在这里生成并固化：它是 x-cursor-checksum 设备指纹的种子，
+// machine_id 在这里铸造并固化：它是 x-cursor-checksum 设备指纹的种子，
 // 必须在账号生命周期内保持稳定——每次请求重新生成会让上游把该账号
 // 视为不断更换设备，触发风控。
+//
+// ⚠️ 只在导入文件没带 machine_id 时才铸造新值，不能无条件生成：
+// 本方法在**刷新**路径上也会被调用（account_handler 的手动刷新），
+// 而 MergeCredentials 是「新值覆盖旧值」，无条件铸造等于每次刷新
+// 都换一个设备指纹——比修复前更糟。刷新链路（CursorTokenRefresher）
+// 则完全不碰这个字段。
 func (s *CursorOAuthService) BuildAccountCredentials(info CursorTokenInfo) map[string]any {
 	creds := map[string]any{
 		CursorCredAccessToken: info.AccessToken,
@@ -109,9 +115,52 @@ func (s *CursorOAuthService) BuildAccountCredentials(info CursorTokenInfo) map[s
 	if strings.TrimSpace(info.Email) != "" {
 		creds[CursorCredEmail] = info.Email
 	}
-	if strings.TrimSpace(info.MachineID) != "" {
-		creds[CursorCredMachineID] = info.MachineID
+	if machineID := strings.TrimSpace(info.MachineID); machineID != "" {
+		creds[CursorCredMachineID] = machineID
 	}
+	return creds
+}
+
+// stripCursorMachineID 剥掉凭证里的设备指纹种子，供**复制账号**路径使用。
+//
+// ⚠️ 只能用在复制路径，不能用在导入路径：导入文件里带的 machine_id 是该账号
+// 已有的设备身份，必须沿用；而复制账号是新账号，沿用源账号的指纹会让两个
+// 账号对上游出示同一设备。
+func stripCursorMachineID(platform string, credentials map[string]any) map[string]any {
+	if platform != PlatformCursor || credentials == nil {
+		return credentials
+	}
+	delete(credentials, CursorCredMachineID)
+	return credentials
+}
+
+// prepareCursorMachineIDForCreate 在建号时为 Cursor 账号铸造设备指纹种子。
+//
+// 对齐 prepareCodexFingerprintExtraForCreate 的既有范式：指纹在创建时铸造、
+// 之后只读。非 Cursor 平台原样返回，保证这是一个纯旁挂钩子。
+func prepareCursorMachineIDForCreate(platform string, credentials map[string]any) map[string]any {
+	if platform != PlatformCursor {
+		return credentials
+	}
+	return EnsureMachineID(credentials)
+}
+
+// EnsureMachineID 保证凭证里有一个已固化的 machine_id。
+//
+// 建号路径（导入/新增）必须调用它：纯文本导入只有一个 token，不带 machine_id，
+// 而这恰恰是最常见的导入方式。不铸造就落库，协议层只能退回派生值，
+// 设备指纹便无法真正稳定下来。
+//
+// ⚠️ 幂等：已有值时原样返回，绝不覆盖。存量账号的指纹只允许变动一次
+// （本次补齐），此后必须恒定。
+func EnsureMachineID(creds map[string]any) map[string]any {
+	if creds == nil {
+		creds = make(map[string]any, 1)
+	}
+	if existing, ok := creds[CursorCredMachineID].(string); ok && strings.TrimSpace(existing) != "" {
+		return creds
+	}
+	creds[CursorCredMachineID] = cursor.NewMachineID()
 	return creds
 }
 

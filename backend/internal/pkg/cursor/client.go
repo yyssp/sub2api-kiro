@@ -317,6 +317,15 @@ func (c *Client) StreamChat(a *Account, model string, msgs []ChatMessage, tools 
 
 // ---------- 响应帧读取与解析 ----------
 
+const (
+	// maxFrameSize 限制单帧**压缩后**的长度（帧头声明值）。
+	maxFrameSize = 50 << 20
+	// maxDecompressedFrameSize 限制单帧**解压后**的长度。
+	// ⚠️ 两者缺一不可：只卡压缩后长度挡不住 gzip 炸弹——实测 200KB 的帧可解压出
+	// 100MB（膨胀比 510:1），高重复的 protobuf/JSON 压缩比常超 1000:1。
+	maxDecompressedFrameSize = 256 << 20
+)
+
 // StreamReader 逐帧读取 Connect-RPC 流
 type StreamReader struct {
 	body io.ReadCloser
@@ -332,7 +341,7 @@ func (sr *StreamReader) ReadFrame() (byte, []byte, error) {
 	}
 	flag := header[0]
 	length := binary.BigEndian.Uint32(header[1:5])
-	if length > 50*1024*1024 {
+	if length > maxFrameSize {
 		return 0, nil, fmt.Errorf("帧大小超限: %d", length)
 	}
 	payload := make([]byte, length)
@@ -341,11 +350,18 @@ func (sr *StreamReader) ReadFrame() (byte, []byte, error) {
 	}
 	if flag&0x01 != 0 {
 		if zr, err := gzip.NewReader(bytes.NewReader(payload)); err == nil {
-			if dec, derr := io.ReadAll(zr); derr == nil {
+			// 多读 1 字节用于判断是否触顶：读满 limit+1 说明原始数据超过上限。
+			dec, derr := io.ReadAll(io.LimitReader(zr, maxDecompressedFrameSize+1))
+			zr.Close()
+			if derr == nil {
+				if int64(len(dec)) > maxDecompressedFrameSize {
+					// ⚠️ 必须报错，不能当成「截断但成功」——半截 protobuf 交给解析器
+					// 会变成难以定位的解析错误，掩盖真正的原因。
+					return 0, nil, fmt.Errorf("帧解压后超限: 压缩前 %d 字节, 解压已超过 %d 字节", length, maxDecompressedFrameSize)
+				}
 				payload = dec
 				flag &^= 0x01
 			}
-			zr.Close()
 		}
 	}
 	return flag, payload, nil

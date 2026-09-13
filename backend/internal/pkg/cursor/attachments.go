@@ -29,20 +29,64 @@ import (
 	"unicode/utf8"
 )
 
-func collectChatImages(msgs []ChatMessage) []ImageAttachment {
-	var out []ImageAttachment
-	for _, msg := range currentTurnChatMessages(msgs) {
-		out = append(out, msg.Images...)
+// maxTotalAttachmentBytes 是**单次请求所有附件合计**的上限。
+//
+// ⚠️ 与 maxInlineAttachmentBytes（每个附件 16MB）是两道独立的闸门，缺一不可：
+// 单个上限挡不住「N 个各 15MB 的合法附件」叠加成任意大的请求体。
+// 图片按原始字节计，文档按二进制 + 提取正文计——正文会被拼进用户文本发往上游，
+// 同样占用请求体，不计入就等于漏掉了文档这一整条路径。
+const maxTotalAttachmentBytes = 32 << 20
+
+// attachmentBudget 在图片与文档之间**共用**一份额度。
+// 分开计算等于把实际上限翻倍，与「限制单次请求体」的目的不符。
+type attachmentBudget struct{ remaining int64 }
+
+func newAttachmentBudget() *attachmentBudget {
+	return &attachmentBudget{remaining: maxTotalAttachmentBytes}
+}
+
+// take 在额度足够时扣减并返回 true；不足时返回 false 且不扣减。
+// 超出预算的附件被跳过而非截断——截断后的图片/文档是损坏数据，
+// 上游要么报错要么读到错误内容，不如干脆不发。
+func (b *attachmentBudget) take(n int) bool {
+	if int64(n) > b.remaining {
+		return false
 	}
-	return out
+	b.remaining -= int64(n)
+	return true
+}
+
+func collectChatImages(msgs []ChatMessage) []ImageAttachment {
+	images, _ := collectChatAttachments(msgs)
+	return images
 }
 
 func collectChatDocuments(msgs []ChatMessage) []DocumentAttachment {
-	var out []DocumentAttachment
+	_, documents := collectChatAttachments(msgs)
+	return documents
+}
+
+// collectChatAttachments 一次取齐当前轮的图片与文档，并施加共用的总量预算。
+// 图片与文档必须在同一次遍历里扣减同一份额度，因此不能拆成两个独立函数各自计算。
+func collectChatAttachments(msgs []ChatMessage) ([]ImageAttachment, []DocumentAttachment) {
+	var (
+		images    []ImageAttachment
+		documents []DocumentAttachment
+		budget    = newAttachmentBudget()
+	)
 	for _, msg := range currentTurnChatMessages(msgs) {
-		out = append(out, msg.Documents...)
+		for _, image := range msg.Images {
+			if budget.take(len(image.Data)) {
+				images = append(images, image)
+			}
+		}
+		for _, document := range msg.Documents {
+			if budget.take(len(document.Data) + len(document.Text)) {
+				documents = append(documents, document)
+			}
+		}
 	}
-	return out
+	return images, documents
 }
 
 // currentTurnChatMessages 返回最后一个 assistant 之后的用户侧消息。
@@ -998,8 +1042,12 @@ type AnthropicRawMessage struct {
 // ⚠️ 不能简化成「取最后一条消息的附件」：当前轮常常是
 // [带图的 tool_result] + [用户文本] 两条，只看最后一条会丢掉工具返回的图。
 // 反过来也不能取全量历史——重放历史图片会让上游报 "Image not found"。
+//
+// ⚠️ 必须走 collectChatAttachments 一次取齐：图片与文档共用一份总量预算，
+// 分别调用 collectChatImages/collectChatDocuments 会各自跑一遍预算，
+// 实际上限被悄悄翻倍。
 func CollectCurrentTurnAttachments(msgs []ChatMessage) ([]ImageAttachment, []DocumentAttachment) {
-	return collectChatImages(msgs), collectChatDocuments(msgs)
+	return collectChatAttachments(msgs)
 }
 
 // ApplyClaudeEffortModel 把 Anthropic 的 output_config.effort 档位映射成
