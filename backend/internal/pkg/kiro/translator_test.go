@@ -2126,12 +2126,18 @@ func TestBuildKiroPayloadNormalizesToolJSONSchema(t *testing.T) {
 	schema := gjson.GetBytes(payload, "conversationState.currentMessage.userInputMessage.userInputMessageContext.tools.0.toolSpecification.inputSchema.json")
 	require.Equal(t, "object", schema.Get("type").String())
 	require.True(t, schema.Get("properties").IsObject())
-	require.True(t, schema.Get("required").IsArray())
-	require.Len(t, schema.Get("required").Array(), 0)
-	require.True(t, schema.Get("additionalProperties").Bool())
 	require.Equal(t, "object", schema.Get("items.type").String())
+
+	// 以下断言在 G6（schema 白名单重建）后反转：required 为空时移除整个键、
+	// additionalProperties 不再补全 —— 两者都是上游 Smithy 校验的 400 触发器。
+	// 注意原实现即便输入是 "sometimes" 也会输出 additionalProperties:true。
+	require.False(t, schema.Get("required").Exists(), "空 required 应被移除而非留 []")
+	require.False(t, schema.Get("additionalProperties").Exists(), "不应再补 additionalProperties")
+	require.False(t, schema.Get("items.additionalProperties").Exists())
+
+	// items 内的 required 有合法元素，应保留且只留字符串项。
 	require.Equal(t, "ok", schema.Get("items.required.0").String())
-	require.True(t, schema.Get("items.additionalProperties").Bool())
+	require.Len(t, schema.Get("items.required").Array(), 1)
 }
 
 func TestBuildKiroPayloadFiltersCurrentOrphanToolResult(t *testing.T) {

@@ -119,6 +119,9 @@ type KiroRequestContext struct {
 	// 没有对应入口,不兜底会让响应体 usage.input_tokens 输出 0。
 	// 为 0 时不生效（保持原行为）。
 	EstimatedInputTokens int
+	// PayloadTrim 记录体积守卫的裁剪结果，供上层写诊断日志。
+	// 未触发裁剪时为零值。
+	PayloadTrim kiroPayloadTrimResult
 }
 
 type KiroBuildResult struct {
@@ -536,6 +539,11 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 	if err != nil {
 		return nil, err
 	}
+	payloadBytes, trim, err := enforceKiroPayloadSize(&payload, payloadBytes)
+	if err != nil {
+		return nil, err
+	}
+	requestCtx.PayloadTrim = trim
 	return &KiroBuildResult{Payload: payloadBytes, Context: requestCtx}, nil
 }
 
@@ -1989,22 +1997,58 @@ func randomBase62(n int) string {
 	return string(b)
 }
 
+// shortenToolNameIfNeeded 只按长度收敛，不处理字符集。
+// 完整的工具名映射请走 mapKiroToolName —— 它会先清洗字符集再收长度。
 func shortenToolNameIfNeeded(name string) string {
 	name = strings.TrimSpace(name)
 	if len(name) <= kiroMaxToolNameLen {
 		return name
 	}
-	sum := sha256.Sum256([]byte(name))
-	suffix := fmt.Sprintf("%x", sum[:])[:8]
-	prefixLen := kiroMaxToolNameLen - 1 - len(suffix)
-	prefix := name
-	if len(prefix) > prefixLen {
-		prefix = prefix[:prefixLen]
-		for len(prefix) > 0 && !utf8.ValidString(prefix) {
-			prefix = prefix[:len(prefix)-1]
+	return appendToolNameSuffix(name, toolNameHashSuffix(name))
+}
+
+// sanitizeToolNameCharset 把工具名收敛到上游允许的字符集。
+//
+// AWS 官方服务模型（aws/aws-toolkit-vscode 的 user-service-2.json）对 ToolName 的约束是
+// pattern "[a-zA-Z0-9_-]+"、max 64。含非法字符时上游拒的是「整个请求」（400），
+// 不是只忽略那个工具。实测故障样本：$WEB_SEARCH、$MUTLI_1.N.1-Read。
+//
+// 注意连字符是「合法」的，不要替换掉 —— 否则会无谓改写大量本来合法的 MCP 工具名。
+//
+// 返回 changed 标记以便调用方决定是否需要加哈希后缀保证单射：清洗是多对一的
+// （a.b 与 a-b 都会变成 a_b），而响应侧要靠 ToolNameMap 反查还原原始名。
+func sanitizeToolNameCharset(name string) (string, bool) {
+	changed := false
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+			changed = true
 		}
 	}
-	return prefix + "_" + suffix
+	return b.String(), changed
+}
+
+// toolNameHashSuffix 取原始名的 sha256 前 8 位十六进制，用于防碰撞。
+func toolNameHashSuffix(name string) string {
+	sum := sha256.Sum256([]byte(name))
+	return fmt.Sprintf("%x", sum[:])[:8]
+}
+
+// appendToolNameSuffix 在不超过长度上限的前提下追加后缀。
+func appendToolNameSuffix(base, suffix string) string {
+	maxPrefix := kiroMaxToolNameLen - 1 - len(suffix)
+	if maxPrefix < 0 {
+		maxPrefix = 0
+	}
+	if len(base) > maxPrefix {
+		base = base[:maxPrefix]
+	}
+	return base + "_" + suffix
 }
 
 func mapKiroToolName(name string, requestCtx *KiroRequestContext) string {
@@ -2015,7 +2059,15 @@ func mapKiroToolName(name string, requestCtx *KiroRequestContext) string {
 	if name == "web_search" {
 		return "remote_web_search"
 	}
-	short := shortenToolNameIfNeeded(name)
+
+	// 先收字符集，再收长度 —— 顺序不能反，否则截断后残留的非法字符仍会触发 400。
+	sanitized, charsetChanged := sanitizeToolNameCharset(name)
+	short := sanitized
+	// 哈希后缀一律取「原始名」，保证清洗与截断这两条多对一的变换合起来仍是单射。
+	if len(sanitized) > kiroMaxToolNameLen || charsetChanged {
+		short = appendToolNameSuffix(sanitized, toolNameHashSuffix(name))
+	}
+
 	if short != name && requestCtx != nil {
 		if requestCtx.ToolNameMap == nil {
 			requestCtx.ToolNameMap = make(map[string]string)
@@ -2029,24 +2081,55 @@ func normalizeKiroJSONSchema(schema any) any {
 	return normalizeKiroJSONSchemaValue(schema, true)
 }
 
+// kiroAllowedSchemaKeys 是上游 Smithy 校验接受的 JSON Schema 键白名单。
+//
+// Kiro 上游用 Smithy 校验工具 input_schema，比 Anthropic 严格得多：碰到
+// draft-2020-12 的 $schema / additionalProperties / default / format /
+// exclusiveMinimum / propertyNames 等关键字会拒掉「整个请求」（400），
+// 而不是忽略该字段。Claude Code 的 MCP 工具 schema 普遍带这些键，属高发场景。
+//
+// 参考：funny-vibes/agent-vibes translator.ts:898-906（白名单 + 重建对象）。
+//
+// 代价：minimum/maximum/pattern 等约束被剥离后，模型可能生成越界参数。
+// 社区一致接受这个代价——「参数可能越界」远好过「整个请求 400」。
+var kiroAllowedSchemaKeys = map[string]struct{}{
+	"type":        {},
+	"description": {},
+	"properties":  {},
+	"required":    {},
+	"items":       {},
+	"enum":        {},
+	"title":       {},
+}
+
 func normalizeKiroJSONSchemaValue(schema any, enforceObjectKeywords bool) any {
 	obj, ok := schema.(map[string]any)
 	if !ok || obj == nil {
 		return defaultKiroJSONSchema()
 	}
+	// 重建而非删键：保证任意嵌套深度（properties.*、items）都不残留超纲关键字。
 	normalized := make(map[string]any, len(obj)+4)
 	for key, value := range obj {
+		if _, allowed := kiroAllowedSchemaKeys[key]; !allowed {
+			// const 是 draft-2020-12 关键字，但语义可用单元素 enum 无损表达。
+			if key == "const" && !hasSchemaKey(obj, "enum") {
+				normalized["enum"] = []any{value}
+			}
+			continue
+		}
 		normalized[key] = normalizeSchemaChild(key, value)
 	}
 	if typ, ok := normalized["type"].(string); !ok || strings.TrimSpace(typ) == "" {
 		normalized["type"] = "object"
 	}
 	typ, _ := normalized["type"].(string)
+	// additionalProperties 已被白名单剔除，这里要看「原始」schema 是否带过它，
+	// 否则无法据此判断作者本意是不是一个 object。
 	needsObjectKeywords := enforceObjectKeywords ||
 		strings.TrimSpace(typ) == "object" ||
 		hasSchemaKey(normalized, "properties") ||
 		hasSchemaKey(normalized, "required") ||
-		hasSchemaKey(normalized, "additionalProperties")
+		hasSchemaKey(obj, "additionalProperties")
 	if needsObjectKeywords {
 		properties, ok := normalized["properties"].(map[string]any)
 		if !ok || properties == nil {
@@ -2057,14 +2140,14 @@ func normalizeKiroJSONSchemaValue(schema any, enforceObjectKeywords bool) any {
 			}
 			normalized["properties"] = properties
 		}
-		normalized["required"] = normalizeSchemaRequired(normalized["required"])
-		switch additional := normalized["additionalProperties"].(type) {
-		case bool:
-		case map[string]any:
-			normalized["additionalProperties"] = normalizeKiroJSONSchemaValue(additional, false)
-		default:
-			normalized["additionalProperties"] = true
+		// required 为空时移除整个键，而不是留一个 []。
+		// 参考 AbdoKnbGit/tau request.ts:272-275：空数组本身就会触发 400。
+		if required := normalizeSchemaRequired(normalized["required"]); len(required) > 0 {
+			normalized["required"] = required
+		} else {
+			delete(normalized, "required")
 		}
+		// 不再主动补 additionalProperties —— 它不在 Smithy 接受的键集合里。
 	}
 	return normalized
 }
@@ -2075,11 +2158,10 @@ func hasSchemaKey(schema map[string]any, key string) bool {
 }
 
 func defaultKiroJSONSchema() map[string]any {
+	// 不含 required: [] 和 additionalProperties —— 两者都是已知的 400 触发器。
 	return map[string]any{
-		"type":                 "object",
-		"properties":           map[string]any{},
-		"required":             []any{},
-		"additionalProperties": true,
+		"type":       "object",
+		"properties": map[string]any{},
 	}
 }
 
@@ -2097,27 +2179,21 @@ func normalizeSchemaRequired(value any) []any {
 	return out
 }
 
+// normalizeSchemaChild 只需处理 items —— not/oneOf/anyOf/allOf 已被
+// kiroAllowedSchemaKeys 白名单剔除，不会走到这里。
 func normalizeSchemaChild(key string, value any) any {
-	switch key {
-	case "items", "not":
-		if obj, ok := value.(map[string]any); ok {
-			return normalizeKiroJSONSchemaValue(obj, false)
+	if key != "items" {
+		return value
+	}
+	if obj, ok := value.(map[string]any); ok {
+		return normalizeKiroJSONSchemaValue(obj, false)
+	}
+	if arr, ok := value.([]any); ok {
+		out := make([]any, 0, len(arr))
+		for _, item := range arr {
+			out = append(out, normalizeKiroJSONSchemaValue(item, false))
 		}
-		if arr, ok := value.([]any); ok {
-			out := make([]any, 0, len(arr))
-			for _, item := range arr {
-				out = append(out, normalizeKiroJSONSchemaValue(item, false))
-			}
-			return out
-		}
-	case "oneOf", "anyOf", "allOf":
-		if arr, ok := value.([]any); ok {
-			out := make([]any, 0, len(arr))
-			for _, item := range arr {
-				out = append(out, normalizeKiroJSONSchemaValue(item, false))
-			}
-			return out
-		}
+		return out
 	}
 	return value
 }

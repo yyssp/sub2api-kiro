@@ -119,7 +119,13 @@ func looksLikeKiroBadRequestSchemaError(lower string) bool {
 	}
 	return strings.Contains(lower, "schema") ||
 		strings.Contains(lower, "inputschema") ||
+		// 同一个 schema 校验失败，两个端点返回两条不同的错误串：
+		// q.* 端点返回 "Improperly formed request."，
+		// codewhisperer.*/krs 端点返回 {"message":"Invalid tool use format.","reason":"REQUEST_BODY_INVALID"}。
+		// 只匹配前者会让后者落进 bad_request_unknown，丢失针对性诊断日志。
 		strings.Contains(lower, "improperly formed request") ||
+		strings.Contains(lower, "invalid tool use format") ||
+		strings.Contains(lower, "request_body_invalid") ||
 		strings.Contains(lower, "additionalproperties") ||
 		(strings.Contains(lower, "properties") && strings.Contains(lower, "required"))
 }
