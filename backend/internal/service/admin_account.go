@@ -272,6 +272,12 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	if err != nil {
 		return nil, fmt.Errorf("clone account credentials: %w", err)
 	}
+	// 设备指纹是「一个账号一个设备」的身份，不能跟着凭证一起复制：
+	// 两个账号出示同一设备指纹，正是上游风控要找的模式。剥掉后由建号钩子
+	// （prepareCursorMachineIDForCreate）重新铸造。
+	// 与 Codex 指纹种子的处理一致（prepareCodexFingerprintExtraForCreate
+	// 同样先 stripCodexFingerprintSeed 再铸造）。
+	credentials = stripCursorMachineID(source.Platform, credentials)
 	extra, err := duplicateAccountExtra(source.Extra)
 	if err != nil {
 		return nil, fmt.Errorf("clone account extra configuration: %w", err)

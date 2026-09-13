@@ -56,6 +56,43 @@ func TestPrepareCursorMachineIDForCreate_IgnoresOtherPlatforms(t *testing.T) {
 	}
 }
 
+// TestStripCursorMachineID_GivesDuplicateItsOwnIdentity 覆盖复制账号路径。
+//
+// 设备指纹是「一个账号一个设备」的身份。复制账号若沿用源账号的 machine_id，
+// 两个账号会对上游出示同一设备——正是风控要找的模式。
+// EnsureMachineID 是幂等的，分不出「本来就有」和「从源账号抄来的」，
+// 因此必须在复制路径上先剥掉。
+func TestStripCursorMachineID_GivesDuplicateItsOwnIdentity(t *testing.T) {
+	const sourceID = "aaaa111122223333aaaa111122223333aaaa111122223333aaaa111122223333"
+	cloned := map[string]any{
+		CursorCredAccessToken: "jwt",
+		CursorCredMachineID:   sourceID,
+	}
+
+	// 复制路径：先剥离，再走建号钩子重新铸造。
+	dup := prepareCursorMachineIDForCreate(PlatformCursor, stripCursorMachineID(PlatformCursor, cloned))
+
+	got, _ := dup[CursorCredMachineID].(string)
+	if got == sourceID {
+		t.Fatal("复制账号沿用了源账号的 machine_id，两个账号会出示同一设备指纹")
+	}
+	if strings.TrimSpace(got) == "" {
+		t.Fatal("剥离后应重新铸造 machine_id，不能留空")
+	}
+	if got, _ := dup[CursorCredAccessToken].(string); got != "jwt" {
+		t.Fatalf("只应剥离 machine_id，其它凭证须原样保留, 实际 %q", got)
+	}
+}
+
+// TestStripCursorMachineID_LeavesOtherPlatformsAlone 确认剥离也是纯旁挂的。
+func TestStripCursorMachineID_LeavesOtherPlatformsAlone(t *testing.T) {
+	creds := map[string]any{"machine_id": "kiro-owns-this-key-too"}
+	out := stripCursorMachineID(PlatformKiro, creds)
+	if got, _ := out["machine_id"].(string); got != "kiro-owns-this-key-too" {
+		t.Fatal("不应剥离其它平台的 machine_id —— Kiro 也用这个键名")
+	}
+}
+
 // TestEnsureMachineID_IsIdempotent 幂等性是本次改动的核心安全属性：
 // 存量账号的指纹只允许变动一次（补齐），此后必须恒定。
 func TestEnsureMachineID_IsIdempotent(t *testing.T) {

@@ -121,6 +121,19 @@ func (s *CursorOAuthService) BuildAccountCredentials(info CursorTokenInfo) map[s
 	return creds
 }
 
+// stripCursorMachineID 剥掉凭证里的设备指纹种子，供**复制账号**路径使用。
+//
+// ⚠️ 只能用在复制路径，不能用在导入路径：导入文件里带的 machine_id 是该账号
+// 已有的设备身份，必须沿用；而复制账号是新账号，沿用源账号的指纹会让两个
+// 账号对上游出示同一设备。
+func stripCursorMachineID(platform string, credentials map[string]any) map[string]any {
+	if platform != PlatformCursor || credentials == nil {
+		return credentials
+	}
+	delete(credentials, CursorCredMachineID)
+	return credentials
+}
+
 // prepareCursorMachineIDForCreate 在建号时为 Cursor 账号铸造设备指纹种子。
 //
 // 对齐 prepareCodexFingerprintExtraForCreate 的既有范式：指纹在创建时铸造、
