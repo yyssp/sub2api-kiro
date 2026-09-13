@@ -866,3 +866,89 @@ func TestGatewayServiceIsAccountSchedulableForSelectionSkipsActiveKiroCooldown(t
 	}
 	require.False(t, svc.isAccountSchedulableForSelection(account))
 }
+
+// B-3/B-4：schema 类 400 **不得**故障转移。
+//
+// 这不是缺口，是刻意的不对称，必须锁住：
+//   - invalid_model 类 400 → 转移（换个账号可能支持该模型，是账号侧问题）
+//   - schema 类 400       → **不转移**（是我们发出的请求本身有问题，
+//     转移只会拿同一个坏请求去烧掉池子里的每一个账号）
+//
+// G6/G5 的正确修复方向是「在入口就不产生这种请求」，而不是「转移」。
+// 不对称的另一半（invalid_model 必须转移）由既有的
+// TestHandleKiroHTTPErrorOAuthInvalidModelRateLimitsAndFailovers 守着。
+func TestHandleKiroHTTPErrorSchemaBadRequestDoesNotFailover(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		body string
+	}{
+		{"q 端点错误串", `Improperly formed request.`},
+		{"codewhisperer 端点错误串", `{"message":"Invalid tool use format.","reason":"REQUEST_BODY_INVALID"}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{
+				ID:          43,
+				Platform:    PlatformKiro,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+			}
+			repo := &recordingKiroTempUnschedRepo{}
+			svc := &GatewayService{
+				accountRepo:         repo,
+				kiroCooldownStore:   &stubKiroCooldownStore{},
+				tlsFPProfileService: &TLSFingerprintProfileService{},
+			}
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+			err := svc.handleKiroHTTPError(context.Background(),
+				newJSONResponse(http.StatusBadRequest, tt.body), c, account, "claude-sonnet-4-6", nil)
+			require.Error(t, err)
+
+			var failoverErr *UpstreamFailoverError
+			require.False(t, errors.As(err, &failoverErr),
+				"schema 类 400 不得触发故障转移，否则同一个坏请求会烧掉整个账号池")
+
+			// 也不得把账号标记为不可调度或限流——账号本身是健康的。
+			require.False(t, repo.called, "不得标记账号临时不可调度")
+			require.False(t, repo.rateCalled, "不得标记账号限流")
+		})
+	}
+}
+
+// B-1 对照：402 MONTHLY_REQUEST_COUNT 必须转移 **且** 冷却到下月。
+// 这条直接对应用户约束 4「调度到的必须是额度正常的账号」：
+// 额度耗尽的账号要被移出候选池，而不是反复重试。
+func TestHandleKiroHTTPErrorMonthlyQuotaFailsOverAndRateLimits(t *testing.T) {
+	account := &Account{
+		ID:          45,
+		Platform:    PlatformKiro,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+	}
+	repo := &recordingKiroTempUnschedRepo{}
+	svc := &GatewayService{
+		accountRepo:         repo,
+		kiroCooldownStore:   &stubKiroCooldownStore{},
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	err := svc.handleKiroHTTPError(context.Background(),
+		newJSONResponse(http.StatusPaymentRequired,
+			`{"message":"You have reached the limit.","reason":"MONTHLY_REQUEST_COUNT"}`),
+		c, account, "claude-sonnet-4-6", nil)
+	require.Error(t, err)
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr, "额度耗尽必须转移到下一个账号")
+	require.Equal(t, http.StatusPaymentRequired, failoverErr.StatusCode)
+	require.True(t, repo.rateCalled, "必须冷却该账号，避免反复调度到已耗尽的账号")
+}

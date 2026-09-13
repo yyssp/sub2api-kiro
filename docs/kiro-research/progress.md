@@ -15,7 +15,7 @@
 | **G6** | 工具 schema 白名单重建 | ✅ 完成 | 6 例 | ✅ 已验证 | 本轮最高频缺口 |
 | **G5** | 工具名字符集清洗 | ✅ 完成 | 10 例 | ✅ 已验证（6/10 失败） | 官方权威最强 |
 | **G2** | 请求体积守卫 | ✅ 完成 | 8 例 | ⚠️ 见下 | **端到端本轮无法验证** |
-| **G4** | cache token 口径 | ⛔ 阻塞 | — | — | 证据冲突，需实测定夺 |
+| **G4** | cache token 口径 | ✅ 维持现状 | C 层实测 | — | **真实抓包定夺，见下** |
 
 **测试基线**：`./internal/pkg/kiro/` 与 `./internal/service/` 全绿，`go build ./...` + `go vet` 通过。
 
@@ -132,8 +132,25 @@
 
 ---
 
-## G4 · cache token 口径 ⛔ 阻塞
+## G4 · cache token 口径 ✅ 维持现状（实测定夺）
 
-`translator.go` 目前**主动丢弃**上游返回的 cache token。
-两派证据互斥（agent-vibes vs tau），需要真实上游 `metadataEvent` 抓包定夺。
-→ 归入任务 #35 的 C-3 用例。
+**原争议**：`translator.go:4408` 主动丢弃上游 cache token，
+两派证据互斥（agent-vibes 说上游会下发 vs tau 说不会）。
+
+**定夺方式**：用既有诊断开关 `KIRO_UPSTREAM_TRACE=1` 抓真实事件流
+（**无需改任何代码**），构造 ~4.5k token 可缓存前缀连发两次相同请求。
+
+**实测结果**：
+```
+metadataEvent      {"stopReason":"END_TURN"}
+contextUsageEvent  {"contextUsagePercentage":4.349499702453613}
+meteringEvent      {"unit":"credit","usage":0.019533370547263684}
+```
+
+`metadataEvent` **根本没有 `tokenUsage` 字段**，更没有 cache 字段。
+两次相同请求计费几乎不变（0.01953 → 0.01938），**未发生服务端 caching**。
+
+**结论**：在 KIRO FREE 档位上，现有的「丢弃」行为是**正确的**，不改。
+
+> ⚠️ 不能外推到付费档 —— 本批 235 个账号全是 FREE，手上没有付费号。
+> 详见 [test-results.md](test-results.md) 存疑清单 Q2。
