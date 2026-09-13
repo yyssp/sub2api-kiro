@@ -601,6 +601,8 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 type recordUsageOpts struct {
 	// Kiro 账号在上游返回 auto 等无法定价模型时使用保守计费兜底。
 	IsKiroAccount bool
+	// Cursor 账号同理：auto/default/composer 是服务端选模型别名，无价可循。
+	IsCursorAccount bool
 }
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
@@ -795,6 +797,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 计算费用
 	opts.IsKiroAccount = account != nil && account.Platform == PlatformKiro
+	opts.IsCursorAccount = account != nil && account.Platform == PlatformCursor
 	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, pricingAt, opts)
 	// response_model：按上游成功响应自报的模型计费（渠道显式开启才生效）。
 	// 采纳条件见 responseModelBillingDeclaration + hasIdentifiedResponseModelPricing
@@ -945,6 +948,51 @@ func (s *GatewayService) calculateRecordUsageCost(
 }
 
 const kiroConservativeFallbackBillingModel = "claude-opus-4-6"
+
+// cursorConservativeFallbackBillingModel 是 Cursor 不可定价别名的兜底计费模型。
+//
+// ⚠️ 与 Kiro 取同一个"池内最贵"口径，理由也相同：多收可以退，免费送不可追回。
+const cursorConservativeFallbackBillingModel = "claude-opus-4-6"
+
+// cursorUnpriceableModelAliases 是 Cursor 的服务端选模型别名。
+//
+// ⚠️ 这些名字在内置目录与 LiteLLM 里都没有价格条目，且被原样透传给上游——
+// 真实模型由 Cursor 服务端选择，响应里拿不到，因此不存在可推导的精确价。
+// 不特殊处理就会走到 `return &CostBreakdown{ActualCost: 0}`，即请求免费送。
+func cursorUnpriceableModelAlias(model string) bool {
+	switch strings.TrimSpace(strings.ToLower(model)) {
+	case "auto", "default", "composer":
+		return true
+	default:
+		return false
+	}
+}
+
+// shouldUseCursorConservativeBillingFallback 判断是否要对 Cursor 请求启用保守兜底。
+//
+// 仅覆盖服务端选模型别名：具体模型（claude-sonnet-4.5 等）有明确定价，
+// 一律按最贵计价会造成超额收费。
+func shouldUseCursorConservativeBillingFallback(result *ForwardResult, billingModel string, opts *recordUsageOpts) bool {
+	if result == nil {
+		return false
+	}
+	if opts == nil || !opts.IsCursorAccount {
+		return false
+	}
+	return cursorUnpriceableModelAlias(billingModel) || cursorUnpriceableModelAlias(result.Model)
+}
+
+func (s *GatewayService) calculateCursorConservativeTokenCost(tokens UsageTokens, multiplier float64) *CostBreakdown {
+	if s == nil || s.billingService == nil {
+		return nil
+	}
+	cost, err := s.billingService.CalculateCost(cursorConservativeFallbackBillingModel, tokens, multiplier)
+	if err != nil {
+		logger.LegacyPrintf("service.gateway", "Calculate conservative Cursor fallback cost failed: %v", err)
+		return nil
+	}
+	return cost
+}
 
 func shouldUseKiroConservativeBillingFallback(result *ForwardResult, billingModel string, opts *recordUsageOpts) bool {
 	if result == nil {
@@ -1158,6 +1206,12 @@ func (s *GatewayService) calculateTokenCost(
 		if shouldUseKiroConservativeBillingFallback(result, billingModel, opts) {
 			if fallback := s.calculateKiroConservativeTokenCost(tokens, multiplier); fallback != nil {
 				logger.LegacyPrintf("service.gateway", "Using conservative Kiro fallback pricing for model=%s", billingModel)
+				return fallback
+			}
+		}
+		if shouldUseCursorConservativeBillingFallback(result, billingModel, opts) {
+			if fallback := s.calculateCursorConservativeTokenCost(tokens, multiplier); fallback != nil {
+				logger.LegacyPrintf("service.gateway", "Using conservative Cursor fallback pricing for model=%s", billingModel)
 				return fallback
 			}
 		}

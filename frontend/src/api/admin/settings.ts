@@ -43,7 +43,15 @@ export interface PlatformQuotaLimits {
 /** 全平台默认限额 map（key = PlatformType） */
 export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuotaLimits>>
 
-const PLATFORMS: PlatformType[] = [
+/**
+ * 默认限额涉及的全部平台。
+ *
+ * ⚠️ 这是限额表格的唯一数据源：归一化（normalizePlatformQuotasMap）和
+ * 设置页的表格渲染必须共用它。此前表格用的是手写字面量，比这里少 5 个平台，
+ * 结果是那些平台在设置页根本没有输入行 → 限额永远设不上 → 后端按
+ * "nil 即无限额" 处理 → 静默无限花钱。新增平台时只改这一处。
+ */
+export const PLATFORM_QUOTA_PLATFORMS: PlatformType[] = [
   "anthropic",
   "openai",
   "gemini",
@@ -56,6 +64,8 @@ const PLATFORMS: PlatformType[] = [
   "deepseek",
   "minimax",
 ]
+
+const PLATFORMS: PlatformType[] = PLATFORM_QUOTA_PLATFORMS
 
 export type SchedulingThresholdPlatformType =
   | "openai"

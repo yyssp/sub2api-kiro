@@ -48,6 +48,13 @@ type Account struct {
 	OtherModelsPct  float64   // other 桶（命名第三方模型）使用率
 	UsageAt         time.Time // 上述百分比的抓取时间；零值表示从未抓取，不可当作 0% 可用
 
+	// 对应两个百分比的抓取状态，语义同 GrokBotState。
+	// ⚠️ 百分比本身无法区分「真的 0% 已用」和「这次没读到」：抓取失败的桶
+	// Percent 保持零值，只看 Pct<100 会把它判成 100% 空闲，甚至复活刚被标记
+	// 耗尽的桶。空串按已读到处理（兼容未填状态的旧调用方）。
+	CursorModelsState string
+	OtherModelsState  string
+
 	// GrokBot 桶状态：五态区分「字段未返回」与「确认耗尽」，
 	// 不能只看 GrokBotEnabled 做调度（见 entitlement.go 的说明）。
 	GrokBotState   string

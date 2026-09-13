@@ -258,9 +258,13 @@ func cursorProtocolAccount(account *Account) cursor.Account {
 
 		CursorModelsPct: q.Cursor.Percent,
 		OtherModelsPct:  q.Other.Percent,
-		GrokBotState:    q.GrokBot.State,
-		GrokBotPct:      q.GrokBot.Percent,
-		GrokBotEnabled:  q.GrokBot.Enabled,
+		// ⚠️ 状态必须一并投影：只传百分比时，抓取失败的桶（Percent 零值）
+		// 会被判成 100% 空闲，并复活刚被标记耗尽的桶。
+		CursorModelsState: q.Cursor.State,
+		OtherModelsState:  q.Other.State,
+		GrokBotState:      q.GrokBot.State,
+		GrokBotPct:        q.GrokBot.Percent,
+		GrokBotEnabled:    q.GrokBot.Enabled,
 
 		// 运行时状态取自既有列
 		Disabled:  !account.Schedulable || account.Status == StatusError,

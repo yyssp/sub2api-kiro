@@ -151,9 +151,30 @@ func AccountUsableForSurface(a Account, model, clientType string) bool {
 		return true
 	}
 	if modelIsCursorBucket(model) {
-		return a.CursorModelsPct < 100
+		return bucketUsable(a.CursorModelsState, a.CursorModelsPct)
 	}
-	return a.OtherModelsPct < 100
+	return bucketUsable(a.OtherModelsState, a.OtherModelsPct)
+}
+
+// bucketUsable 判定 cursor/other 桶是否还能用。
+//
+// ⚠️ 必须先看状态再看百分比：抓取失败或上游未返回该字段时 Percent 保持零值，
+// 只比较 Pct<100 会把"没读到"当成"100% 空闲"，还会复活刚被
+// markCursorBucketExhausted 标记耗尽的桶（标 100 → 抓取失败写回 0 → 重新可选）。
+// 这与 UsageAt 零值时的处理是同一条原则的两种表现，只是这里已经抓取过、
+// 无法靠 UsageAt.IsZero() 兜住。
+//
+// 状态为空串时按已读到处理，兼容尚未填充状态的调用方。
+func bucketUsable(state string, pct float64) bool {
+	switch state {
+	case sandStateUnknown, sandStateRequestFailed:
+		// 没读到真实用量：不可作为可用依据。与 sand 桶不同，这里没有
+		// "探测即可发现权益"的语义，百分比是唯一判据，读不到就不能用。
+		return false
+	case sandStateExhausted, sandStateUnavailable:
+		return false
+	}
+	return pct < 100
 }
 
 // accountCredentialUnavailable 依据业务层填入的最近错误文案判断凭证是否已失效。

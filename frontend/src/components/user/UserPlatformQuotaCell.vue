@@ -34,7 +34,8 @@ import type { PlatformQuotaItem, PlatformQuotaPlatform } from '@/api/admin/users
 const props = defineProps<{ quotas?: PlatformQuotaItem[] }>()
 const { t } = useI18n()
 
-const PLATFORM_ORDER: PlatformQuotaPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok']
+// 仅用于展示排序；未列出的平台 indexOf 为 -1 会排到最前，因此新增平台要补进来。
+const PLATFORM_ORDER: PlatformQuotaPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'cursor', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax']
 
 // 仅展示「至少一档限额非空」的平台（配额列，非用量列）
 const configured = computed(() => {

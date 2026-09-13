@@ -33,6 +33,11 @@ func TestEnsureSimpleModeDefaultGroups_CreatesMissingDefaults(t *testing.T) {
 	assertGroupExists(service.PlatformGemini + "-default")
 	assertGroupExists(service.PlatformAntigravity + "-default-1")
 	assertGroupExists(service.PlatformAntigravity + "-default-2")
+	assertGroupExists(service.PlatformKiro + "-default")
+	// ⚠️ 缺了 cursor-default 不会报错，而是让 SIMPLE 模式下新建的 Cursor 账号
+	// 静默不绑任何分组（admin_account.go 按 "<platform>-default" 找不到就跳过），
+	// 结果是账号建好了却永远调度不到。每接入一个平台都要在这里补一行。
+	assertGroupExists(service.PlatformCursor + "-default")
 
 	grokDefault, err := client.Group.Query().
 		Where(group.NameEQ(service.PlatformGrok+"-default"), group.DeletedAtIsNil()).

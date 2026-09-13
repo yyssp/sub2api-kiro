@@ -20,12 +20,17 @@ func ensureSimpleModeDefaultGroups(ctx context.Context, client *dbent.Client) er
 		return err
 	}
 
+	// ⚠️ 每接入一个新平台都必须在这里补一行。
+	// 漏掉不会报错：SIMPLE 模式下新建该平台账号时，admin_account.go 会按
+	// "<platform>-default" 找默认分组，找不到就静默不绑任何分组——账号建好了
+	// 却永远调度不到，且界面上看不出任何异常。
 	requiredByPlatform := map[string]int{
 		service.PlatformAnthropic:   1,
 		service.PlatformOpenAI:      1,
 		service.PlatformGemini:      1,
 		service.PlatformAntigravity: 2,
 		service.PlatformKiro:        1,
+		service.PlatformCursor:      1,
 		service.PlatformGrok:        1,
 	}
 
