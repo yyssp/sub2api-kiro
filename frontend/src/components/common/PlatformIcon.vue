@@ -15,6 +15,12 @@
       fill="black"
     />
   </svg>
+  <!-- Cursor logo（官方稿：等距立方体，三面明暗区分；用 currentColor 分层透明度还原） -->
+  <svg v-else-if="platform === 'cursor'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 1.5 2.9 6.75v10.5L12 22.5l9.1-5.25V6.75L12 1.5Z" opacity=".35" />
+    <path d="M12 1.5 2.9 6.75 12 12l9.1-5.25L12 1.5Z" opacity=".7" />
+    <path d="M12 12v10.5l9.1-5.25V6.75L12 12Z" />
+  </svg>
   <!-- Claude/Anthropic logo -->
   <svg v-else-if="platform === 'anthropic'" :class="sizeClass" viewBox="0 0 16 16" fill="currentColor">
     <path

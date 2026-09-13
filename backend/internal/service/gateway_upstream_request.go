@@ -27,6 +27,18 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if isKiroDirectModeAccount(account) {
 		return nil, nil, fmt.Errorf("kiro direct account must use the kiro forwarding path")
 	}
+	// ⚠️ Cursor 直连账号绝不能走到这里。
+	//
+	// 这里往下会把 targetURL 兜底成 claudeAPIURL，并把 GetAccessToken 返回的
+	// token 当 Anthropic bearer 发出去——而 Cursor 账号拿到的是真实可用的
+	// Cursor session token。结果是拿 Cursor 凭证去请求 api.anthropic.com：
+	// 必然 401，而 401 属于 shouldFailoverUpstreamError，会触发
+	// HandleUpstreamError 进而可能把这个完全健康的账号停用。
+	//
+	// 这条守卫的价值是把「静默打错上游 + 自伤停号」变成一个能直接定位的报错。
+	if isCursorDirectModeAccount(account) {
+		return nil, nil, fmt.Errorf("cursor direct account must use the cursor forwarding path")
+	}
 
 	// 确定目标URL
 	targetURL := claudeAPIURL

@@ -410,6 +410,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		kiroCredits := result.Usage.KiroCredits
 		usageLog.KiroCredits = &kiroCredits
 	}
+	// ⚠️ 与 Anthropic 路径保持一致：Cursor 走 OpenAI 兼容入口时同样是估算用量。
+	// 只标记其中一条路径会让对账结果取决于客户端用了哪个协议。
+	if source := usageSourceForPlatform(account); source != nil {
+		usageLog.UsageSource = source
+	}
 	if cost != nil {
 		usageLog.InputCost = cost.InputCost
 		usageLog.ImageInputCost = cost.ImageInputCost

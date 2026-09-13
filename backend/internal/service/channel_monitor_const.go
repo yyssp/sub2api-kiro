@@ -73,6 +73,10 @@ const (
 	MonitorProviderZhipu       = "zhipu"
 	MonitorProviderDeepseek    = "deepseek"
 	MonitorProviderMiniMax     = "minimax"
+	// cursor 与 kiro 同理：agent.v1 是 Connect-RPC over HTTP/2 的单轮协议，
+	// 与 providerAdapters 假定的「JSON POST + gjson 取文本」形态不兼容，
+	// 且每次调用都消耗真实额度，故不注册探活，仅支持配额模式。
+	MonitorProviderCursor = "cursor"
 
 	// MonitorCheckMode 检测模式（channel_monitors.check_mode）。
 	//   probe       - LLM 探活（默认，原有行为）

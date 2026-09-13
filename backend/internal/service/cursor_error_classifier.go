@@ -15,6 +15,9 @@ const (
 	cursorErrorQuotaExhausted    = "quota_exhausted"
 	cursorErrorAuthError         = "auth_error"
 	cursorErrorUpstreamTransient = "upstream_transient"
+	// cursorErrorProtocol 是终端协议错误：请求的协议形状本身不可服务。
+	// 既不是账号故障，也不可重试——换号只会把同一个坏请求打给整个号池。
+	cursorErrorProtocol = "protocol_error"
 )
 
 // cursorErrorClassification 是一次 Cursor 上游失败的归类结果。
@@ -36,6 +39,39 @@ type cursorErrorClassification struct {
 	Kind cursor.ErrKind
 	// QuotaBucket 非空时，表示只应把该桶标记为耗尽，而不是整号停用。
 	QuotaBucket string
+	// Terminal 表示这是终端协议错误：不是账号问题，换号重试无意义。
+	// 调度层据此跳过 failover，并且不得把它计入账号失败。
+	Terminal bool
+}
+
+// classifyCursorRunError 是 RunAgentStream 返回错误的归类入口。
+//
+// ⚠️ 必须先判终端协议错误，再退回文本归类。这四个哨兵错误
+// （未声明工具 / 畸形工具负载 / 流提前结束 / 请求被拒）表达的是
+// 「本次请求的协议形状不可服务」，与账号健康度无关：
+//   - 归成 ErrTransient 会让 failover 逐个换号重试同一个确定性失败的请求，
+//     单个坏请求烧穿整个号池；
+//   - 状态码也该是 502（网关侧协议问题）而不是 503（上游暂时不可用）；
+//   - 原始错误串带帧级内部细节（branch=/native=/wire=），不能直接回给客户端。
+func classifyCursorRunError(model string, err error) cursorErrorClassification {
+	if err == nil {
+		return cursorErrorClassification{}
+	}
+	if cursor.IsTerminalProtocolError(err) {
+		return cursorErrorClassification{
+			Category:   cursorErrorProtocol,
+			StatusCode: http.StatusBadGateway,
+			ErrorType:  "api_error",
+			Message:    cursor.TerminalProtocolPublicMessage(err),
+			// ErrKind 只有三态且没有「与账号无关」这一档，这里取零值 ErrTransient
+			// 仅仅是占位。真正的处置依据是 Terminal=true：
+			// cursorShouldDisableAccount 不会停号（只有 ErrAuth 才停），
+			// recordCursorFailure 也不得把它计入账号失败。
+			Kind:     cursor.ErrTransient,
+			Terminal: true,
+		}
+	}
+	return classifyCursorError(model, err.Error())
 }
 
 // classifyCursorError 把上游错误文本归类。
@@ -46,11 +82,17 @@ type cursorErrorClassification struct {
 // 判成额度耗尽，进而误标记整桶额度为 100%。
 //
 // model 参数用于把额度耗尽归到正确的桶（三桶相互独立，单桶耗尽不得整号停摆）。
+//
+// ⚠️ Message 必须经 sanitizeUpstreamErrorMessage：它会被直接写进 SSE error 帧和
+// 非流式 JSON body 回给客户端。上游错误串里可能带 URL query 上的凭证参数，
+// 原样透出等于把密钥回显给调用方。判定仍用未脱敏文本——脱敏只改写敏感参数值，
+// 但没必要让归类规则依赖脱敏后的形状。
 func classifyCursorError(model, text string) cursorErrorClassification {
-	trimmed := strings.TrimSpace(text)
+	raw := strings.TrimSpace(text)
+	trimmed := sanitizeUpstreamErrorMessage(raw)
 
 	// 1) 模型不可用：换模型可恢复，不得计入额度。
-	if cursor.IsBadModelErr(trimmed) {
+	if cursor.IsBadModelErr(raw) {
 		return cursorErrorClassification{
 			Category:   cursorErrorBadModel,
 			StatusCode: http.StatusBadRequest,
@@ -62,7 +104,7 @@ func classifyCursorError(model, text string) cursorErrorClassification {
 
 	// 2) 套餐不允许命名模型（Free 套餐只能用 Auto/default）：
 	//    这是账号能力问题，不是额度问题，也不该重试同一个模型。
-	if cursor.IsNamedModelUnavailableErr(trimmed) {
+	if cursor.IsNamedModelUnavailableErr(raw) {
 		return cursorErrorClassification{
 			Category:   cursorErrorNamedModelDenied,
 			StatusCode: http.StatusBadRequest,
@@ -72,7 +114,7 @@ func classifyCursorError(model, text string) cursorErrorClassification {
 		}
 	}
 
-	switch kind := cursor.ClassifyCursorErr(trimmed); kind {
+	switch kind := cursor.ClassifyCursorErr(raw); kind {
 	case cursor.ErrQuota:
 		return cursorErrorClassification{
 			Category:    cursorErrorQuotaExhausted,

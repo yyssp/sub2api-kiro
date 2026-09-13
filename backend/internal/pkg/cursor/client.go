@@ -15,6 +15,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 )
 
 const (
@@ -52,34 +55,65 @@ func envOr(k, def string) string {
 // Client Cursor 上游客户端。每账号独立连接池, 避免共享 MAX_CONCURRENT_STREAMS 互相饿死。
 type Client struct {
 	mu           sync.Mutex
-	perCred      map[int64]*http.Client
+	perCred      map[credClientKey]*http.Client
 	shared       *http.Client
 	agentTimeout time.Duration // 单轮对话硬上限
 	firstToken   time.Duration // 首字硬墙(无任何真实产出即快速失败转移)
 }
 
+// credClientKey 是每账号连接池的缓存键。
+//
+// ⚠️ 必须把 proxy 并进键里，不能只用账号 ID：代理配在 Transport 上，
+// 而 Transport 随 *http.Client 一起被缓存。管理端给账号改绑代理后，
+// 只按 ID 命中会一直复用旧代理的连接池——改配置完全不生效，
+// 且没有任何报错，只能靠抓包才能发现。
+type credClientKey struct {
+	accountID int64
+	proxyURL  string
+}
+
 func NewClient() *Client {
 	return &Client{
-		perCred:      map[int64]*http.Client{},
-		shared:       newH2Client(),
+		perCred:      map[credClientKey]*http.Client{},
+		shared:       newH2Client(""),
 		agentTimeout: 600 * time.Second,
 		firstToken:   90 * time.Second,
 	}
 }
 
-func newH2Client() *http.Client {
+// newH2Client 构造账号级连接池。proxyURL 为空时退回 http.ProxyFromEnvironment。
+//
+// ⚠️ 代理必须走 proxyutil.ConfigureTransportProxy，不能直接设 Transport.Proxy：
+// SOCKS5 要改的是 DialContext 而非 Proxy，且 proxyurl.Parse 会把 socks5://
+// 升级成 socks5h://，让 DNS 也在代理端解析。自己设 Proxy 会让 SOCKS5 静默失效，
+// 并且本地解析 DNS 造成 DNS 泄漏——出口 IP 变了但 DNS 查询仍从本机发出。
+func newH2Client(proxyURL string) *http.Client {
+	transport := &http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		DialContext:         (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 60 * time.Second}).DialContext,
+		ForceAttemptHTTP2:   true,
+		MaxIdleConns:        512,
+		MaxIdleConnsPerHost: 128,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 15 * time.Second,
+		TLSClientConfig:     &tls.Config{},
+	}
+	if strings.TrimSpace(proxyURL) != "" {
+		// 配置失败时保持直连并留日志：代理不可用不应让请求以 panic 收场，
+		// 但也绝不能静默——出口 IP 没按预期走是风控层面的问题。
+		_, parsed, err := proxyurl.Parse(proxyURL)
+		switch {
+		case err != nil:
+			log.Printf("[cursor] 代理地址解析失败, 本次退回直连: %v", err)
+		case parsed != nil:
+			if err := proxyutil.ConfigureTransportProxy(transport, parsed); err != nil {
+				log.Printf("[cursor] 代理配置失败, 本次退回直连: %v", err)
+			}
+		}
+	}
 	return &http.Client{
-		Transport: &http.Transport{
-			Proxy:               http.ProxyFromEnvironment,
-			DialContext:         (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 60 * time.Second}).DialContext,
-			ForceAttemptHTTP2:   true,
-			MaxIdleConns:        512,
-			MaxIdleConnsPerHost: 128,
-			IdleConnTimeout:     90 * time.Second,
-			TLSHandshakeTimeout: 15 * time.Second,
-			TLSClientConfig:     &tls.Config{},
-		},
-		Timeout: 600 * time.Second,
+		Transport: transport,
+		Timeout:   600 * time.Second,
 	}
 }
 
@@ -87,13 +121,14 @@ func (c *Client) clientFor(a *Account) *http.Client {
 	if a == nil || a.ID == 0 {
 		return c.shared
 	}
+	key := credClientKey{accountID: a.ID, proxyURL: strings.TrimSpace(a.ProxyURL)}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if cl, ok := c.perCred[a.ID]; ok {
+	if cl, ok := c.perCred[key]; ok {
 		return cl
 	}
-	cl := newH2Client()
-	c.perCred[a.ID] = cl
+	cl := newH2Client(key.proxyURL)
+	c.perCred[key] = cl
 	return cl
 }
 

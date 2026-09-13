@@ -124,6 +124,47 @@ const kiroModels = [
   'claude-haiku-4-5-20251001-thinking'
 ]
 
+// Cursor 是多厂商聚合（Claude / GPT / Gemini / Grok 之外还有自研 composer），
+// 不是纯 Claude 通道，所以不能复用 claudeModels。
+// 与后端 internal/pkg/cursor/models.go 的 DefaultModels 保持同步；
+// 真实可用清单以账号动态拉取的 AvailableModels 为准，这里只是白名单候选项。
+const cursorModels = [
+  'default',
+  // Cursor 自研
+  'composer-2.5',
+  'composer-2',
+  // Anthropic
+  'claude-opus-5',
+  'claude-opus-5-thinking-high',
+  'claude-sonnet-5',
+  'claude-sonnet-5-thinking-high',
+  'claude-fable-5',
+  'claude-fable-5-thinking-high',
+  'claude-opus-4.8',
+  'claude-opus-4.7',
+  'claude-opus-4.6',
+  'claude-sonnet-4.6',
+  'claude-4.5-sonnet',
+  'claude-4.5-sonnet-thinking',
+  'claude-4.5-haiku',
+  'claude-4.5-haiku-thinking',
+  // OpenAI
+  'gpt-5.6-terra-high',
+  'gpt-5.6-sol-high',
+  'gpt-5.5',
+  'gpt-5.5-codex',
+  'gpt-5.3-codex',
+  // Google
+  'gemini-3.7-flash-high',
+  'gemini-3.1-pro',
+  'gemini-3-flash',
+  // xAI / 其他
+  'cursor-grok-4.6-high',
+  'grok-4.5',
+  'kimi-k3-high',
+  'glm-5.2-high'
+]
+
 // 智谱 GLM
 const zhipuModels = [
   'glm-4', 'glm-4v', 'glm-4-plus', 'glm-4-0520',
@@ -457,6 +498,34 @@ const bedrockPresetMappings = [
 
 const kiroDefaultMappings = kiroPresetMappings.map(({ from, to }) => ({ from, to }))
 
+// Cursor 预设映射。
+//
+// ⚠️ 与 kiro 不同，Cursor **不需要**靠这张表做 Claude Code 别名解析：
+// 后端 internal/pkg/cursor/models.go 的 claudeCodeModelSpecs 已经把
+// sonnet / claude-sonnet-4-5 这类标准写法解析到真实上游 ID（还会处理
+// 4.6 与 4-6 两种写法）。所以这里只提供两类**可选**的便捷预设：
+//   1. 把 Claude Code 的点号写法钉到 Cursor 的真实 ID（避免依赖解析顺序）；
+//   2. 暴露 Cursor 独有的 composer / thinking-high 档位——这些没有
+//      Claude Code 等价名，不给预设用户就只能手敲。
+const cursorPresetMappings = [
+  { label: 'Composer 2.5', from: 'composer-2-5', to: 'composer-2.5', color: 'bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200 dark:bg-fuchsia-900/30 dark:text-fuchsia-300' },
+  { label: 'Composer 2', from: 'composer-2', to: 'composer-2', color: 'bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200 dark:bg-fuchsia-900/30 dark:text-fuchsia-300' },
+  { label: 'Opus 5', from: 'claude-opus-5', to: 'claude-opus-5', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300' },
+  { label: 'Opus 5 Thinking', from: 'claude-opus-5-thinking', to: 'claude-opus-5-thinking-high', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300' },
+  { label: 'Sonnet 5', from: 'claude-sonnet-5', to: 'claude-sonnet-5', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300' },
+  { label: 'Sonnet 5 Thinking', from: 'claude-sonnet-5-thinking', to: 'claude-sonnet-5-thinking-high', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300' },
+  { label: 'Sonnet 4.6', from: 'claude-sonnet-4-6', to: 'claude-sonnet-4.6', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300' },
+  { label: 'Sonnet 4.5', from: 'claude-sonnet-4-5', to: 'claude-4.5-sonnet', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300' },
+  { label: 'Opus 4.8', from: 'claude-opus-4-8', to: 'claude-opus-4.8', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300' },
+  { label: 'Opus 4.7', from: 'claude-opus-4-7', to: 'claude-opus-4.7', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300' },
+  { label: 'Opus 4.6', from: 'claude-opus-4-6', to: 'claude-opus-4.6', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300' },
+  { label: 'Haiku 4.5', from: 'claude-haiku-4-5', to: 'claude-4.5-haiku', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300' },
+  { label: 'Fable 5', from: 'claude-fable-5', to: 'claude-fable-5', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-300' },
+  { label: 'GPT-5.5', from: 'gpt-5.5', to: 'gpt-5.5', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300' },
+  { label: 'Gemini 3.1 Pro', from: 'gemini-3.1-pro', to: 'gemini-3.1-pro', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300' },
+  { label: 'Grok 4.5', from: 'grok-4.5', to: 'grok-4.5', color: 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300' }
+]
+
 // Antigravity 默认映射（从后端 API 获取，与 constants.go 保持一致）
 // 使用 fetchAntigravityDefaultMappings() 异步获取
 import { getAntigravityDefaultModelMapping } from '@/api/admin/accounts'
@@ -513,6 +582,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'gemini': return geminiModels
     case 'antigravity': return antigravityModels
     case 'kiro': return kiroModels
+    case 'cursor': return cursorModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
     case 'deepseek': return deepseekModels
@@ -541,6 +611,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'kiro') return kiroPresetMappings
+  if (platform === 'cursor') return cursorPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings
 }

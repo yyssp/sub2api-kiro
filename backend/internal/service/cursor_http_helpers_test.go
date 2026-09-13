@@ -220,7 +220,12 @@ func TestCursorProtocolAccount_MapsCredentialsAndRuntimeStateSeparately(t *testi
 	// 运行时状态来自列
 	require.True(t, got.Disabled, "Schedulable=false 应投影成 Disabled")
 	require.Equal(t, "boom", got.LastError)
-	require.True(t, expires.Equal(got.AccountExpiry))
+	// AccountExpiry 是 access token 自身的有效期（JWT exp），与 accounts.expires_at
+	// （订阅有效期）无关。这里的 access token 不是 JWT，解不出 exp ⇒ 必须是零值，
+	// 而不是回落到 ExpiresAt 列。详见 cursor_token_expiry_test.go。
+	require.True(t, got.AccountExpiry.IsZero(),
+		"AccountExpiry 取到了 accounts.expires_at；该列是订阅有效期，"+
+			"被 AutoPauseExpiredAccounts 扫描，不能与 token 有效期混用")
 	require.True(t, now.Equal(got.UsageAt))
 }
 

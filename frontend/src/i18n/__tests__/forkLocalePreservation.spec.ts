@@ -134,9 +134,13 @@ home.providers.grok
 home.providers.kiro
 `.trim().split(/\s+/)
 
+// kiro 的 importTitle / importSubtitle / importDialogTitle 下方哈希取的是
+// 批量导入并入「添加账号」弹层之后的文案：独立导入入口已删除，导入不再局限于
+// Kiro IDE 单 token，而是 JSON / ksk / Token / Kiro IDE 四种凭证形态，
+// 原文案「从 Kiro IDE 导入 / 已在 Kiro IDE 登录时使用」在新逻辑下是错的。
 const expectedHashes = {
-  en: 'd5a28c03831b675911a146891e06ce3ca7e14a91054cc5d3901789140060ed63',
-  zh: '6d7240d976b3d7e841ef971970c362ad65d9428232ea840bdf9c7d497291facd',
+  en: '7ec1a34cd7f2379c7f1b4771c14c253db5abe4a3c3366dc6a56ab072714ab915',
+  zh: 'dc7a0d9e431b2e58b55b91927b1e0a5cd16a6db8547d1a10939a44eac7cb028b',
 }
 
 function localeValue(locale: Record<string, unknown>, key: string): unknown {

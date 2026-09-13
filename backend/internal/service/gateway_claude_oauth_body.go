@@ -374,11 +374,16 @@ func (s *GatewayService) buildOAuthMetadataUserID(parsed *ParsedRequest, account
 //
 // 用 IsKiro 而非 isKiroDirectModeAccount：带 base_url 的 Kiro 中转账号不走直连分支，
 // 但同样不该被伪装。
+//
+// ⚠️ Cursor 同理，且理由更硬：伪装会往 body 里注入 Claude Code 的 system 提示与
+// metadata，而 Cursor 的 agent.v1 对 custom_system_prompt 直接返回 invalid_argument
+// （见 forwardCursorMessages 的 "system 不发往上游" 说明）。注入的结果不是
+// "伪装无效"，而是把一个本来正常的请求变成上游硬拒。
 func shouldMimicClaudeCodeForAccount(account *Account, isClaudeCodeClient bool) bool {
 	if account == nil || isClaudeCodeClient {
 		return false
 	}
-	return account.IsOAuth() && !account.IsKiro()
+	return account.IsOAuth() && !account.IsKiro() && account.Platform != PlatformCursor
 }
 
 // applyClaudeCodeOAuthMimicryToBody 将"非 Claude Code 客户端 + Claude OAuth 账号"

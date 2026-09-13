@@ -101,6 +101,15 @@ func ApplyLegacyRequestFields(requestType RequestType, fallbackStream bool, fall
 	}
 }
 
+// usage_logs.usage_source 的取值。
+//
+// ⚠️ 不要新增「unknown」之类的第三态：NULL 已经表达「未声明」，
+// 而未声明必须按 upstream 解读（见 UsageLog.UsageSource 的说明）。
+const (
+	// usageSourceEstimated 表示 token 由网关侧分词器推算，非上游实测。
+	usageSourceEstimated = "estimated"
+)
+
 type UsageLog struct {
 	ID        int64
 	UserID    int64
@@ -176,6 +185,15 @@ type UsageLog struct {
 	AccountStatsCost *float64
 	// KiroCredits records Kiro credit consumption for Kiro account usage.
 	KiroCredits *float64
+	// UsageSource records where this row's token counts came from:
+	// "estimated" (gateway-side tokenizer) or "upstream" (provider-reported).
+	//
+	// ⚠️ nil 必须按 "upstream" 解读，不能按 "未知" 丢弃：历史行全部产生于
+	// Cursor 接入之前，而 Cursor 是目前唯一按估算值计费的平台。
+	//
+	// 没有这一列时，对账查询无法把「实测用量」和「估算用量」分开——两者
+	// 写进库里长得一模一样，估算口径出偏差也查不出受影响的范围。
+	UsageSource *string
 
 	BillingType        int8
 	RequestType        RequestType

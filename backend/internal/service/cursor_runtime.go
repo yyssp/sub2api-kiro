@@ -543,7 +543,12 @@ func (s *GatewayService) forwardCursorMessages(ctx context.Context, c *gin.Conte
 
 	token, err := s.cursorAccessToken(ctx, account)
 	if err != nil {
-		return nil, err
+		// ⚠️ 必须转成凭证级 failover 契约再返回。
+		//
+		// 直接 return err 的话 handler 的 errors.As 不匹配，会当场结束请求：
+		// 号池里其它健康账号一个都用不上，而 token provider 恰恰刚把这个号
+		// SetError 停用了——用户看到的是"有号可用却报错"。
+		return nil, cursorCredentialFailover(c, account, err)
 	}
 
 	protoAccount := cursorProtocolAccount(account)

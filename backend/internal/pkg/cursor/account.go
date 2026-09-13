@@ -32,6 +32,14 @@ type Account struct {
 	Disabled   bool   // 当前是否不可用于常规请求面
 	Membership string // 套餐，决定 Sand/GrokBot 能力探测策略
 
+	// ProxyURL 是该账号绑定的出站代理（由业务层从 accounts.proxy_id 关联填入）。
+	// 空串表示直连（退回 http.ProxyFromEnvironment）。
+	//
+	// ⚠️ Cursor 按设备指纹 + 出口 IP 做风控：同一批账号从同一出口 IP 打过去
+	// 容易被整体判定异常。账号级代理是把号池分散到不同出口的唯一手段，
+	// 漏接会让管理端配好的代理对 Cursor 静默失效（其它平台都生效，只有它不）。
+	ProxyURL string
+
 	// ── 三桶额度快照（由业务层从 extra["cursor_quota"] 填入，协议层只读）──
 	// ⚠️ 单桶耗尽 ≠ 账号不可用：一个账号可能 cursor 桶耗尽但 grokbot 桶可用。
 	// 调度时必须按「目标模型属于哪个桶」判断，见 ModelToQuotaBucket。

@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
+
+// 从平台目录派生而非写死数量：新增平台时不用回来改断言。
+const PLATFORM_COUNT = CONCRETE_PLATFORM_OPTIONS.length
 
 const apiMocks = vi.hoisted(() => ({
   getPlatformQuotas: vi.fn(),
@@ -99,13 +103,13 @@ describe('UserPlatformQuotaModal', () => {
     })
     const w = await mountAndOpen()
     const inputs = w.findAll('input[type=number]')
-    // 6 platforms × 3 windows = 18 inputs
-    expect(inputs.length).toBe(18)
+    // 每个平台 3 个窗口（日/周/月）
+    expect(inputs.length).toBe(PLATFORM_COUNT * 3)
     // 第一个 input 是 anthropic.daily = 10
     expect((inputs[0].element as HTMLInputElement).value).toBe('10')
   })
 
-  it('保存提交完整 6 platform payload', async () => {
+  it('保存提交完整全平台 payload', async () => {
     apiMocks.getPlatformQuotas.mockResolvedValueOnce({
       platform_quotas: [
         { platform: 'openai', daily_limit_usd: null, weekly_limit_usd: 20, monthly_limit_usd: null,
@@ -122,7 +126,7 @@ describe('UserPlatformQuotaModal', () => {
     expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledTimes(1)
     const [uid, payload] = apiMocks.updatePlatformQuotas.mock.calls[0]
     expect(uid).toBe(99)
-    expect(payload).toHaveLength(6) // 6 platforms always submitted
+    expect(payload).toHaveLength(PLATFORM_COUNT) // 所有平台都要提交
     const openai = payload.find((p: any) => p.platform === 'openai')
     expect(openai.weekly_limit_usd).toBe(20)
   })

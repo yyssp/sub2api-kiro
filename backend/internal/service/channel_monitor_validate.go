@@ -25,6 +25,12 @@ var monitorProviders = map[string]struct{}{
 	MonitorProviderKimi:        {},
 	MonitorProviderZhipu:       {},
 	MonitorProviderDeepseek:    {},
+	// ⚠️ minimax 此前漏注册：ent enum、迁移 237/238 的 CHECK 约束、
+	// MonitorProviderMiniMax 常量都有它，唯独这张校验表没有，
+	// 导致 minimax 渠道监控创建时被 validateProvider 拒掉。
+	MonitorProviderMiniMax: {},
+	// cursor 仅配额模式，不进 probeCapableProviders。
+	MonitorProviderCursor: {},
 }
 
 // probeCapableProviders 支持探活（probe / quota_probe）的 provider。

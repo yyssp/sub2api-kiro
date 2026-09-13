@@ -3,6 +3,9 @@ package service
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 )
@@ -36,6 +39,66 @@ func cursorFailoverBody(c cursorErrorClassification) []byte {
 	}
 	return body
 }
+
+// cursorCredentialFailover 把「拿不到 access token」翻译成凭证级调度契约。
+//
+// ⚠️ 取 token 失败必须能换号，否则整个凭证刷新链路的容错是假的：
+// token provider 在确认失效时会 SetError 停用该账号，但如果这里返回普通
+// error，handler 的 errors.As 不匹配 → 直接 return，本次请求当场失败。
+// 结果是「号池里有 9 个健康账号，却因为选中的第 10 个 refresh token 过期
+// 而对用户报错」，而且下一个请求还得重新踩一次才轮到别的号。
+//
+// ⚠️ 按「是否确认失效」分流 Scope，不能一律当账号问题：
+//   - 确认失效（上游明确拒绝 refresh token）→ 账号级，换号必然有意义；
+//   - 网络抖动/代理 EOF/5xx → provider 已刻意**不**写 SetError，此时若仍
+//     按账号级上报，会把一次全局网络故障记成"这些账号都不健康"，
+//     调度器的账号健康度被污染，故障恢复后仍会持续避开这些号。
+//
+// ⚠️ 不带 ResponseBody：这不是上游推理接口返回的错误体，伪造一个
+// Claude 形状的 body 会让错误透传规则按"上游响应"去匹配它。
+// 凭证阶段用 ClientStatusCode/ClientMessage 即可——它是 503 而非上游状态码。
+func cursorCredentialFailover(c *gin.Context, account *Account, err error) *UpstreamFailoverError {
+	confirmed := cursor.ConfirmedAuthRefreshFailure(err)
+
+	scope := GatewayFailureScopeProvider
+	if confirmed {
+		scope = GatewayFailureScopeAccount
+	}
+
+	reason := strings.TrimSpace(cursor.AuthRefreshFailureReason(err))
+	if reason == "" {
+		reason = "cursor credential unavailable"
+	}
+
+	if account != nil {
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			// ⚠️ 凭证获取发生在推理连接建立之前，账号此刻绑定的代理
+			// 并不能证明本次失败与该代理有关（与 Grok 同口径）。
+			ProxyID:     nil,
+			ProxyName:   opsProxyNameUnknown,
+			Platform:    PlatformCursor,
+			AccountID:   account.ID,
+			AccountName: account.Name,
+			Stage:       string(GatewayFailureStageAccountAuth),
+			Scope:       string(scope),
+			Kind:        "credential_failover",
+			Message:     sanitizeUpstreamErrorMessage(reason),
+		})
+	}
+
+	return &UpstreamFailoverError{
+		Stage:             GatewayFailureStageAccountAuth,
+		Scope:             scope,
+		NextAccountAction: NextAccountRetry,
+		ClientStatusCode:  http.StatusServiceUnavailable,
+		ClientMessage:     cursorCredentialUnavailableClientMessage,
+	}
+}
+
+// cursorCredentialUnavailableClientMessage 是凭证不可用时对外的固定文案。
+// ⚠️ 不能把上游原始错误直接回给客户端：refresh 失败的报文里可能带
+// token 片段或账号标识，那是凭证泄露。
+const cursorCredentialUnavailableClientMessage = "No healthy Cursor account is currently available"
 
 // cursorFailoverError 把 Cursor 的错误归类翻译成网关通用的调度契约。
 //

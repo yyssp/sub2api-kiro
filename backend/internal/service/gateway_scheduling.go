@@ -1168,7 +1168,30 @@ func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Conte
 	if !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
 		return false
 	}
+	if !s.isCursorRuntimeSchedulable(account, requestedModel) {
+		return false
+	}
 	return s.isKiroRuntimeSchedulable(ctx, account)
+}
+
+// isCursorRuntimeSchedulable 把 Cursor 的三桶额度接进选号。
+//
+// ⚠️ 没有这个钩子，三桶额度就是一份「算得很准但没人看」的数据：
+// markCursorBucketExhausted 会忠实落库，CursorAccountUsableForModel 也有完整
+// 测试，但选号完全不读它——耗尽的桶会被反复选中，每个请求白烧一次 failover，
+// 直到换号预算耗尽才对用户报错。额度越准，这个浪费越隐蔽。
+//
+// ⚠️ 必须按「目标模型属于哪个桶」判断，不能一刀切：三桶相互独立，
+// cursor 桶满时账号对 other/grokbot 桶的模型仍然完全可用。按账号整体标记
+// 不可调度会把可用容量凭空砍掉三分之二。
+//
+// ⚠️ requestedModel 为空时一律放行：拿不到目标模型就无法确定归属哪个桶，
+// 此时"猜"一个桶去拦截，可能把完全可用的账号误判成不可用。
+func (s *GatewayService) isCursorRuntimeSchedulable(account *Account, requestedModel string) bool {
+	if !isCursorDirectModeAccount(account) || strings.TrimSpace(requestedModel) == "" {
+		return true
+	}
+	return CursorAccountUsableForModel(account, requestedModel)
 }
 
 func (s *GatewayService) isKiroRuntimeSchedulable(ctx context.Context, account *Account) bool {

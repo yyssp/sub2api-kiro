@@ -63,6 +63,8 @@ func RegisterAdminRoutes(
 
 		// Kiro OAuth / IDC
 		registerKiroOAuthRoutes(admin, h)
+		// Cursor 凭证导入
+		registerCursorRoutes(admin, h)
 		// Grok OAuth
 		registerGrokOAuthRoutes(admin, h)
 
@@ -524,6 +526,18 @@ func registerKiroOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		kiro.POST("/oauth/import-token", h.Admin.KiroOAuth.ImportToken)
 		// kiro.rs 凭证文件导入：与上面的 Kiro IDE 导出导入并列，解析规则更宽松。
 		kiro.POST("/oauth/import-kiro-rs", h.Admin.KiroOAuth.ImportKiroRsCredentials)
+	}
+}
+
+// registerCursorRoutes 注册 Cursor 专属端点。
+//
+// Cursor 没有标准 OAuth 授权码流程（见 service.CursorOAuthService 的说明），
+// 所以这里只有凭证导入，没有 auth-url / exchange-code 那一套。
+// handler 挂在 AccountHandler 上，因为 CursorOAuthService 已经注入到那里了。
+func registerCursorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	cursor := admin.Group("/cursor")
+	{
+		cursor.POST("/import-credentials", h.Admin.Account.ImportCursorCredentials)
 	}
 }
 

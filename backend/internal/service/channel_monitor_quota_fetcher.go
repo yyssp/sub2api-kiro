@@ -321,6 +321,13 @@ func usageQuotaTiers(usage *UsageInfo) []domain.MonitorQuotaTier {
 	// Kiro credits 主额度 + Bonus（免费试用）额度，二者共用 KiroResetAt。
 	appendKiroCreditTier(&tiers, "credits", usage.KiroCredit, usage.KiroResetAt)
 	appendKiroCreditTier(&tiers, "bonus", usage.KiroBonus, usage.KiroResetAt)
+	// Cursor 三桶额度（cursor / other / grokbot），互相独立：
+	// 一个桶耗尽不代表整号不可用，所以三个桶各出一个 tier。
+	if usage.CursorQuota != nil {
+		appendCursorBucketTier(&tiers, "cursor", usage.CursorQuota.Cursor, usage.CursorQuota.FetchedAt)
+		appendCursorBucketTier(&tiers, "other", usage.CursorQuota.Other, usage.CursorQuota.FetchedAt)
+		appendCursorBucketTier(&tiers, "grokbot", usage.CursorQuota.GrokBot, usage.CursorQuota.FetchedAt)
+	}
 	// Antigravity per-model 总量额度，Label = 模型名（按名排序保证输出稳定）。
 	for _, model := range sortedQuotaModelNames(usage.AntigravityQuota) {
 		q := usage.AntigravityQuota[model]
@@ -375,6 +382,30 @@ func appendKiroCreditTier(tiers *[]domain.MonitorQuotaTier, label string, p *Kir
 	}
 	if resetAt != nil {
 		tier.ResetAt = resetAt.UTC().Format(time.RFC3339)
+	}
+	*tiers = append(*tiers, tier)
+}
+
+// appendCursorBucketTier 把一个 Cursor 额度桶归一为 tier。
+//
+// ⚠️ 只有 available / exhausted 才有可信百分比。unknown（上游 200 但没返回
+// 字段）和 request_failed（端点没拿到）必须跳过，不能当作 "0% 已用" 输出——
+// 那会让监控面板把一个状态未知的桶显示成额度充足。
+//
+// Window 用 "billing_period" 而不是 5h/7d：Cursor 额度按计费周期结算，
+// 上游不返回 resetsAt，硬套滑动窗口会凭空捏造一个重置时间。
+func appendCursorBucketTier(tiers *[]domain.MonitorQuotaTier, label string, b CursorBucketQuota, fetchedAt *time.Time) {
+	if b.State != CursorQuotaStateAvailable && b.State != CursorQuotaStateExhausted {
+		return
+	}
+	tier := domain.MonitorQuotaTier{
+		Window:      "billing_period",
+		Label:       label,
+		UsedPercent: b.Percent,
+	}
+	// 没有 resetsAt 可用；抓取时刻仅用于说明数据新鲜度。
+	if fetchedAt != nil {
+		tier.ResetAt = fetchedAt.UTC().Format(time.RFC3339)
 	}
 	*tiers = append(*tiers, tier)
 }

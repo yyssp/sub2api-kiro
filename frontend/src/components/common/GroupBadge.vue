@@ -150,6 +150,9 @@ const labelClass = computed(() => {
   if (props.platform === 'kiro') {
     return `${base} bg-violet-200/60 text-violet-800 dark:bg-violet-800/40 dark:text-violet-300`
   }
+  if (props.platform === 'cursor') {
+    return `${base} bg-amber-200/60 text-amber-900 dark:bg-amber-800/40 dark:text-amber-300`
+  }
   if (props.platform === 'anthropic') {
     return `${base} bg-orange-200/60 text-orange-800 dark:bg-orange-800/40 dark:text-orange-300`
   }
@@ -193,6 +196,11 @@ const badgeClass = computed(() => {
     return isSubscription.value
       ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
       : 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300'
+  }
+  if (props.platform === 'cursor') {
+    return isSubscription.value
+      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+      : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
   }
   if (props.platform === 'anthropic') {
     // Claude: orange theme

@@ -125,7 +125,10 @@ func (p *CursorTokenProvider) ForceRefreshAccessToken(ctx context.Context, accou
 		return "", errors.New("refresh_token not found in credentials")
 	}
 
-	accessToken, rotatedRefresh, err := cursor.RefreshAuthToken(refreshToken)
+	// 经账号绑定的代理刷新：刷新与对话必须同出口 IP，否则同一账号
+	// 从两个 IP 活动，反而更容易触发 Cursor 风控。
+	accessToken, rotatedRefresh, err := cursor.RefreshAuthTokenVia(
+		refreshToken, cursorAccountProxyURL(account))
 	if err != nil {
 		// ⚠️ 只有「确认失效」才停用账号。网络抖动/代理 EOF/5xx 一律不写
 		// SetError，否则一次上游抖动会批量误停整个号池。

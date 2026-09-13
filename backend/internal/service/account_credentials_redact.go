@@ -7,6 +7,12 @@ var SensitiveCredentialKeys = []string{
 	"access_token", "refresh_token", "id_token", "agent_private_key",
 	// API Key 类
 	"api_key", "session_key", "cookie",
+	// Cursor 面板会话（uid::JWT，cursor.com 的 cookie 值）。
+	// ⚠️ 它是可直接使用的凭证，不是标识符：能读取账号额度面板。
+	// 名字里没有 token/key 字样，极易被当成无害字段漏掉——
+	// 漏掉的后果是每次 admin 账号 GET/LIST 都把它明文吐给前端，
+	// 且全对象 PUT 时不受 MergePreservingSensitiveCreds 保护会被静默清空。
+	"session",
 	// Grok Web SSO / password (must never persist or echo after Build OAuth)
 	"password", "sso_token", "sso", "sso-rw", "clearTextPassword",
 	// 云服务凭据

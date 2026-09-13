@@ -12,6 +12,7 @@ export type Provider =
   | 'grok'
   | 'antigravity'
   | 'kiro'
+  | 'cursor'
   | 'kimi'
   | 'zhipu'
   | 'deepseek'

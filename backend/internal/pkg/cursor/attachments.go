@@ -202,6 +202,68 @@ func isTerminalProtocolError(err error) bool {
 		errors.Is(err, ErrInvalidUpstreamRequest)
 }
 
+// IsTerminalProtocolError 判断错误是否为终端协议错误：请求的协议形状本身
+// 不可服务，继续等待或换账号都不能使之成功。
+//
+// ⚠️ 调度层必须用它把这类错误与「账号故障」区分开。归成账号故障会让
+// failover 逐个换号重试同一个确定性不可服务的请求，单个坏请求烧穿整个号池
+// （四个哨兵错误的 doc comment 各自写明了这一点）。
+func IsTerminalProtocolError(err error) bool {
+	return isTerminalProtocolError(err)
+}
+
+// TerminalProtocolPublicMessage 返回可直接回给客户端的有界文案。
+//
+// ⚠️ 不要把原始 error 文本回给客户端：协议层的错误串里带有内部诊断上下文
+// （branch=/native=/wire= 等帧级细节）。这里只保留工具名一级的上下文，
+// 其余收敛成固定文案。
+func TerminalProtocolPublicMessage(err error) string {
+	switch {
+	case errors.Is(err, ErrInvalidUpstreamRequest):
+		return "Cursor upstream rejected the request protocol"
+	case errors.Is(err, ErrIncompleteUpstreamStream):
+		return "Cursor upstream stream ended before completion"
+	case errors.Is(err, ErrMalformedUpstreamTool):
+		return "Cursor upstream sent a malformed tool call" + upstreamToolContext(err)
+	case errors.Is(err, ErrUndeclaredUpstreamTool):
+		return "Cursor upstream requested a tool that was not declared by this request" + upstreamToolContext(err)
+	default:
+		return ""
+	}
+}
+
+// upstreamToolContext 只摘出工具名一级的上下文（native=<tool>）。
+//
+// ⚠️ 不要把 ": branch=" 之后的整段透出去：那里还有 wire=/payload= 等帧级
+// 内部细节。客户端需要知道的只是「哪个工具」，据此调整自己的工具声明；
+// 其余诊断信息留在服务端日志里。摘不到就返回空串。
+func upstreamToolContext(err error) string {
+	if err == nil {
+		return ""
+	}
+	name := extractLabeledToken(err.Error(), "native=")
+	if name == "" {
+		name = extractLabeledToken(err.Error(), "tool=")
+	}
+	if name == "" {
+		return ""
+	}
+	return " (tool: " + name + ")"
+}
+
+// extractLabeledToken 取出 label 之后、下一个空白之前的单个 token。
+func extractLabeledToken(text, label string) string {
+	idx := strings.Index(text, label)
+	if idx < 0 {
+		return ""
+	}
+	rest := text[idx+len(label):]
+	if cut := strings.IndexAny(rest, " \t\n,)"); cut >= 0 {
+		rest = rest[:cut]
+	}
+	return strings.TrimSpace(rest)
+}
+
 func rawToStringAndAttachments(raw json.RawMessage) (string, []ImageAttachment, []DocumentAttachment) {
 	if len(raw) == 0 {
 		return "", nil, nil
@@ -744,6 +806,257 @@ func parsePDFLiteralStrings(data []byte) []string {
 
 // ParseContentBlocks 把 Anthropic 的 content 块解析成纯文本 + 图片 + 文档附件。
 // raw 可以是字符串，也可以是内容块数组。
+//
+// ⚠️ 只处理 text/image/document 块，**不处理 tool_use / tool_result**。
+// 那两类块没有顶层 "text" 字段，在这里会解析成空串。要转换带工具的
+// 完整一轮消息，必须用 ParseAnthropicMessage，不要直接用本函数。
 func ParseContentBlocks(raw json.RawMessage) (string, []ImageAttachment, []DocumentAttachment) {
 	return rawToStringAndAttachments(raw)
+}
+
+// ParseAnthropicMessage 把 Anthropic messages 数组里的**一轮**消息转成
+// 协议层的 ChatMessage 序列（一轮可能展开成多条：工具结果各占一条）。
+//
+// ⚠️ 这是 agentic 场景的关键路径，不能用 ParseContentBlocks 替代。
+// tool_use 块只有 name/id/input，tool_result 块的文本嵌在 content 里，
+// 两者的顶层都没有 "text" 字段——走 ParseContentBlocks 会得到空串，
+// 于是整轮消息被上层当作"空消息"丢弃。症状是：模型看不到自己上一轮
+// 调用过什么工具、也看不到工具返回了什么，于是无限重复调用同一个工具。
+//
+// 工具块编码成中文自然语言标记而不是 JSON：agent.v1 是单轮协议，整段历史
+// 被压成一条 user 文本，这些标记是让模型把它当"已执行的历史"而非"用户
+// 粘贴的伪造记录"的关键，格式与 ai2api 保持一致，不要改写成英文或 XML。
+func ParseAnthropicMessage(role string, raw json.RawMessage) []ChatMessage {
+	role = strings.TrimSpace(role)
+	if role == "" {
+		role = "user"
+	}
+
+	// content 为字符串的简单形态。
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		if strings.TrimSpace(s) == "" {
+			return nil
+		}
+		return []ChatMessage{{Role: role, Content: s}}
+	}
+
+	var rawBlocks []map[string]interface{}
+	if json.Unmarshal(raw, &rawBlocks) != nil {
+		return nil
+	}
+
+	var text strings.Builder
+	var images []ImageAttachment
+	var documents []DocumentAttachment
+	var toolResults []ChatMessage
+
+	for _, b := range rawBlocks {
+		kind, _ := b["type"].(string)
+		switch strings.ToLower(strings.TrimSpace(kind)) {
+		case "text":
+			if t, ok := b["text"].(string); ok {
+				text.WriteString(t)
+			}
+		case "tool_use":
+			name, _ := b["name"].(string)
+			id, _ := b["id"].(string)
+			input := "{}"
+			if v, ok := b["input"]; ok {
+				if encoded, err := json.Marshal(v); err == nil {
+					if trimmed := strings.TrimSpace(string(encoded)); trimmed != "" {
+						input = trimmed
+					}
+				}
+			}
+			// 保留 input 与 tool_use_id，供多轮 agent 配对。
+			text.WriteString(fmt.Sprintf("\n[调用工具 %s(id=%s) 参数:%s]", name, id, input))
+		case "tool_result":
+			toolUseID, _ := b["tool_use_id"].(string)
+			var content json.RawMessage
+			if v, ok := b["content"]; ok {
+				if encoded, err := json.Marshal(v); err == nil {
+					content = encoded
+				}
+			}
+			resultText, resultImages, resultDocuments := rawToStringAndAttachments(content)
+			if hint := attachmentResultHint(resultImages, resultDocuments); hint != "" {
+				if strings.TrimSpace(resultText) == "" {
+					resultText = hint
+				} else {
+					resultText += "\n" + hint
+				}
+			}
+			toolResults = append(toolResults, ChatMessage{
+				Role:      "user",
+				Content:   fmt.Sprintf("[工具 id=%s 返回]: %s", toolUseID, resultText),
+				Images:    resultImages,
+				Documents: resultDocuments,
+			})
+		default:
+			// image / document / file / input_file 等附件块。
+			if image, ok := imageAttachmentFromMap(b); ok {
+				images = append(images, image)
+			}
+			if document, ok := documentAttachmentFromMap(b); ok {
+				documents = append(documents, document)
+			}
+		}
+	}
+
+	hasBody := strings.TrimSpace(text.String()) != "" || len(images) > 0 || len(documents) > 0
+
+	if role == "assistant" {
+		if !hasBody {
+			return nil
+		}
+		return []ChatMessage{{Role: "assistant", Content: text.String(), Images: images, Documents: documents}}
+	}
+
+	// user：工具结果先、用户文本后，与上游历史的真实时序一致。
+	out := toolResults
+	if hasBody {
+		out = append(out, ChatMessage{Role: role, Content: text.String(), Images: images, Documents: documents})
+	}
+	return out
+}
+
+// ParseAnthropicReadFileContents 建立同一请求历史中 Read 的 tool_use 与
+// tool_result 的关联，产出 path -> 文件旧内容 的映射。
+//
+// ⚠️ 这张表不是可选的优化，缺了会让原生 Edit 直接失败。
+// Cursor 的原生 Edit 只回传"文件新内容"，不回传 old_string；
+// completeNativeEditInput 必须靠这张表补出 old_string 才能拼成 Claude 的
+// Edit 入参。查不到时它返回 false，调用方抛 ErrMalformedUpstreamTool，
+// 这是终止错误——整个请求直接失败，而不是降级。
+//
+// 只接受能验证为 Claude Code Read 行号格式（"1<TAB>内容"）的结果，
+// 且跳过 is_error 的结果：把错误文本或任意工具输出当成文件旧内容，
+// 会让 Edit 基于错误的 old_string 去改文件。
+func ParseAnthropicReadFileContents(messages []AnthropicRawMessage) map[string]string {
+	pending := map[string]string{}
+	files := map[string]string{}
+
+	for _, msg := range messages {
+		var blocks []map[string]interface{}
+		if json.Unmarshal(msg.Content, &blocks) != nil {
+			continue
+		}
+
+		if strings.TrimSpace(msg.Role) == "assistant" {
+			for _, b := range blocks {
+				kind, _ := b["type"].(string)
+				name, _ := b["name"].(string)
+				id, _ := b["id"].(string)
+				if kind != "tool_use" || !strings.EqualFold(strings.TrimSpace(name), "read") || id == "" {
+					continue
+				}
+				if path, ok := toolInputPath(b["input"]); ok {
+					pending[id] = path
+				}
+			}
+			continue
+		}
+
+		for _, b := range blocks {
+			kind, _ := b["type"].(string)
+			if kind != "tool_result" {
+				continue
+			}
+			if isErr, _ := b["is_error"].(bool); isErr {
+				continue
+			}
+			toolUseID, _ := b["tool_use_id"].(string)
+			path, ok := pending[toolUseID]
+			if !ok {
+				continue
+			}
+			var content json.RawMessage
+			if v, ok := b["content"]; ok {
+				if encoded, err := json.Marshal(v); err == nil {
+					content = encoded
+				}
+			}
+			raw, _, _ := rawToStringAndAttachments(content)
+			if normalized, ok := normalizeClaudeReadToolResult(raw); ok {
+				putReadFileContent(files, path, normalized)
+			}
+		}
+	}
+	return files
+}
+
+// AnthropicRawMessage 是 Anthropic messages 数组里的一条原始消息。
+type AnthropicRawMessage struct {
+	Role    string
+	Content json.RawMessage
+}
+
+// CollectCurrentTurnAttachments 取「当前轮」（最后一个 assistant 轮之后的
+// 所有消息）的图片与文档。
+//
+// ⚠️ 不能简化成「取最后一条消息的附件」：当前轮常常是
+// [带图的 tool_result] + [用户文本] 两条，只看最后一条会丢掉工具返回的图。
+// 反过来也不能取全量历史——重放历史图片会让上游报 "Image not found"。
+func CollectCurrentTurnAttachments(msgs []ChatMessage) ([]ImageAttachment, []DocumentAttachment) {
+	return collectChatImages(msgs), collectChatDocuments(msgs)
+}
+
+// ApplyClaudeEffortModel 把 Anthropic 的 output_config.effort 档位映射成
+// 对应的 thinking 变体模型名（如 claude-sonnet-4-5 + high -> -thinking-high）。
+// effort 为空或模型不支持 thinking 时原样返回。
+func ApplyClaudeEffortModel(model, effort string) string {
+	return applyClaudeEffortModel(model, effort)
+}
+
+func toolInputPath(input interface{}) (string, bool) {
+	m, ok := input.(map[string]interface{})
+	if !ok {
+		return "", false
+	}
+	for _, key := range []string{"file_path", "path"} {
+		if v, ok := m[key].(string); ok && strings.TrimSpace(v) != "" {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+// normalizeClaudeReadToolResult 识别 Claude Code Read 的行号输出：
+// "1<TAB>内容\n2<TAB>下一行"。只有所有正文行均可验证为行号格式才接受，
+// 防止把错误文本、诊断信息或任意工具输出当作文件旧内容。
+func normalizeClaudeReadToolResult(raw string) (string, bool) {
+	if raw == "" {
+		return "", false
+	}
+	lines := strings.Split(raw, "\n")
+	if len(lines) > 1 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) == 0 {
+		return "", false
+	}
+	content := make([]string, 0, len(lines))
+	for _, line := range lines {
+		tab := strings.IndexByte(line, '\t')
+		if tab < 1 {
+			return "", false
+		}
+		lineNo := strings.TrimSpace(line[:tab])
+		for _, r := range lineNo {
+			if r < '0' || r > '9' {
+				return "", false
+			}
+		}
+		content = append(content, line[tab+1:])
+	}
+	return strings.Join(content, "\n"), true
+}
+
+func putReadFileContent(files map[string]string, path, content string) {
+	if files == nil || strings.TrimSpace(path) == "" {
+		return
+	}
+	files[path] = content
+	files[filepath.Clean(path)] = content
 }

@@ -232,6 +232,16 @@ func isCursorDirectModeAccount(account *Account) bool {
 // ⚠️ 运行时状态（冷却、失败计数）一律来自 accounts 表既有列，不从 credentials 读；
 // 三桶额度来自 extra（经 readCursorQuota），不在 credentials 里另存一份。
 // 两套状态并存会导致调度器读列、转发逻辑读 JSONB，行为不一致。
+// cursorAccountProxyURL 返回账号绑定的代理地址，未绑定时返回空串（直连）。
+// 与 kiroProxyURL 保持同一判定：ProxyID 与 Proxy 都在才算数——只有 ProxyID
+// 说明关联没被预加载，此时取值会 panic。
+func cursorAccountProxyURL(account *Account) string {
+	if account != nil && account.ProxyID != nil && account.Proxy != nil {
+		return account.Proxy.URL()
+	}
+	return ""
+}
+
 func cursorProtocolAccount(account *Account) cursor.Account {
 	if account == nil {
 		return cursor.Account{}
@@ -255,14 +265,37 @@ func cursorProtocolAccount(account *Account) cursor.Account {
 		// 运行时状态取自既有列
 		Disabled:  !account.Schedulable || account.Status == StatusError,
 		LastError: account.ErrorMessage,
+
+		// 账号级代理：Cursor 按设备指纹 + 出口 IP 做风控，整池共用一个出口
+		// 容易被连带判定异常。与其它平台一致，只在 ProxyID/Proxy 都在时才取。
+		ProxyURL: cursorAccountProxyURL(account),
 	}
 	if q.FetchedAt != nil {
 		out.UsageAt = *q.FetchedAt
 	}
-	if account.ExpiresAt != nil {
-		out.AccountExpiry = *account.ExpiresAt
-	}
+	out.AccountExpiry = cursorAccessTokenExpiry(out.AccessToken)
 	return out
+}
+
+// cursorAccessTokenExpiry 返回 access token 自身的到期时刻，直接从 JWT exp 反解。
+//
+// ⚠️ 绝不能改用 accounts.expires_at：那一列的语义是「账号/订阅有效期」，
+// 由管理端手工录入（admin_account.go），并且被 AutoPauseExpiredAccounts 扫描——
+// 该扫描对 auto_pause_on_expired=TRUE（列默认值）的账号做 schedulable=FALSE。
+// Cursor 的 access token 只有几小时寿命，一旦把它的 exp 写进那一列，
+// 整个 Cursor 号池会在几小时内被自动暂停扫描全量停用。
+//
+// 反过来也不能沿用那一列做刷新判定：导入路径从不写它（cursor_oauth_service.go
+// 解析出的 exp 只用于导入预览展示），恒为 NULL ⇒ AccountExpiry 恒为零值 ⇒
+// AuthRefreshDue/AuthRefreshExpired 恒为 false ⇒ 主动续期永不触发，
+// 只能等 401 才被动刷新。token 就在 credentials 里，直接反解才是唯一自洽的来源。
+func cursorAccessTokenExpiry(accessToken string) time.Time {
+	if strings.TrimSpace(accessToken) == "" {
+		return time.Time{}
+	}
+	// 解析不出 exp 时返回零值：协议层对零值的约定是「有效期未知，不主动刷新，
+	// 等 401 再强刷」，比瞎猜一个到期时间安全。
+	return cursor.JWTExpiry(accessToken)
 }
 
 // CursorAccountUsableForModel 是三桶额度与调度的衔接点。

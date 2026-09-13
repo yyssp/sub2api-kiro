@@ -146,7 +146,21 @@ const emit = defineEmits(['close', 'success'])
 const { t } = useI18n()
 const appStore = useAppStore()
 
-const PLATFORMS: PlatformQuotaPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok']
+// 与后端 AllowedQuotaPlatforms 保持一致：漏项会让该平台在管理台无法设限额
+// （fail-open，不报错），kimi/zhipu/deepseek/minimax 曾长期漏在这里。
+const PLATFORMS: PlatformQuotaPlatform[] = [
+  'anthropic',
+  'openai',
+  'gemini',
+  'antigravity',
+  'kiro',
+  'cursor',
+  'grok',
+  'kimi',
+  'zhipu',
+  'deepseek',
+  'minimax'
+]
 
 interface QuotaRow {
   platform: PlatformQuotaPlatform

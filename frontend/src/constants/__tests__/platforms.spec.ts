@@ -7,6 +7,7 @@ const concretePlatforms = [
   'gemini',
   'antigravity',
   'kiro',
+  'cursor',
   'grok',
   'kimi',
   'zhipu',

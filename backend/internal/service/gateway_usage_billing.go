@@ -1265,8 +1265,27 @@ func (s *GatewayService) buildRecordUsageLog(
 		kiroCredits := result.Usage.KiroCredits
 		usageLog.KiroCredits = &kiroCredits
 	}
+	if source := usageSourceForPlatform(account); source != nil {
+		usageLog.UsageSource = source
+	}
 
 	return usageLog
+}
+
+// usageSourceForPlatform 标记本行 token 用量的来源。
+//
+// ⚠️ 只有确实按估算值计费的平台才写入，其余一律留 nil。
+// 给所有平台都写 "upstream" 会让这一列失去信息量——它要回答的问题是
+// 「哪些账单是估出来的」，而不是「这行有没有被标记过」。
+//
+// Cursor 的 agent.v1 不返回任何 token 用量字段，输入输出全靠网关侧
+// 分词器推算。不标记的话，对账时它和实测行完全无法区分。
+func usageSourceForPlatform(account *Account) *string {
+	if account == nil || account.Platform != PlatformCursor {
+		return nil
+	}
+	source := usageSourceEstimated
+	return &source
 }
 
 // resolveBillingMode 根据计费结果和请求类型确定计费模式。

@@ -68,7 +68,9 @@ func (r *CursorTokenRefresher) Refresh(ctx context.Context, account *Account) (m
 		return nil, errors.New("cursor refresher: missing refresh_token")
 	}
 
-	accessToken, rotatedRefresh, err := cursor.RefreshAuthToken(refreshToken)
+	// 与对话链路共用出口 IP，见 RefreshAuthTokenVia 的说明。
+	accessToken, rotatedRefresh, err := cursor.RefreshAuthTokenVia(
+		refreshToken, cursorAccountProxyURL(account))
 	if err != nil {
 		return nil, err
 	}

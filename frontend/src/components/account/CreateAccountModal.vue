@@ -163,6 +163,19 @@
           </button>
           <button
             type="button"
+            @click="form.platform = 'cursor'"
+            :class="[
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
+              form.platform === 'cursor'
+                ? 'bg-white text-sky-700 shadow-sm dark:bg-dark-600 dark:text-sky-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="cursor" size="sm" />
+            Cursor
+          </button>
+          <button
+            type="button"
             @click="form.platform = 'grok'"
             :class="[
               'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
@@ -3970,6 +3983,11 @@
         :importer="kiroImporter"
         :error="currentOAuthError"
       />
+      <CursorCredentialImportPanel
+        v-else-if="isCursorImportMode"
+        :importer="cursorImporter"
+        :error="currentOAuthError"
+      />
       <OAuthAuthorizationFlow
         v-else
         ref="oauthFlowRef"
@@ -4076,6 +4094,28 @@
             currentOAuthLoading
               ? t('admin.accounts.creating')
               : t('admin.accounts.kiroImportConfirm', { count: kiroImporter.creatableCount.value })
+          }}
+        </button>
+        <button
+          v-else-if="isCursorImportMode && !cursorImporter.entries.value.length"
+          type="button"
+          :disabled="!cursorImporter.canParse.value"
+          class="btn btn-primary"
+          @click="handleCursorParse"
+        >
+          {{ cursorImporter.parsing.value ? t('common.loading') : t('admin.accounts.cursorImportParse') }}
+        </button>
+        <button
+          v-else-if="isCursorImportMode"
+          type="button"
+          :disabled="currentOAuthLoading || cursorImporter.creatableCount.value === 0"
+          class="btn btn-primary"
+          @click="handleCursorImport"
+        >
+          {{
+            currentOAuthLoading
+              ? t('admin.accounts.creating')
+              : t('admin.accounts.cursorImportConfirm', { count: cursorImporter.creatableCount.value })
           }}
         </button>
         <button
@@ -4377,6 +4417,8 @@ import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useKiroOAuth } from '@/composables/useKiroOAuth'
 import { useKiroCredentialImport } from '@/composables/useKiroCredentialImport'
 import KiroCredentialImportPanel from '@/components/account/KiroCredentialImportPanel.vue'
+import { useCursorCredentialImport } from '@/composables/useCursorCredentialImport'
+import CursorCredentialImportPanel from '@/components/account/CursorCredentialImportPanel.vue'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
 import type {
   Proxy,
@@ -4588,6 +4630,7 @@ const currentOAuthLoading = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.loading.value
   if (form.platform === 'antigravity') return antigravityOAuth.loading.value
   if (form.platform === 'kiro') return kiroOAuth.loading.value
+  if (form.platform === 'cursor') return cursorCreating.value
   if (form.platform === 'grok') return grokOAuth.loading.value
   return oauth.loading.value
 })
@@ -4597,6 +4640,7 @@ const currentOAuthError = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.error.value
   if (form.platform === 'antigravity') return antigravityOAuth.error.value
   if (form.platform === 'kiro') return kiroOAuth.error.value
+  if (form.platform === 'cursor') return cursorCreateError.value
   if (form.platform === 'grok') return grokOAuth.error.value
   return oauth.error.value
 })
@@ -4915,6 +4959,15 @@ const kiroIDCRegion = ref('us-east-1')
 // 凭证导入的解析状态：支持 JSON / ksk 清单 / 裸 token / Kiro IDE 导出四种数据形态，
 // 解析出的每条账号都套用本表单下方的通用参数（分组、代理、优先级……）。
 const kiroImporter = useKiroCredentialImport()
+// Cursor 的凭证就是一个 JWT（session/web token 或 uid::JWT cookie），
+// 没有授权码流程可走，所以导入是唯一的接入方式——不像 Kiro 那样是
+// 「OAuth 之外的一个可选 tab」，这里不需要账号类型选择器。
+const cursorImporter = useCursorCredentialImport()
+// Cursor 没有 OAuth 授权流程，因而没有 useXxxOAuth composable，
+// 但批量建号仍需要 loading/error 两个状态。就地声明，避免落到
+// currentOAuthLoading/Error 的 anthropic 兜底分支上去污染别的平台状态。
+const cursorCreating = ref(false)
+const cursorCreateError = ref('')
 const kiroModelMappings = ref<ModelMapping[]>([])
 const kiroCreditUnitPriceUsd = ref(0)
 const kiroPresetMappings = computed(() => getPresetMappingsByPlatform('kiro'))
@@ -5223,6 +5276,10 @@ const isOAuthFlow = computed(() => {
 })
 
 const isKiroImportMode = computed(() => form.platform === 'kiro' && kiroAccountType.value === 'import')
+// Cursor 只有导入这一条路，选中该平台即进入导入模式。
+const isCursorImportMode = computed(() => form.platform === 'cursor')
+/** 任一平台处于凭证导入模式：用于共享「解析 → 预览 → 批量建号」的两步 UI。 */
+const isCredentialImportMode = computed(() => isKiroImportMode.value || isCursorImportMode.value)
 const isGrokSSOInputMethod = computed(() => form.platform === 'grok' && oauthFlowRef.value?.inputMethod === 'sso_cookie')
 
 const isManualInputMethod = computed(() => {
@@ -5303,6 +5360,13 @@ watch(
       form.type = category === 'oauth-based' ? 'oauth' : 'apikey'
       return
     }
+    // Cursor 只有一种账号类型（导入的 token 落成 oauth 账号），
+    // 不跟着 accountCategory 走：万一切平台时 category 还残留 apikey，
+    // 走通用分支会把 type 置成 apikey，导入路径直接失效。
+    if (form.platform === 'cursor') {
+      form.type = 'oauth'
+      return
+    }
     // Bedrock 类型
     if (form.platform === 'anthropic' && category === 'bedrock') {
       form.type = 'bedrock' as AccountType
@@ -5365,6 +5429,14 @@ watch(
       apiKeyBaseUrl.value = ''
       apiKeyValue.value = ''
       kiroAPIRegion.value = 'us-east-1'
+    } else if (newPlatform === 'cursor') {
+      // Cursor 只有导入这一条路，必须落在 oauth-based 上，
+      // 否则 isOAuthFlow 为 false，点「下一步」进不到导入面板。
+      accountCategory.value = 'oauth-based'
+      kiroModelMappings.value = []
+      antigravityWhitelistModels.value = []
+      antigravityModelMappings.value = []
+      apiKeyValue.value = ''
     } else {
       allowOverages.value = false
       antigravityProjectId.value = ''
@@ -5431,6 +5503,9 @@ watch(
     antigravityOAuth.resetState()
     kiroOAuth.resetState()
     grokOAuth.resetState()
+    cursorImporter.resetAll()
+    cursorCreating.value = false
+    cursorCreateError.value = ''
   }
 )
 
@@ -5894,6 +5969,7 @@ const resetForm = () => {
   kiroIDCStartUrl.value = 'https://view.awsapps.com/start'
   kiroIDCRegion.value = 'us-east-1'
   kiroImporter.resetAll()
+  cursorImporter.resetAll()
   kiroCreditUnitPriceUsd.value = 0
   fetchKiroDefaultMappings().then(mappings => {
     kiroModelMappings.value = [...mappings]
@@ -6185,7 +6261,7 @@ const handleSubmit = async () => {
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     // 导入模式的账号名来自预览表里逐条可编辑的那一列，不走这里的单账号名称。
-    if (!isGrokSSOInputMethod.value && !isKiroImportMode.value && !form.name.trim()) {
+    if (!isGrokSSOInputMethod.value && !isCredentialImportMode.value && !form.name.trim()) {
       appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
       return
     }
@@ -6519,6 +6595,10 @@ const goBackToBasicInfo = () => {
   antigravityOAuth.resetState()
   kiroOAuth.resetState()
   grokOAuth.resetState()
+  // 只清建号错误，保留已解析的预览：用户回上一步多半是去改分组/代理，
+  // 回来还要用同一批解析结果，重新粘一遍凭证是白做工。
+  cursorCreateError.value = ''
+  cursorCreating.value = false
   oauthFlowRef.value?.reset()
 }
 
@@ -7775,6 +7855,86 @@ const handleKiroImport = async () => {
     appStore.showError(kiroOAuth.error.value)
   } finally {
     kiroOAuth.loading.value = false
+  }
+}
+
+/** 第一步：解析 Cursor 凭证内容，结果进预览表等待确认。 */
+const handleCursorParse = async () => {
+  if (!isCursorImportMode.value) return
+  cursorCreateError.value = ''
+  await cursorImporter.parse(t('admin.accounts.cursorImportEmpty'))
+}
+
+/**
+ * 第二步：把预览里保留的条目建成账号。
+ *
+ * 每条都套用本表单的通用参数（分组/代理/优先级/并发/倍率/备注…），
+ * 名称则取预览表里可编辑的那一列——导入的账号和手工添加的账号
+ * 在调度上没有任何区别，不该因为来路不同而少一套参数。
+ */
+const handleCursorImport = async () => {
+  if (!isCursorImportMode.value) return
+
+  const selected = cursorImporter.collectCreatable()
+  if (selected.length === 0) return
+
+  cursorCreateError.value = ''
+  cursorCreating.value = true
+  try {
+    const accounts = []
+    for (const { entry, name } of selected) {
+      // 凭证字段名与后端 service 的 CursorCred* 常量一一对应。
+      const credentials: Record<string, unknown> = { access_token: entry.access_token }
+      if (entry.refresh_token) credentials.refresh_token = entry.refresh_token
+      if (entry.session) credentials.session = entry.session
+      if (entry.email) credentials.email = entry.email
+      // machine_id 有就沿用：它是 x-cursor-checksum 的设备指纹种子，
+      // 留空会让后端重新生成，等于在上游眼里换了台设备。
+      if (entry.machine_id) credentials.machine_id = entry.machine_id
+      if (!applyTempUnschedConfig(credentials)) return
+      accounts.push({
+        name,
+        notes: form.notes,
+        platform: 'cursor' as const,
+        type: 'oauth' as const,
+        credentials,
+        proxy_id: form.proxy_id,
+        concurrency: form.concurrency,
+        load_factor: form.load_factor ?? undefined,
+        priority: form.priority,
+        status: entry.disabled ? ('inactive' as const) : undefined,
+        schedulable: entry.disabled ? false : undefined,
+        rate_multiplier: form.rate_multiplier,
+        group_ids: form.group_ids,
+        expires_at: form.expires_at,
+        auto_pause_on_expired: autoPauseOnExpired.value
+      })
+    }
+    const result = await adminAPI.accounts.batchCreate(accounts)
+    if (result.failed === 0) {
+      appStore.showSuccess(t('admin.accounts.oauth.batchSuccess', { count: result.success }))
+      emit('created')
+      handleClose()
+    } else if (result.success > 0) {
+      appStore.showWarning(
+        t('admin.accounts.oauth.batchPartialSuccess', { success: result.success, failed: result.failed })
+      )
+      cursorCreateError.value = result.results
+        .map((item, index) => (item.success ? '' : `#${index + 1}: ${item.error || 'Unknown error'}`))
+        .filter(Boolean)
+        .join('\n')
+      emit('created')
+    } else {
+      cursorCreateError.value = result.results
+        .map((item, index) => `#${index + 1}: ${item.error || 'Unknown error'}`)
+        .join('\n')
+      appStore.showError(t('admin.accounts.oauth.batchFailed'))
+    }
+  } catch (error: any) {
+    cursorCreateError.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(cursorCreateError.value)
+  } finally {
+    cursorCreating.value = false
   }
 }
 

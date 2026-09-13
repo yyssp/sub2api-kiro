@@ -473,6 +473,7 @@ export default {
       grok: 'Grok',
       antigravity: 'Antigravity',
       kiro: 'Kiro',
+      cursor: 'Cursor',
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
       deepseek: 'DeepSeek',

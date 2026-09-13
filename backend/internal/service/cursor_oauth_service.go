@@ -115,6 +115,92 @@ func (s *CursorOAuthService) BuildAccountCredentials(info CursorTokenInfo) map[s
 	return creds
 }
 
+// CursorImportInput 是批量导入的入参。
+type CursorImportInput struct {
+	// Content 是凭证文件原文：每行一个 token 的纯文本、单对象 JSON、
+	// 数组 JSON 或 JSONL。
+	Content string
+}
+
+// CursorImportEntry 是一条可预览的导入条目。
+//
+// 字段直接对应前端预览表的列，不含任何需要联网才能得到的信息：
+// 预览阶段不联网是刻意的，见 ImportCursorCredentials 的说明。
+type CursorImportEntry struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	Session      string `json:"session,omitempty"`
+	Email        string `json:"email,omitempty"`
+	MachineID    string `json:"machine_id,omitempty"`
+	// TokenType 是 session / web / unknown。web 寿命只有几小时，
+	// 前端必须显著提示，否则用户会建出一批几小时后集体失效的账号。
+	TokenType string `json:"token_type"`
+	// ExpiresAt 取自 JWT exp（RFC3339），无法解析时为空。
+	ExpiresAt string `json:"expires_at,omitempty"`
+	Note      string `json:"note,omitempty"`
+	Disabled  bool   `json:"disabled"`
+}
+
+// CursorImportSkippedEntry 是一条被跳过的记录及原因。
+type CursorImportSkippedEntry struct {
+	Index  int    `json:"index"`
+	Reason string `json:"reason"`
+	Sample string `json:"sample,omitempty"`
+}
+
+// CursorImportResult 是一次导入解析的结果。
+type CursorImportResult struct {
+	Entries []*CursorImportEntry `json:"entries"`
+	// Skipped 记录无法识别或重复的条目，供前端在预览里逐条标注。
+	// 坏数据不中断整批导入，但不能让用户不知道少了什么。
+	Skipped []*CursorImportSkippedEntry `json:"skipped,omitempty"`
+}
+
+// ImportCursorCredentials 解析粘贴的凭证文本，返回可预览的条目清单。
+//
+// ⚠️ 这是纯解析，不联网：
+// 单条导入路径（ParseCursorCredential）会对 web token 立即调
+// cursor.ExchangeWebToken 去兑换，但批量预览如果照做，N 条凭证就是
+// N 次上游请求——用户只是想看一眼解析结果，不该触发一轮网络风暴，
+// 更不该在"我还没点确认"的时候就改变上游状态。
+// web token 的兑换推迟到真正建号时（handler 里逐条走
+// ParseCursorCredential），预览阶段只把 token_type 标出来提示用户。
+func (s *CursorOAuthService) ImportCursorCredentials(input *CursorImportInput) (*CursorImportResult, error) {
+	if input == nil {
+		return nil, fmt.Errorf("cursor import input is required")
+	}
+	parsed, err := cursor.ParseImportCredentials(input.Content)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &CursorImportResult{Entries: make([]*CursorImportEntry, 0, len(parsed.Credentials))}
+	for _, skipped := range parsed.Skipped {
+		result.Skipped = append(result.Skipped, &CursorImportSkippedEntry{
+			Index:  skipped.Index,
+			Reason: skipped.Reason,
+			Sample: skipped.Sample,
+		})
+	}
+	for _, cred := range parsed.Credentials {
+		entry := &CursorImportEntry{
+			AccessToken:  cred.AccessToken,
+			RefreshToken: cred.RefreshToken,
+			Session:      cred.Session,
+			Email:        cred.Email,
+			MachineID:    cred.MachineID,
+			TokenType:    cred.TokenType,
+			Note:         cred.Note,
+			Disabled:     cred.Disabled,
+		}
+		if exp := cursor.JWTExpiry(cred.AccessToken); !exp.IsZero() {
+			entry.ExpiresAt = exp.UTC().Format(time.RFC3339)
+		}
+		result.Entries = append(result.Entries, entry)
+	}
+	return result, nil
+}
+
 // RefreshAccountToken 供管理端"手动刷新"按钮使用。
 func (s *CursorOAuthService) RefreshAccountToken(ctx context.Context, account *Account) (CursorTokenInfo, error) {
 	var info CursorTokenInfo
@@ -126,7 +212,10 @@ func (s *CursorOAuthService) RefreshAccountToken(ctx context.Context, account *A
 		return info, errors.New("cursor: missing refresh_token, re-import the account")
 	}
 
-	accessToken, rotated, err := cursor.RefreshAuthToken(refreshToken)
+	// 管理端手动刷新同样走账号代理：出口 IP 不一致会让这次"修复"操作
+	// 本身变成一次异常活动记录。
+	accessToken, rotated, err := cursor.RefreshAuthTokenVia(
+		refreshToken, cursorAccountProxyURL(account))
 	if err != nil {
 		return info, err
 	}

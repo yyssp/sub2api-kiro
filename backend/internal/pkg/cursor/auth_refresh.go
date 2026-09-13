@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,7 +21,32 @@ var cursorOAuthClientID = envOr("CURSOR_OAUTH_CLIENT_ID", "KbZUR41cY7W6zRSdpSUJ7
 var (
 	cursorAuthRefreshHTTPClient = &http.Client{Timeout: 20 * time.Second}
 	cursorAuthRefreshFn         = refreshCursorAuth
+
+	// 刷新链路的按代理连接池。
+	//
+	// ⚠️ 刷新必须和对话走同一个出口 IP。Cursor 按设备指纹 + 出口 IP 做风控，
+	// 账号配了代理却让 /oauth/token 从本机 IP 出去，等于主动暴露
+	// 「同一账号从两个 IP 活动」，比不配代理更容易触发风控。
+	cursorAuthRefreshPoolMu sync.Mutex
+	cursorAuthRefreshPool   = map[string]*http.Client{}
 )
+
+// authRefreshClient 返回对应代理的刷新用 client；proxyURL 为空时用默认直连单例。
+func authRefreshClient(proxyURL string) *http.Client {
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		return cursorAuthRefreshHTTPClient
+	}
+	cursorAuthRefreshPoolMu.Lock()
+	defer cursorAuthRefreshPoolMu.Unlock()
+	if cl, ok := cursorAuthRefreshPool[proxyURL]; ok {
+		return cl
+	}
+	cl := newH2Client(proxyURL)
+	cl.Timeout = 20 * time.Second
+	cursorAuthRefreshPool[proxyURL] = cl
+	return cl
+}
 
 func authRefreshDue(a Account, now time.Time, skew time.Duration) bool {
 	if strings.TrimSpace(a.RefreshToken) == "" {
@@ -69,6 +96,10 @@ func authRefreshFailureReason(err error) string {
 }
 
 func refreshCursorAuth(refreshToken string) (accessToken, rotatedRefreshToken string, err error) {
+	return refreshCursorAuthVia(refreshToken, "")
+}
+
+func refreshCursorAuthVia(refreshToken, proxyURL string) (accessToken, rotatedRefreshToken string, err error) {
 	refreshToken = strings.TrimSpace(refreshToken)
 	if refreshToken == "" {
 		return "", "", fmt.Errorf("missing Cursor refresh token")
@@ -90,7 +121,7 @@ func refreshCursorAuth(refreshToken string) (accessToken, rotatedRefreshToken st
 	req.Header.Set("User-Agent", "Cursor/"+clientVersion)
 	applyCursorProxyAuth(req)
 
-	resp, err := cursorAuthRefreshHTTPClient.Do(req)
+	resp, err := authRefreshClient(proxyURL).Do(req)
 	if err != nil {
 		return "", "", err
 	}
@@ -165,10 +196,33 @@ func AuthRefreshFailureReason(err error) string {
 	return authRefreshFailureReason(err)
 }
 
-// RefreshAuthToken 用 refresh token 兑换新的 access token。
+// RefreshAuthToken 用 refresh token 兑换新的 access token（直连）。
 // 第二个返回值是上游轮换后的新 refresh token，可能为空（表示不轮换，沿用旧值）。
 func RefreshAuthToken(refreshToken string) (accessToken, rotatedRefreshToken string, err error) {
 	return cursorAuthRefreshFn(refreshToken)
+}
+
+// RefreshAuthTokenVia 经账号绑定的代理兑换新的 access token。
+//
+// ⚠️ 刷新必须与对话共用出口 IP，否则同一账号会从两个 IP 活动，
+// 反而更容易触发 Cursor 的风控。proxyURL 为空时等价于 RefreshAuthToken。
+//
+// ⚠️ 被测试替换掉实现时（SetAuthRefreshFnForTest）必须走同一个钩子，
+// 否则所有打桩的测试会在这条分支上真的发起网络请求。
+func RefreshAuthTokenVia(refreshToken, proxyURL string) (accessToken, rotatedRefreshToken string, err error) {
+	if strings.TrimSpace(proxyURL) == "" {
+		return cursorAuthRefreshFn(refreshToken)
+	}
+	// 仅当实现未被替换时才启用代理分支；被替换则一律尊重桩实现。
+	if isDefaultAuthRefreshFn() {
+		return refreshCursorAuthVia(refreshToken, proxyURL)
+	}
+	return cursorAuthRefreshFn(refreshToken)
+}
+
+// isDefaultAuthRefreshFn 判断 token 兑换实现是否仍是内置实现。
+func isDefaultAuthRefreshFn() bool {
+	return reflect.ValueOf(cursorAuthRefreshFn).Pointer() == reflect.ValueOf(refreshCursorAuth).Pointer()
 }
 
 // SetAuthRefreshFnForTest 替换 token 兑换实现，仅供测试使用；

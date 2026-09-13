@@ -19,6 +19,7 @@ import {
   PROVIDER_GROK,
   PROVIDER_ANTIGRAVITY,
   PROVIDER_KIRO,
+  PROVIDER_CURSOR,
   PROVIDER_KIMI,
   PROVIDER_ZHIPU,
   PROVIDER_DEEPSEEK,
@@ -107,11 +108,13 @@ export function useChannelMonitorFormat() {
       case PROVIDER_GROK:
         return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-500/15 dark:text-zinc-300'
       // 配色与 utils/platformColors.ts 的平台色对齐：antigravity=purple /
-      // kiro=violet / kimi=pink / zhipu=indigo / deepseek=teal。
+      // kiro=violet / cursor=amber / kimi=pink / zhipu=indigo / deepseek=teal。
       case PROVIDER_ANTIGRAVITY:
         return 'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300'
       case PROVIDER_KIRO:
         return 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
+      case PROVIDER_CURSOR:
+        return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
       case PROVIDER_KIMI:
         return 'bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300'
       case PROVIDER_ZHIPU:
@@ -172,6 +175,10 @@ export function useChannelMonitorFormat() {
         return active
           ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-400'
           : 'border-gray-200 bg-white text-gray-600 hover:border-violet-300 hover:text-violet-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-violet-500/50'
+      case PROVIDER_CURSOR:
+        return active
+          ? 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-amber-300 hover:text-amber-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-amber-500/50'
       case PROVIDER_KIMI:
         return active
           ? 'border-pink-500 bg-pink-50 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300 dark:border-pink-400'
@@ -339,6 +346,8 @@ export function providerGradient(provider: string): string {
       return 'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-500/10 dark:to-purple-500/20'
     case PROVIDER_KIRO:
       return 'bg-gradient-to-br from-violet-50 to-violet-100 dark:from-violet-500/10 dark:to-violet-500/20'
+    case PROVIDER_CURSOR:
+      return 'bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-500/10 dark:to-amber-500/20'
     case PROVIDER_KIMI:
       return 'bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-500/10 dark:to-pink-500/20'
     case PROVIDER_ZHIPU:
