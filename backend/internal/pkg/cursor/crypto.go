@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -120,24 +121,50 @@ func jwtUserID(token string) string {
 	return sub
 }
 
-// machineID 依据 token 派生设备 ID(AccessToken 已是纯 JWT)
+// NewMachineID 铸造一个新的设备指纹种子：32 字节随机数的小写 hex（64 字符）。
+//
+// 真实客户端的 machineId 就是 32 字节随机 hex，不来自任何硬件属性——
+// 也就是说它可以任意，但必须**稳定**：后端期望同一个账号始终出示同一设备。
+// 因此它只在账号创建/导入时铸造一次并落库，之后不再变化（尤其不随 token 刷新变）。
+func NewMachineID() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand 失败属于不可恢复的环境问题；退回时间戳种子也好过返回空串
+		// 让调用方写入一个空指纹。
+		return sha256Hex(fmt.Sprintf("CursorMachineSeed/%d", time.Now().UnixNano()))
+	}
+	return hex.EncodeToString(b)
+}
+
+// machineID 返回账号的设备指纹种子。
+//
+// ⚠️ 绝不能在这里从 AccessToken 派生：那会让 token 每刷新一次指纹就变一次，
+// 上游会把该账号视为不断更换设备。种子必须在建号时铸造并落库
+// （见 NewMachineID 与 service 层的 BuildAccountCredentials）。
+// 这里的兜底只为「存量账号还没补上 machine_id」这一过渡期服务，
+// 它同样不含任何随 token 变化的输入。
 func machineID(a *Account) string {
 	if a.MachineID != "" && len(a.MachineID) >= 32 {
 		return a.MachineID
 	}
-	if a.AccessToken != "" {
-		return sha256Hex("CursorAPI/" + a.AccessToken)
+	// 过渡兜底：按账号 ID 派生一个稳定值。账号 ID 在账号生命周期内不变，
+	// 因此指纹至少不会随 token 漂移。ID 为 0（未落库的临时账号）时退回
+	// 邮箱，仍然与 token 无关。
+	if a.ID != 0 {
+		return sha256Hex(fmt.Sprintf("CursorMachine/account/%d", a.ID))
 	}
-	return sha256Hex(fmt.Sprintf("CursorFallback/%d", time.Now().UnixNano()))
+	if a.Email != "" {
+		return sha256Hex("CursorMachine/email/" + a.Email)
+	}
+	return sha256Hex("CursorMachine/anonymous")
 }
 
-// macMachineID 派生 macMachineId
+// macMachineID 派生 macMachineId。
+//
+// ⚠️ 必须从 machineID(a) 派生，不能在 MachineID 为空时退回 AccessToken：
+// 那会让 macMachineId 与 machineId 一样随 token 刷新漂移（同 B 项）。
 func macMachineID(a *Account) string {
-	base := a.MachineID
-	if base == "" {
-		base = a.AccessToken
-	}
-	return sha256Hex("CursorMacMachine/" + base)
+	return sha256Hex("CursorMacMachine/" + machineID(a))
 }
 
 // sessionID 基于 token 生成 UUID 形式 session id
@@ -152,8 +179,12 @@ func clientKey(token string) string { return sha256Hex(token) }
 // genChecksum 生成 x-cursor-checksum: Jyh 滚动异或时间戳 + urlsafe base64 + machineId[/macMachineId]
 func genChecksum(machID, macMachID string) string {
 	ts := time.Now().UnixMilli() / 1_000_000
+	// ⚠️ 位移数必须对 32 取模，不能用 Go 的真 64 位移位。
+	// 真实客户端是 JS，位运算在 int32 上进行：C>>40 实为 C>>8、C>>32 实为 C>>0。
+	// 直译成 64 位移位会在真实客户端有数据的位置产出零字节——ts（毫秒/1e6）
+	// 只有约 21 位，前两字节会恒为 0,0，这是稳定可识别的非官方客户端特征。
 	ba := []byte{
-		byte((ts >> 40) & 0xFF), byte((ts >> 32) & 0xFF), byte((ts >> 24) & 0xFF),
+		byte((ts >> 8) & 0xFF), byte(ts & 0xFF), byte((ts >> 24) & 0xFF),
 		byte((ts >> 16) & 0xFF), byte((ts >> 8) & 0xFF), byte(ts & 0xFF),
 	}
 	t := byte(165)

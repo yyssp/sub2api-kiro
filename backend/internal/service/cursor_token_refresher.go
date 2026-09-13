@@ -89,5 +89,9 @@ func (r *CursorTokenRefresher) Refresh(ctx context.Context, account *Account) (m
 	}
 
 	_ = ctx
-	return MergeCredentials(account.Credentials, updates), nil
+	merged := MergeCredentials(account.Credentials, updates)
+	// 给改动前建的存量账号补铸设备指纹种子。
+	// ⚠️ EnsureMachineID 是幂等的：已有值绝不覆盖。刷新路径**只补不换**——
+	// 每次刷新都换一个 machine_id 正是 B 项要消除的漂移本身。
+	return EnsureMachineID(merged), nil
 }

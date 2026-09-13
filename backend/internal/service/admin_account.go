@@ -416,12 +416,16 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
 	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
+	// Cursor 的 machine_id 是 x-cursor-checksum 的设备指纹种子，必须建号时
+	// 铸造一次并落库、此后恒定。与 Codex 指纹种子同理，区别只在于它属于凭证
+	// （credentials）而非 extra。
+	credentials := prepareCursorMachineIDForCreate(input.Platform, input.Credentials)
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
 		Platform:    input.Platform,
 		Type:        input.Type,
-		Credentials: input.Credentials,
+		Credentials: credentials,
 		Extra:       accountExtra,
 		ProxyID:     input.ProxyID,
 		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
