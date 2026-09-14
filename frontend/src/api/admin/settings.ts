@@ -636,6 +636,10 @@ export interface SystemSettings {
   grok_cross_client_model_map_enabled: boolean;
   grok_default_base_url_mode: string;
 
+  // Kiro 请求体积守卫：超限行为 + 阈值（加权口径，非字节数）
+  kiro_oversize_behavior: string;
+  kiro_oversize_threshold: number;
+
   // Per-platform account auto-pause thresholds (100 = disabled)
   account_scheduling_thresholds: AccountSchedulingThresholdsMap;
 
@@ -964,6 +968,8 @@ export interface UpdateSettingsRequest {
   grok_default_text_model?: string;
   grok_cross_client_model_map_enabled?: boolean;
   grok_default_base_url_mode?: string;
+  kiro_oversize_behavior?: string;
+  kiro_oversize_threshold?: number;
   account_scheduling_thresholds?: AccountSchedulingThresholdsMap;
   enable_identity_patch?: boolean;
   identity_patch_prompt?: string;

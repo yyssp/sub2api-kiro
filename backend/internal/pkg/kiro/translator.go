@@ -124,14 +124,55 @@ type KiroRequestContext struct {
 	PayloadTrim kiroPayloadTrimResult
 }
 
-// PayloadTrimStats 暴露体积守卫的裁剪结果。
-// kiroPayloadTrimResult 是包内类型，跨包调用方无法直接读取字段，
-// 因此这里返回一组基本类型，供上层写诊断日志。
+// KiroPayloadGuardStats 是体积守卫结果的跨包视图。
+// kiroPayloadTrimResult 是包内类型，跨包调用方无法直接读取其字段。
+type KiroPayloadGuardStats struct {
+	Trimmed        bool
+	StillOversized bool
+	Compressed     bool
+	Rejected       bool
+	// DeferredToUpstream: on_upstream_400 行为下故意未做预检缩减(守卫没动过负载)。
+	DeferredToUpstream bool
+	OriginalBytes      int
+	FinalBytes         int
+	OriginalWeight     int
+	FinalWeight        int
+	LimitWeight        int
+	// DroppedItems 是被丢弃的整轮历史条数（真正的上下文丢失）。
+	DroppedItems int
+	// CompressedItems 是被截断/剥离的条目数（保留语义骨架，非丢失）。
+	CompressedItems int
+	// Stages 按生效顺序记录压缩/裁剪阶段名。
+	Stages []string
+}
+
+// Triggered 表示守卫真的改动了负载（绝大多数请求为 false）。
 //
-// trimmed 为 false 且 stillOversized 为 false 表示未触发守卫（绝大多数请求）。
-func (c KiroRequestContext) PayloadTrimStats() (trimmed, stillOversized bool, originalBytes, finalBytes, limitBytes, droppedItems int) {
+// 刻意不含 DeferredToUpstream: 那条路径下守卫一个字节都没动, 报成"已触发"会让
+// 响应平白带上一组 original==final 的裁剪头, 与"未超限"的静默请求无法区分。
+func (s KiroPayloadGuardStats) Triggered() bool {
+	return s.Trimmed || s.StillOversized || s.Compressed || s.Rejected
+}
+
+// PayloadTrimStats 暴露体积守卫的处理结果，供上层写诊断日志、回响应头。
+func (c KiroRequestContext) PayloadTrimStats() KiroPayloadGuardStats {
 	t := c.PayloadTrim
-	return t.Trimmed, t.StillOversized, t.OriginalBytes, t.FinalBytes, t.LimitBytes, t.DroppedItems
+	return KiroPayloadGuardStats{
+		Trimmed:            t.Trimmed,
+		StillOversized:     t.StillOversized,
+		Compressed:         t.Compressed,
+		Rejected:           t.Rejected,
+		DeferredToUpstream: t.DeferredToUpstream,
+
+		OriginalBytes:   t.OriginalBytes,
+		FinalBytes:      t.FinalBytes,
+		OriginalWeight:  t.OriginalWeight,
+		FinalWeight:     t.FinalWeight,
+		LimitWeight:     t.LimitWeight,
+		DroppedItems:    t.DroppedItems,
+		CompressedItems: t.CompressedItems,
+		Stages:          t.Stages,
+	}
 }
 
 type KiroBuildResult struct {
@@ -410,6 +451,15 @@ func clampFloat(value, minValue, maxValue float64) float64 {
 }
 
 func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin string, headers http.Header) (*KiroBuildResult, error) {
+	return BuildKiroPayloadWithGuard(claudeBody, modelID, profileArn, origin, headers, KiroPayloadGuardConfig{})
+}
+
+// BuildKiroPayloadWithGuard 与 BuildKiroPayloadWithContext 相同, 但允许调用方
+// 显式指定体积守卫配置(阈值 / 超限行为)。
+//
+// 单独开一个入口而不是改原签名: 原函数有多处调用方, 且绝大多数场景用默认配置即可。
+// 需要它的是两条路径 —— 页面配置下发, 以及 on_upstream_400 收到 400 后的强制缩减重试。
+func BuildKiroPayloadWithGuard(claudeBody []byte, modelID, profileArn, origin string, headers http.Header, guard KiroPayloadGuardConfig) (*KiroBuildResult, error) {
 	requestCtx := KiroRequestContext{ToolNameMap: map[string]string{}}
 	outputCap := kiroMaxOutputTokensForModel(firstNonEmptyString(gjson.GetBytes(claudeBody, "model").String(), modelID))
 	var maxTokens int64
@@ -549,8 +599,9 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 	if err != nil {
 		return nil, err
 	}
-	payloadBytes, trim, err := enforceKiroPayloadSize(&payload, payloadBytes)
+	payloadBytes, trim, err := enforceKiroPayloadSizeWithConfig(&payload, payloadBytes, guard)
 	if err != nil {
+		// reject 行为下这里会返回 *ErrKiroPayloadTooLarge, 由上层映射成 4xx。
 		return nil, err
 	}
 	requestCtx.PayloadTrim = trim

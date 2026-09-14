@@ -23,6 +23,7 @@ const (
 	kiroErrorBadRequestInvalidModel = "bad_request_invalid_model"
 	kiroErrorBadRequestAuth         = "bad_request_auth"
 	kiroErrorBadRequestQuota        = "bad_request_quota"
+	kiroErrorBadRequestOversize     = "bad_request_oversize"
 	kiroErrorBadRequestUnknown      = "bad_request_unknown"
 	kiroErrorRefreshTokenInvalid    = "refresh_token_invalid"
 
@@ -108,9 +109,29 @@ func classifyKiroBadRequest(trimmed, lower string) kiroErrorClassification {
 		return kiroErrorClassification{Category: kiroErrorBadRequestAuth, StatusCode: http.StatusBadRequest, Message: trimmed}
 	case looksLikeKiroQuotaExhaustedError(lower) || looksLikeKiroMonthlyRequestCountError(trimmed):
 		return kiroErrorClassification{Category: kiroErrorBadRequestQuota, StatusCode: http.StatusBadRequest, Message: trimmed}
+	case looksLikeKiroOversizeError(lower):
+		return kiroErrorClassification{Category: kiroErrorBadRequestOversize, StatusCode: http.StatusBadRequest, Message: trimmed}
 	default:
 		return kiroErrorClassification{Category: kiroErrorBadRequestUnknown, StatusCode: http.StatusBadRequest, Message: trimmed}
 	}
+}
+
+// looksLikeKiroOversizeError 识别"请求体积超上游阈值"这一类 400。
+//
+// 2026-09-14 实测真实响应体: {"message":"Input content length exceeds threshold."}
+// 这条消息不含 "schema"/"tool" 等关键字, 在加本函数之前会落进
+// bad_request_unknown —— 既丢失诊断信息, 也让 on_upstream_400 行为无从触发。
+//
+// ⚠️ 只有这一条是实测确认的; 其余是防御性匹配, 覆盖上游可能的措辞变体。
+func looksLikeKiroOversizeError(lower string) bool {
+	if lower == "" {
+		return false
+	}
+	return strings.Contains(lower, "input content length exceeds") ||
+		strings.Contains(lower, "content length exceeds threshold") ||
+		strings.Contains(lower, "input is too long") ||
+		strings.Contains(lower, "request payload size exceed") ||
+		strings.Contains(lower, "prompt is too long")
 }
 
 func looksLikeKiroBadRequestSchemaError(lower string) bool {

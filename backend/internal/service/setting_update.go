@@ -412,6 +412,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// Channel monitor feature switch
 	updates[SettingKeyChannelMonitorEnabled] = strconv.FormatBool(settings.ChannelMonitorEnabled)
+	updates[SettingKeyKiroOversizeBehavior] = normalizeKiroOversizeBehavior(settings.KiroOversizeBehavior)
+	if v := clampKiroOversizeThreshold(settings.KiroOversizeThreshold); v > 0 {
+		updates[SettingKeyKiroOversizeThreshold] = strconv.Itoa(v)
+	}
 	updates[SettingKeyChannelMonitorMode] = normalizeChannelMonitorMode(settings.ChannelMonitorMode)
 	if v := clampChannelMonitorInterval(settings.ChannelMonitorDefaultIntervalSeconds); v > 0 {
 		updates[SettingKeyChannelMonitorDefaultIntervalSeconds] = strconv.Itoa(v)
@@ -696,6 +700,10 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		max:       settings.MaxClaudeCodeVersion,
 		expiresAt: time.Now().Add(versionBoundsCacheTTL).UnixNano(),
 	})
+	// Kiro 体积守卫在每个请求的热路径上读缓存，写入后必须立即刷新，
+	// 否则页面上改完最长要等 60s 才生效。
+	refreshKiroPayloadGuardCache(settings.KiroOversizeBehavior, settings.KiroOversizeThreshold)
+
 	backendModeSF.Forget("backend_mode")
 	backendModeCache.Store(&cachedBackendMode{
 		value:     settings.BackendModeEnabled,

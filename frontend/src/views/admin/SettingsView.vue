@@ -5248,6 +5248,59 @@
                   </p>
                 </div>
 
+              <!-- Kiro 请求体积守卫 -->
+              <div class="border-b border-gray-100 pb-5 dark:border-dark-700 md:col-span-2">
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.kiroPayloadGuard.title") }}
+                </p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.kiroPayloadGuard.description") }}
+                </p>
+                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label
+                      for="kiro-oversize-behavior"
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.kiroPayloadGuard.behavior") }}
+                    </label>
+                    <div class="mt-2">
+                      <Select
+                        id="kiro-oversize-behavior"
+                        v-model="form.kiro_oversize_behavior"
+                        :options="kiroOversizeBehaviorOptions"
+                        :aria-label="t('admin.settings.kiroPayloadGuard.behavior')"
+                        data-testid="kiro-oversize-behavior"
+                      />
+                    </div>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.kiroPayloadGuard.behaviorHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      for="kiro-oversize-threshold"
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.kiroPayloadGuard.threshold") }}
+                    </label>
+                    <input
+                      id="kiro-oversize-threshold"
+                      v-model.number="form.kiro_oversize_threshold"
+                      type="number"
+                      min="10000"
+                      max="5000000"
+                      step="10000"
+                      class="input mt-2"
+                      data-testid="kiro-oversize-threshold"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.kiroPayloadGuard.thresholdHint") }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <!-- OpenAI Responses 首 token 统计 -->
               <div class="border-b border-gray-100 pb-5 dark:border-dark-700 md:col-span-2">
                 <label
@@ -8863,6 +8916,17 @@ const grokDefaultBaseURLModeOptions = computed(() => [
   { value: "us-west-2", label: t("admin.settings.gatewayForwarding.grokBaseURLModeUSWest2") },
   { value: "eu-west-1", label: t("admin.settings.gatewayForwarding.grokBaseURLModeEUWest1") },
 ]);
+const kiroOversizeBehaviorOptions = computed(() => [
+  {
+    value: "compress_then_trim",
+    label: t("admin.settings.kiroPayloadGuard.behaviorCompressThenTrim"),
+  },
+  {
+    value: "on_upstream_400",
+    label: t("admin.settings.kiroPayloadGuard.behaviorOnUpstream400"),
+  },
+  { value: "reject", label: t("admin.settings.kiroPayloadGuard.behaviorReject") },
+]);
 const streamTimeoutActionOptions = computed(() => [
   { value: "temp_unsched", label: t("admin.settings.streamTimeout.actionTempUnsched") },
   { value: "error", label: t("admin.settings.streamTimeout.actionError") },
@@ -9776,6 +9840,9 @@ const form = reactive<SettingsForm>({
   grok_default_text_model: "grok-4.5",
   grok_cross_client_model_map_enabled: false,
   grok_default_base_url_mode: "cli",
+  // Kiro 体积守卫。阈值是加权口径（ASCII 计 1、非 ASCII 计 8），不是字节数。
+  kiro_oversize_behavior: "compress_then_trim",
+  kiro_oversize_threshold: 1300000,
   // Identity patch (Claude -> Gemini)
   enable_identity_patch: true,
   identity_patch_prompt: "",
@@ -11386,6 +11453,9 @@ async function saveSettings() {
       grok_cross_client_model_map_enabled:
         form.grok_cross_client_model_map_enabled,
       grok_default_base_url_mode: form.grok_default_base_url_mode,
+      kiro_oversize_behavior: form.kiro_oversize_behavior,
+      // 后端把 0 当作"未提供"从而跳过写入；这里用 Number() 兜住空输入框（NaN）。
+      kiro_oversize_threshold: Number(form.kiro_oversize_threshold) || 0,
       enable_identity_patch: form.enable_identity_patch,
       identity_patch_prompt: form.identity_patch_prompt,
       min_claude_code_version: form.min_claude_code_version,

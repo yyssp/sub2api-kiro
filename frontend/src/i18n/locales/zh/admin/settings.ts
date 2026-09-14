@@ -455,6 +455,20 @@ export default {
         saved: 'Ollama Cloud 用量刷新设置已保存',
         saveFailed: '保存 Ollama Cloud 用量刷新设置失败'
       },
+      kiroPayloadGuard: {
+        title: 'Kiro 请求体积守卫',
+        description:
+          'Kiro 上游对单次请求的内容体积有硬上限，超限会直接返回 400。守卫会在发送前按「先压缩、压不动才裁剪」的顺序缩减请求。',
+        behavior: '超限时的行为',
+        behaviorHint:
+          '压缩后放行：预检超限即压缩（依次压缩历史工具输出、思考块、工具描述、历史图片），仍超限才丢弃最早的历史轮次。',
+        behaviorCompressThenTrim: '预检超限：压缩后放行（推荐）',
+        behaviorOnUpstream400: '先原样发送，上游返回 400 后再压缩重试',
+        behaviorReject: '直接拒绝（返回 413）',
+        threshold: '体积阈值（加权字符数）',
+        thresholdHint:
+          '注意不是字节数：ASCII 字符计 1，非 ASCII（中文等）计 8。实测上游在约 1,360,000 时开始 400，默认 1,300,000 留约 2% 余量。可填 10,000 ~ 5,000,000。'
+      },
       gatewayForwarding: {
         title: '请求转发行为',
         description: '控制请求转发到上游 OAuth 账号时的行为',

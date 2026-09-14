@@ -187,6 +187,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// Channel monitor defaults (enabled, 60s)
 		SettingKeyChannelMonitorEnabled:                "true",
+		SettingKeyKiroOversizeBehavior:                 KiroOversizeBehaviorCompressThenTrim,
+		SettingKeyKiroOversizeThreshold:                strconv.Itoa(kiroOversizeThresholdFallback),
 		SettingKeyChannelMonitorMode:                   ChannelMonitorModeV1,
 		SettingKeyChannelMonitorDefaultIntervalSeconds: "60",
 		SettingKeyChannelMonitorHideThroughput:         "true",
@@ -795,6 +797,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Channel monitor feature (default: enabled, 60s)
 	result.ChannelMonitorEnabled = !isFalseSettingValue(settings[SettingKeyChannelMonitorEnabled])
+	result.KiroOversizeBehavior = normalizeKiroOversizeBehavior(settings[SettingKeyKiroOversizeBehavior])
+	result.KiroOversizeThreshold = parseKiroOversizeThreshold(settings[SettingKeyKiroOversizeThreshold])
 	result.ChannelMonitorMode = normalizeChannelMonitorMode(settings[SettingKeyChannelMonitorMode])
 	result.ChannelMonitorDefaultIntervalSeconds = parseChannelMonitorInterval(
 		settings[SettingKeyChannelMonitorDefaultIntervalSeconds],

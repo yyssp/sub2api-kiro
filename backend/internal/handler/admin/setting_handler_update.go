@@ -330,6 +330,8 @@ type UpdateSettingsRequest struct {
 
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                *bool   `json:"channel_monitor_enabled"`
+	KiroOversizeBehavior                 *string `json:"kiro_oversize_behavior"`
+	KiroOversizeThreshold                *int    `json:"kiro_oversize_threshold"`
 	ChannelMonitorMode                   *string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds *int    `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         *bool   `json:"channel_monitor_hide_throughput"`
@@ -1883,6 +1885,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ChannelMonitorEnabled
 		}(),
+		KiroOversizeBehavior: func() string {
+			if req.KiroOversizeBehavior != nil {
+				return *req.KiroOversizeBehavior
+			}
+			return previousSettings.KiroOversizeBehavior
+		}(),
+		KiroOversizeThreshold: func() int {
+			if req.KiroOversizeThreshold != nil {
+				return *req.KiroOversizeThreshold
+			}
+			return previousSettings.KiroOversizeThreshold
+		}(),
 		ChannelMonitorMode: func() string {
 			if req.ChannelMonitorMode != nil {
 				return *req.ChannelMonitorMode
@@ -2369,6 +2383,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentAlipayMobilePrecreateDeepLink:                   updatedPaymentCfg.AlipayMobilePrecreateDeepLink,
 
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
+		KiroOversizeBehavior:                 updatedSettings.KiroOversizeBehavior,
+		KiroOversizeThreshold:                updatedSettings.KiroOversizeThreshold,
 		ChannelMonitorMode:                   updatedSettings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         updatedSettings.ChannelMonitorHideThroughput,

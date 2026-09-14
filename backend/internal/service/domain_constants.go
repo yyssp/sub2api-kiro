@@ -470,6 +470,28 @@ const (
 	// When false: runner skips scheduling and user-facing endpoints return an empty list.
 	SettingKeyChannelMonitorEnabled = "channel_monitor_enabled"
 
+	// SettingKeyKiroOversizeBehavior 控制 Kiro 请求体积超过阈值时的处理方式。
+	// 取值见 KiroOversizeBehavior* 常量, 默认 compress_then_trim。
+	SettingKeyKiroOversizeBehavior = "kiro_oversize_behavior"
+
+	// KiroOversizeBehavior* 是三种可选行为。
+	//
+	//	Reject           预检超限 -> 直接拒绝, 不发上游(返回 413)
+	//	CompressThenTrim 预检超限 -> 先压缩, 压不动再裁剪, 然后发送(默认)
+	//	OnUpstream400    不预检, 原样发; 上游明确回体积超限 400 后再压缩+裁剪重试
+	KiroOversizeBehaviorReject           = "reject"
+	KiroOversizeBehaviorCompressThenTrim = "compress_then_trim"
+	KiroOversizeBehaviorOnUpstream400    = "on_upstream_400"
+
+	// SettingKeyKiroOversizeThreshold 是体积阈值(加权口径, 非字节数、非 token 数)。
+	//
+	// ⚠️ 口径: ASCII 字符计 1, 非 ASCII 字符计 8。这是 2026-09-14 对真实上游
+	// 黑盒实测反解出的经验模型 —— 上游限的既不是字节也不是 token:
+	// 同样是我们发出去的负载, 中文 681,990 字节就 400, ASCII 1,408,286 字节仍 200。
+	// 实测可行区间 (1,320,000, 1,360,000], 默认 1,300,000 留约 2% 余量。
+	// 详见 internal/pkg/kiro/payload_guard.go 顶部注释。
+	SettingKeyKiroOversizeThreshold = "kiro_oversize_threshold"
+
 	// SettingKeyChannelMonitorMode selects exclusive implementation:
 	// "v1" active probes, "v2" passive aggregation. Default "v1" (opt-in to v2).
 	SettingKeyChannelMonitorMode = "channel_monitor_mode"

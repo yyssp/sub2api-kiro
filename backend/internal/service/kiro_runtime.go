@@ -237,6 +237,22 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 			})
 			return nil, failoverErr
 		}
+		// behavior=reject：请求根本没发出去，回 502 "Upstream request failed"
+		// 会让用户去排查上游，而真正的原因是本地策略拒绝 + 请求太大。
+		var tooLarge *kiropkg.ErrKiroPayloadTooLarge
+		if errors.As(err, &tooLarge) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{
+				"type": "error",
+				"error": gin.H{
+					"type": "invalid_request_error",
+					"message": fmt.Sprintf(
+						"Request payload too large: weighted size %d exceeds the configured limit %d. "+
+							"Reduce conversation history, tool output, or attachments.",
+						tooLarge.Weight, tooLarge.Limit),
+				},
+			})
+			return nil, err
+		}
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
 		c.JSON(http.StatusBadGateway, gin.H{
 			"type": "error",
@@ -248,6 +264,8 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 		return nil, fmt.Errorf("kiro upstream request failed: %s", safeErr)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	// 在写响应体之前打头：一旦 c.JSON 写出去，头就改不动了。
+	setKiroPayloadTrimHeaders(c.Writer.Header(), requestCtx)
 	if resp.StatusCode >= 400 {
 		return nil, s.handleKiroHTTPError(ctx, resp, c, account, mappedModel, body)
 	}
@@ -387,6 +405,7 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 	claudeReqID := kiropkg.NewClaudeRequestID()
 	wrappedHeaders.Set("x-request-id", claudeReqID)
 	wrappedHeaders.Set("request-id", claudeReqID)
+	setKiroPayloadTrimHeaders(wrappedHeaders, requestCtx)
 
 	go func() {
 		defer func() { _ = resp.Body.Close() }()
@@ -451,6 +470,10 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 		requestCtx = buildResult.Context
 		logKiroStatelessReplay(account, buildResult.Payload)
 		logKiroPayloadTrim(account, requestCtx)
+
+		// 体积缩减重试每个端点最多一次：缩完还 400 说明问题不在体积，
+		// 再试只会白烧配额。
+		oversizeRetried := false
 
 		for attempt := 0; attempt <= maxRetries; attempt++ {
 			req, err := newKiroJSONRequest(ctx, endpoint.URL, payload, currentToken, accountKey, buildKiroMachineID(account), endpoint.AmzTarget, account)
@@ -579,6 +602,27 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 				}
 				classification := classifyKiroHTTPError(resp.StatusCode, string(respBody))
 				logKiroBadRequestClassification(classification, account, mappedModel, resp.Header, respBody)
+
+				// on_upstream_400：上游明确说体积超限时，才做压缩+裁剪并重试一次。
+				// 这是"按上游真实判定缩减"而非"按我们猜的阈值预先缩减"，
+				// 好处是不会对上游其实能接受的请求做无谓的有损处理。
+				if classification.Category == kiroErrorBadRequestOversize && !oversizeRetried {
+					oversizeRetried = true
+					shrunk, buildErr := s.buildKiroPayloadWithGuard(ctx, account, parsed, anthropicBody, modelID, currentToken, requestModel, headers, profileArn,
+						kiropkg.KiroPayloadGuardConfig{Behavior: kiropkg.KiroOversizeCompressThenTrim})
+					if buildErr == nil && shrunk.Context.PayloadTrimStats().Triggered() {
+						payload = shrunk.Payload
+						requestCtx = shrunk.Context
+						logKiroPayloadTrim(account, requestCtx)
+						logger.L().Warn("kiro.oversize_retry_after_upstream_400",
+							zap.Int64("account_id", account.ID),
+							zap.Int("original_weight", requestCtx.PayloadTrimStats().OriginalWeight),
+							zap.Int("final_weight", requestCtx.PayloadTrimStats().FinalWeight))
+						continue
+					}
+					// 缩不动就别空转重试 —— 原样把 400 返回给调用方。
+				}
+
 				resetHTTPResponseBody(resp, respBody)
 				return resp, requestCtx, nil
 			}
@@ -643,14 +687,30 @@ func kiroEndpointModeForRequest(account *Account, parsed *ParsedRequest) string 
 	return parsed.Group.EffectiveKiroEndpointMode()
 }
 
+// kiroPayloadGuardConfig 把页面配置转成 kiro 包的守卫配置。
+// settingService 缺失(部分单测直接构造 GatewayService)时回落到包内默认值。
+func (s *GatewayService) kiroPayloadGuardConfig(ctx context.Context) kiropkg.KiroPayloadGuardConfig {
+	if s == nil || s.settingService == nil {
+		return kiropkg.KiroPayloadGuardConfig{}
+	}
+	behavior, threshold := s.settingService.GetKiroPayloadGuardSettings(ctx)
+	return kiropkg.KiroPayloadGuardConfig{
+		MaxWeight: threshold,
+		Behavior:  toKiroGuardBehavior(behavior),
+	}
+}
+
 // buildKiroPayloadForAccountWithArn 使用显式 profileArn 构建 Kiro 请求 payload。
 // auto 模式下 Q/KRS 端点需要不同 profileArn，调用方按端点维度传入。
 func (s *GatewayService) buildKiroPayloadForAccountWithArn(ctx context.Context, account *Account, parsed *ParsedRequest, anthropicBody []byte, modelID, token, requestModel string, headers http.Header, profileArn string) (*kiropkg.KiroBuildResult, error) {
-	_ = s
+	return s.buildKiroPayloadWithGuard(ctx, account, parsed, anthropicBody, modelID, token, requestModel, headers, profileArn, s.kiroPayloadGuardConfig(ctx))
+}
+
+func (s *GatewayService) buildKiroPayloadWithGuard(ctx context.Context, account *Account, parsed *ParsedRequest, anthropicBody []byte, modelID, token, requestModel string, headers http.Header, profileArn string, guard kiropkg.KiroPayloadGuardConfig) (*kiropkg.KiroBuildResult, error) {
 	_ = ctx
 	_ = token
 	anthropicBody = prepareKiroPayloadBodyForRequestModel(anthropicBody, requestModel)
-	buildResult, err := kiropkg.BuildKiroPayloadWithContext(anthropicBody, modelID, profileArn, "AI_EDITOR", headers)
+	buildResult, err := kiropkg.BuildKiroPayloadWithGuard(anthropicBody, modelID, profileArn, "AI_EDITOR", headers, guard)
 	if err != nil {
 		return nil, err
 	}
@@ -742,33 +802,90 @@ func logKiroStatelessReplay(account *Account, payload []byte) {
 	)
 }
 
+// 体积守卫的通知响应头。
+//
+// G1-B 的症结不是"裁剪"本身，而是**静默**：请求被裁掉半部历史后照样返回 200，
+// 调用方拿到一个自信但缺上下文的答案，完全无从察觉。日志只有服务端看得到，
+// 所以必须在响应上留痕，让客户端/用户能发现这次回答是在残缺上下文上给出的。
+const (
+	kiroTrimHeaderTrimmed         = "x-sub2api-context-trimmed"
+	kiroTrimHeaderDroppedItems    = "x-sub2api-context-dropped-items"
+	kiroTrimHeaderCompressedItems = "x-sub2api-context-compressed-items"
+	kiroTrimHeaderOriginalBytes   = "x-sub2api-context-original-bytes"
+	kiroTrimHeaderFinalBytes      = "x-sub2api-context-final-bytes"
+	kiroTrimHeaderStages          = "x-sub2api-context-stages"
+)
+
+// setKiroPayloadTrimHeaders 把守卫结果写进响应头。未触发时一个头都不加。
+func setKiroPayloadTrimHeaders(header http.Header, requestCtx kiropkg.KiroRequestContext) {
+	if header == nil {
+		return
+	}
+	s := requestCtx.PayloadTrimStats()
+	if !s.Triggered() {
+		return
+	}
+	// trimmed=true 专指"真的丢了整轮历史"。仅压缩(内容仍在、只是被截断)
+	// 与丢弃整轮是两种严重程度，不能混为一谈。
+	header.Set(kiroTrimHeaderTrimmed, strconv.FormatBool(s.Trimmed))
+	header.Set(kiroTrimHeaderDroppedItems, strconv.Itoa(s.DroppedItems))
+	header.Set(kiroTrimHeaderCompressedItems, strconv.Itoa(s.CompressedItems))
+	header.Set(kiroTrimHeaderOriginalBytes, strconv.Itoa(s.OriginalBytes))
+	header.Set(kiroTrimHeaderFinalBytes, strconv.Itoa(s.FinalBytes))
+	if len(s.Stages) > 0 {
+		header.Set(kiroTrimHeaderStages, strings.Join(s.Stages, ","))
+	}
+}
+
 // logKiroPayloadTrim 在体积守卫真正裁剪（或裁剪后仍超限）时写一条诊断日志。
 //
 // 未触发时完全静默 —— 绝大多数请求都走这条路径，不该产生噪声。
 // 没有这条日志的话，「守卫是否真的生效」在线上无法观测：
 // 裁剪成功与「负载本来就没超限」在外部表现完全一样（都是 200）。
 func logKiroPayloadTrim(account *Account, requestCtx kiropkg.KiroRequestContext) {
-	trimmed, stillOversized, original, final, limit, dropped := requestCtx.PayloadTrimStats()
-	if !trimmed && !stillOversized {
+	s := requestCtx.PayloadTrimStats()
+	// DeferredToUpstream 不计入 Triggered()（守卫没动过负载，不该回裁剪头），
+	// 但日志必须留 —— "超阈值却故意原样发"正是排查上游 400 时最需要的线索。
+	if !s.Triggered() && !s.DeferredToUpstream {
 		return
 	}
 	fields := []zap.Field{
-		zap.Bool("trimmed", trimmed),
-		zap.Bool("still_oversized", stillOversized),
-		zap.Int("original_bytes", original),
-		zap.Int("final_bytes", final),
-		zap.Int("limit_bytes", limit),
-		zap.Int("dropped_history_items", dropped),
+		zap.Bool("compressed", s.Compressed),
+		zap.Bool("trimmed", s.Trimmed),
+		zap.Bool("still_oversized", s.StillOversized),
+		zap.Bool("deferred_to_upstream", s.DeferredToUpstream),
+		zap.Int("original_bytes", s.OriginalBytes),
+		zap.Int("final_bytes", s.FinalBytes),
+		// 加权值才是与阈值同口径的判据：上游限的不是字节数，
+		// 同样字节的中文比英文"贵"得多。
+		zap.Int("original_weight", s.OriginalWeight),
+		zap.Int("final_weight", s.FinalWeight),
+		zap.Int("limit_weight", s.LimitWeight),
+		zap.Int("compressed_items", s.CompressedItems),
+		zap.Int("dropped_history_items", s.DroppedItems),
+		zap.Strings("stages", s.Stages),
 	}
 	if account != nil {
 		fields = append(fields, zap.Int64("account_id", account.ID))
 	}
-	if stillOversized {
-		// 软失败：找不到干净切点或裁到底仍超限，照发不误，但必须可观测。
+	switch {
+	case s.Rejected:
+		logger.L().Warn("kiro.payload_rejected", fields...)
+	case s.DeferredToUpstream:
+		// on_upstream_400 行为下的既定动作：超阈值但故意原样发，等上游裁决。
+		// 不能走 still_oversized 分支 —— 那是"缩到底仍塞不下"的软失败，
+		// 混用会让这条策略下的每个大请求都误报成压缩失效。
+		logger.L().Info("kiro.payload_deferred_to_upstream", fields...)
+	case s.StillOversized:
+		// 软失败：找不到干净切点或压缩+裁剪到底仍超限，照发不误，但必须可观测。
 		logger.L().Warn("kiro.payload_still_oversized", fields...)
-		return
+	case s.Trimmed:
+		// 真的丢了整轮历史 —— 上下文已缺失，级别高于单纯压缩。
+		logger.L().Warn("kiro.payload_trimmed", fields...)
+	default:
+		// 只压缩没裁剪：语义骨架保留，属正常降级。
+		logger.L().Info("kiro.payload_compressed", fields...)
 	}
-	logger.L().Info("kiro.payload_trimmed", fields...)
 }
 
 func hashKiroPayloadWithoutConversationID(payload []byte) string {

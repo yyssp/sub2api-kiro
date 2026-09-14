@@ -151,3 +151,26 @@ func TestClassifyKiroBadRequestNewStringsDoNotOverreach(t *testing.T) {
 		})
 	}
 }
+
+// 体积超限 400 必须被独立分类。
+//
+// 实测真实响应体是 {"message":"Input content length exceeds threshold."}，
+// 它不含 schema/tool 等关键字，在加 looksLikeKiroOversizeError 之前会落进
+// bad_request_unknown —— 既丢诊断信息，也让 on_upstream_400 行为永远触发不了。
+func TestClassifyKiroOversizeBadRequest(t *testing.T) {
+	c := classifyKiroHTTPError(400, `{"message":"Input content length exceeds threshold."}`)
+	require.Equal(t, kiroErrorBadRequestOversize, c.Category)
+	require.Equal(t, 400, c.StatusCode)
+}
+
+// 体积分类不得抢走其它 400 的归类 —— 顺序错了会把 schema 错误误判成体积问题，
+// 进而触发一次毫无意义的缩减重试。
+func TestClassifyKiroOversizeDoesNotShadowOtherBadRequests(t *testing.T) {
+	for _, tc := range []struct{ body, want string }{
+		{`{"message":"Improperly formed request."}`, kiroErrorBadRequestSchema},
+		{`{"message":"Invalid tool use format.","reason":"REQUEST_BODY_INVALID"}`, kiroErrorBadRequestSchema},
+		{`{"message":"something else entirely"}`, kiroErrorBadRequestUnknown},
+	} {
+		require.Equal(t, tc.want, classifyKiroHTTPError(400, tc.body).Category, "body=%s", tc.body)
+	}
+}

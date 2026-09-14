@@ -462,6 +462,20 @@ export default {
         saved: 'Ollama Cloud usage refresh settings saved',
         saveFailed: 'Failed to save Ollama Cloud usage refresh settings'
       },
+      kiroPayloadGuard: {
+        title: 'Kiro Payload Size Guard',
+        description:
+          'Kiro upstream enforces a hard cap on per-request content size and returns 400 when exceeded. The guard shrinks requests before sending, compressing first and trimming only when compression is no longer enough.',
+        behavior: 'Behavior when oversized',
+        behaviorHint:
+          'Compress then pass: on pre-flight overflow, compress in order (history tool results, thinking blocks, tool descriptions, history images); only if still oversized are the earliest history turns dropped.',
+        behaviorCompressThenTrim: 'Pre-flight: compress then pass (recommended)',
+        behaviorOnUpstream400: 'Send as-is, compress and retry after upstream 400',
+        behaviorReject: 'Reject outright (return 413)',
+        threshold: 'Size threshold (weighted characters)',
+        thresholdHint:
+          'Not a byte count: ASCII characters count as 1, non-ASCII (e.g. CJK) as 8. Upstream was measured to start returning 400 around 1,360,000; the default 1,300,000 leaves roughly 2% headroom. Accepts 10,000 to 5,000,000.'
+      },
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',
