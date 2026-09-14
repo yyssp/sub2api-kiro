@@ -162,6 +162,12 @@ func (s *GatewayService) ForwardAsResponses(
 	if isKiroDirectModeAccount(account) {
 		resp, _, err = s.openKiroAnthropicStreamResponse(ctx, account, parsed, anthropicBody, mappedModel, originalModel, c.Request.Header, group, cachePlan)
 		if err != nil {
+			// behavior=reject 时请求没发出去，不能报成上游故障。见 respondKiroPayloadTooLarge。
+			if weight, limit, ok := kiroPayloadTooLargeDetail(err); ok {
+				writeResponsesError(c, http.StatusRequestEntityTooLarge, "invalid_request_error",
+					kiroPayloadTooLargeMessage(weight, limit))
+				return nil, err
+			}
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
 			setOpsUpstreamError(c, 0, safeErr, "")
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{

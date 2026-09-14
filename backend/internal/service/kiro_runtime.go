@@ -119,6 +119,13 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 				})
 				return nil, failoverErr
 			}
+			// 必须在通用 502 之前判：behavior=reject 时请求根本没发出去，
+			// 报 "Upstream request failed" 会把用户引去排查上游。
+			// 这条分支是流式路径 —— Claude Code CLI 等客户端只走流式，
+			// 只在非流式分支加映射等于没加（2026-09-14 交互式实测发现）。
+			if respondKiroPayloadTooLarge(c, err) {
+				return nil, err
+			}
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
 			setOpsUpstreamError(c, 0, safeErr, "")
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -237,20 +244,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 			})
 			return nil, failoverErr
 		}
-		// behavior=reject：请求根本没发出去，回 502 "Upstream request failed"
-		// 会让用户去排查上游，而真正的原因是本地策略拒绝 + 请求太大。
-		var tooLarge *kiropkg.ErrKiroPayloadTooLarge
-		if errors.As(err, &tooLarge) {
-			c.JSON(http.StatusRequestEntityTooLarge, gin.H{
-				"type": "error",
-				"error": gin.H{
-					"type": "invalid_request_error",
-					"message": fmt.Sprintf(
-						"Request payload too large: weighted size %d exceeds the configured limit %d. "+
-							"Reduce conversation history, tool output, or attachments.",
-						tooLarge.Weight, tooLarge.Limit),
-				},
-			})
+		if respondKiroPayloadTooLarge(c, err) {
 			return nil, err
 		}
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
@@ -464,6 +458,21 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 		profileArn := kiroResolveRequestProfileArn(account)
 		buildResult, err := s.buildKiroPayloadForAccountWithArn(ctx, account, parsed, anthropicBody, modelID, currentToken, requestModel, headers, profileArn)
 		if err != nil {
+			// behavior=reject 会在这里带着 ErrKiroPayloadTooLarge 提前返回，
+			// 走不到下面的 logKiroPayloadTrim —— 结果是客户端收到 413，
+			// 服务端却一条 kiro.payload_rejected 都没有（2026-09-14 实测）。
+			// 拒绝是最需要可观测的那条路径：没有日志，运维无从判断
+			// 是阈值配置过严还是客户端真的发了超大请求。
+			if weight, limit, ok := kiroPayloadTooLargeDetail(err); ok {
+				fields := []zap.Field{
+					zap.Int("original_weight", weight),
+					zap.Int("limit_weight", limit),
+				}
+				if account != nil {
+					fields = append(fields, zap.Int64("account_id", account.ID))
+				}
+				logger.L().Warn("kiro.payload_rejected", fields...)
+			}
 			return nil, requestCtx, err
 		}
 		payload := buildResult.Payload
@@ -835,6 +844,47 @@ func setKiroPayloadTrimHeaders(header http.Header, requestCtx kiropkg.KiroReques
 	if len(s.Stages) > 0 {
 		header.Set(kiroTrimHeaderStages, strings.Join(s.Stages, ","))
 	}
+}
+
+// respondKiroPayloadTooLarge 把 behavior=reject 的守卫拒绝映射成 413。
+//
+// 返回 true 表示已写响应，调用方应立即返回、不要再走通用 502 分支。
+//
+// 抽成公共函数而不是各写一份：流式与非流式是两个独立入口，
+// 只在其中一个加映射，另一个仍会回 502 —— 这正是 2026-09-14
+// 交互式 CLI 实测踩到的坑（CLI 只走流式，curl 默认非流式，
+// 单测断言的也是非流式，三者一致地掩盖了这个缺口）。
+func respondKiroPayloadTooLarge(c *gin.Context, err error) bool {
+	weight, limit, ok := kiroPayloadTooLargeDetail(err)
+	if !ok {
+		return false
+	}
+	c.JSON(http.StatusRequestEntityTooLarge, gin.H{
+		"type": "error",
+		"error": gin.H{
+			"type":    "invalid_request_error",
+			"message": kiroPayloadTooLargeMessage(weight, limit),
+		},
+	})
+	return true
+}
+
+// kiroPayloadTooLargeDetail 判别守卫拒绝错误并取出加权值/阈值。
+// 独立出来是为了让不 import kiro 包的 OpenAI 兼容入口也能复用同一判据。
+func kiroPayloadTooLargeDetail(err error) (weight int, limit int, ok bool) {
+	var tooLarge *kiropkg.ErrKiroPayloadTooLarge
+	if !errors.As(err, &tooLarge) {
+		return 0, 0, false
+	}
+	return tooLarge.Weight, tooLarge.Limit, true
+}
+
+// kiroPayloadTooLargeMessage 统一错误文案，避免三个入口各写一份而漂移。
+func kiroPayloadTooLargeMessage(weight, limit int) string {
+	return fmt.Sprintf(
+		"Request payload too large: weighted size %d exceeds the configured limit %d. "+
+			"Reduce conversation history, tool output, or attachments.",
+		weight, limit)
 }
 
 // logKiroPayloadTrim 在体积守卫真正裁剪（或裁剪后仍超限）时写一条诊断日志。
