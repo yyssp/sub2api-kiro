@@ -150,6 +150,13 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 			return nil, s.handleKiroHTTPError(ctx, resp, c, account, mappedModel, body)
 		}
 		upstreamModel := resolveKiroUpstreamModel(mappedModel)
+		// 守卫通知头必须直接写到 gin 的 ResponseWriter 上。
+		// openKiroAnthropicStreamResponse 把它们塞在 resp.Header 里，而
+		// handleStreamingResponse 是按**上游头白名单**(responseheaders.FilterHeaders)
+		// 转发的 —— 这几个是我们自己加的头，不在白名单里，会被整组丢掉。
+		// 结果就是裁了半部历史仍返回 200 且响应上毫无痕迹(2026-09-14 实测:
+		// dropped_history_items=14，客户端一个 x-sub2api-context-* 都收不到)。
+		copyKiroTrimHeaders(c.Writer.Header(), resp.Header)
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, mappedModel, false)
 		if err != nil {
 			return nil, err
@@ -843,6 +850,32 @@ func setKiroPayloadTrimHeaders(header http.Header, requestCtx kiropkg.KiroReques
 	header.Set(kiroTrimHeaderFinalBytes, strconv.Itoa(s.FinalBytes))
 	if len(s.Stages) > 0 {
 		header.Set(kiroTrimHeaderStages, strings.Join(s.Stages, ","))
+	}
+}
+
+// kiroTrimHeaderNames 是全部守卫通知头，供跨 http.Header 搬运时遍历。
+var kiroTrimHeaderNames = []string{
+	kiroTrimHeaderTrimmed,
+	kiroTrimHeaderDroppedItems,
+	kiroTrimHeaderCompressedItems,
+	kiroTrimHeaderOriginalBytes,
+	kiroTrimHeaderFinalBytes,
+	kiroTrimHeaderStages,
+}
+
+// copyKiroTrimHeaders 把守卫通知头从 src 搬到 dst。
+//
+// 流式路径上这几个头是先写进 openKiroAnthropicStreamResponse 返回的
+// resp.Header，再由 handleStreamingResponse 转发的；而那里走的是**上游头
+// 白名单**，我们自己加的头一律被过滤掉。所以必须在调用前手工搬一次。
+func copyKiroTrimHeaders(dst, src http.Header) {
+	if dst == nil || src == nil {
+		return
+	}
+	for _, name := range kiroTrimHeaderNames {
+		if v := src.Get(name); v != "" {
+			dst.Set(name, v)
+		}
 	}
 }
 
