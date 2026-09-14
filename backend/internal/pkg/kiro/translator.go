@@ -124,6 +124,16 @@ type KiroRequestContext struct {
 	PayloadTrim kiroPayloadTrimResult
 }
 
+// PayloadTrimStats 暴露体积守卫的裁剪结果。
+// kiroPayloadTrimResult 是包内类型，跨包调用方无法直接读取字段，
+// 因此这里返回一组基本类型，供上层写诊断日志。
+//
+// trimmed 为 false 且 stillOversized 为 false 表示未触发守卫（绝大多数请求）。
+func (c KiroRequestContext) PayloadTrimStats() (trimmed, stillOversized bool, originalBytes, finalBytes, limitBytes, droppedItems int) {
+	t := c.PayloadTrim
+	return t.Trimmed, t.StillOversized, t.OriginalBytes, t.FinalBytes, t.LimitBytes, t.DroppedItems
+}
+
 type KiroBuildResult struct {
 	Payload []byte
 	Context KiroRequestContext
@@ -2643,15 +2653,28 @@ func buildDocumentTextFallback(part gjson.Result) string {
 	if name == "" {
 		name = strings.TrimSpace(part.Get("title").String())
 	}
-	if format != "pdf" {
-		return ""
-	}
 	raw, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
 		raw, err = base64.RawStdEncoding.DecodeString(data)
 	}
 	if err != nil || len(raw) == 0 {
 		return ""
+	}
+	// 文本类文档（txt/csv/html/json/md...）本身就是可读内容, 直接内联。
+	// 之前这里对非 pdf 一律 return "", 导致 source.type="text" 的 document 块
+	// 被静默丢弃 —— 上游收不到任何内容, 模型却照常作答, 表现为「文档没传进去」。
+	if format != "pdf" {
+		text := strings.TrimSpace(string(raw))
+		if text == "" || !utf8.ValidString(text) {
+			return ""
+		}
+		if utf8.RuneCountInString(text) > 6000 {
+			text = truncateUTF8(text, 6000) + "\n[document text truncated]"
+		}
+		if name == "" {
+			name = "document." + format
+		}
+		return fmt.Sprintf("[Attached document: %s, format=%s, bytes=%d]\n[Document content]\n%s\n[/Document content]", name, format, len(raw), text)
 	}
 	text := strings.TrimSpace(extractPDFTextLite(raw))
 	if text == "" {

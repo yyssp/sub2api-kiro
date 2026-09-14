@@ -450,6 +450,7 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 		payload := buildResult.Payload
 		requestCtx = buildResult.Context
 		logKiroStatelessReplay(account, buildResult.Payload)
+		logKiroPayloadTrim(account, requestCtx)
 
 		for attempt := 0; attempt <= maxRetries; attempt++ {
 			req, err := newKiroJSONRequest(ctx, endpoint.URL, payload, currentToken, accountKey, buildKiroMachineID(account), endpoint.AmzTarget, account)
@@ -739,6 +740,35 @@ func logKiroStatelessReplay(account *Account, payload []byte) {
 		zap.String("current_content_hash", hashKiroLogString(currentContent)),
 		zap.Int("tool_count", len(gjson.GetBytes(payload, "conversationState.currentMessage.userInputMessage.userInputMessageContext.tools").Array())),
 	)
+}
+
+// logKiroPayloadTrim 在体积守卫真正裁剪（或裁剪后仍超限）时写一条诊断日志。
+//
+// 未触发时完全静默 —— 绝大多数请求都走这条路径，不该产生噪声。
+// 没有这条日志的话，「守卫是否真的生效」在线上无法观测：
+// 裁剪成功与「负载本来就没超限」在外部表现完全一样（都是 200）。
+func logKiroPayloadTrim(account *Account, requestCtx kiropkg.KiroRequestContext) {
+	trimmed, stillOversized, original, final, limit, dropped := requestCtx.PayloadTrimStats()
+	if !trimmed && !stillOversized {
+		return
+	}
+	fields := []zap.Field{
+		zap.Bool("trimmed", trimmed),
+		zap.Bool("still_oversized", stillOversized),
+		zap.Int("original_bytes", original),
+		zap.Int("final_bytes", final),
+		zap.Int("limit_bytes", limit),
+		zap.Int("dropped_history_items", dropped),
+	}
+	if account != nil {
+		fields = append(fields, zap.Int64("account_id", account.ID))
+	}
+	if stillOversized {
+		// 软失败：找不到干净切点或裁到底仍超限，照发不误，但必须可观测。
+		logger.L().Warn("kiro.payload_still_oversized", fields...)
+		return
+	}
+	logger.L().Info("kiro.payload_trimmed", fields...)
 }
 
 func hashKiroPayloadWithoutConversationID(payload []byte) string {

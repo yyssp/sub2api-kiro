@@ -248,3 +248,45 @@ func requireNoOrphanedToolPairs(t *testing.T, history []KiroHistoryMessage) {
 		require.True(t, toolResults[id], "孤儿 toolUse %q：找不到对应的 toolResult", id)
 	}
 }
+
+// PayloadTrimStats 必须能跨包读出裁剪结果。
+//
+// 背景：kiroPayloadTrimResult 是包内类型，嵌在导出的 KiroRequestContext 里。
+// 跨包调用方（internal/service）拿不到字段，导致守卫是否生效在线上无法观测 ——
+// 「裁剪成功」和「本来就没超限」外部表现完全一样（都是 200）。
+func TestPayloadTrimStatsExposedAcrossPackages(t *testing.T) {
+	blob := strings.Repeat("The quick brown fox jumps over the lazy dog. ", 180)
+	var msgs []map[string]any
+	for i := 0; i < 60; i++ {
+		msgs = append(msgs, map[string]any{"role": "user", "content": blob})
+		msgs = append(msgs, map[string]any{"role": "assistant", "content": "ok"})
+	}
+	msgs = append(msgs, map[string]any{"role": "user", "content": "done?"})
+	body, err := json.Marshal(map[string]any{
+		"model": "claude-sonnet-4-5-20250929", "max_tokens": 100, "messages": msgs})
+	require.NoError(t, err)
+
+	res, err := BuildKiroPayloadWithContext(body, "claude-sonnet-4.5", "arn:test", "AI_EDITOR", nil)
+	require.NoError(t, err)
+
+	trimmed, stillOversized, original, final, limit, dropped := res.Context.PayloadTrimStats()
+	require.True(t, trimmed, "480KiB 负载必须触发裁剪")
+	require.False(t, stillOversized)
+	require.Greater(t, original, limit, "原始体积应超限")
+	require.LessOrEqual(t, final, limit, "裁剪后必须在限内")
+	require.Greater(t, dropped, 0, "必须丢弃了历史条目")
+	require.LessOrEqual(t, len(res.Payload), limit)
+}
+
+// 未超限时 PayloadTrimStats 必须全零 —— 保证日志不产生噪声。
+func TestPayloadTrimStatsSilentWhenUnderLimit(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-4-5-20250929","max_tokens":16,
+		"messages":[{"role":"user","content":"hi"}]}`)
+	res, err := BuildKiroPayloadWithContext(body, "claude-sonnet-4.5", "arn:test", "AI_EDITOR", nil)
+	require.NoError(t, err)
+
+	trimmed, stillOversized, _, _, _, dropped := res.Context.PayloadTrimStats()
+	require.False(t, trimmed)
+	require.False(t, stillOversized)
+	require.Zero(t, dropped)
+}
