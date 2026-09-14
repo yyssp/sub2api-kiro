@@ -596,3 +596,106 @@ API 往返实测 7/7 通过（含非法值回落、超大值夹取、传 0 不�
 - `reject` / `on_upstream_400` 两种行为的真实上游验证只覆盖了
   「预检不动负载」路径；**上游真的返回 400 后的缩减重试未在真实环境触发**
   （需要构造 >1.3M 加权的负载，代价高且有触发滥用检测的风险）
+
+---
+
+## 10. 交互式 Claude Code CLI 实测（2026-09-14）
+
+前面几节的结论全部来自 curl / 单测。本节改用**真实 Claude Code CLI 交互式多轮会话**
+复测同一批能力，结果发现了 3 个前面所有手段都没能暴露的缺陷。
+
+### 10.1 方法与隔离
+
+- PTY 驱动（`pty.fork()` + ANSI 剥离），真实 TUI，不是接口调用
+- 回合结束判据为「屏幕尾部不再出现 `esc to interrupt`」，纯静默计时会在
+  工具执行的思考间隙误判，导致后续输入打进运行中的会话
+- **不改动本机 CLI 配置**：全程 `CLAUDE_CONFIG_DIR` 指向临时目录，
+  每次运行前后比对 `md5 -q ~/.claude.json`
+- 每个场景在第 1 轮埋入「针码」（如 `CHARLIE-77`），最后一轮索回 ——
+  只断言「没报错」会漏掉**静默上下文丢失**，针码才能证伪
+
+> ⚠️ 对照实验结论：`~/.claude.json` 在本轮工作期间确有变化，但
+> 逐字段核对证实变化来自**承载本次会话的那个 CLI 实例**（`numStartups` 等计数器），
+> 测试工作区 `/private/tmp/cc-guard-ws` 从未出现在个人配置的 `projects` 里。
+> 单独跑一次隔离探针（临时 CONFIG_DIR + 真实 CLI 调用）验证 md5 全程不变。
+
+### 10.2 BUG #2：流式入口漏掉 413 映射（已修复）
+
+`behavior=reject` 下 CLI 屏幕渲染 `API Error: 502 Upstream request failed`，
+把用户引去排查上游，而请求根本没发出去。
+
+成因：`forwardKiroMessages` 有流式/非流式两个分支，413 映射只加在非流式分支。
+**Claude Code CLI 只走流式、curl 默认非流式、单测也只断言非流式** ——
+三者一致地掩盖了这个缺口。同样的缺口还存在于 chat_completions 与 responses 入口。
+
+修复后实测：5 × HTTP 413，屏幕渲染 `Request too large`，
+`502` / `Upstream request failed` / `API Error` 均为 0 次。
+
+### 10.3 BUG #2b：reject 路径无任何日志（已修复）
+
+客户端收到 413、服务端却一条 `kiro.payload_rejected` 都没有 ——
+`buildKiroPayloadForAccountWithArn` 带错误提前 return，走不到 `logKiroPayloadTrim`。
+拒绝恰恰是最需要可观测的那条路径：没有日志，运维无从判断是阈值配置过严
+还是客户端真的发了超大请求。
+
+修复后：5 × `kiro.payload_rejected`（weight 93569 > limit 60000）↔ 5 × HTTP 413，两侧吻合。
+
+### 10.4 BUG #3：裁剪破坏当前轮 tool 配对（已修复）★ 本节最重要发现
+
+场景 C（7 轮 + MCP + 多文件读取，阈值 45000）下，**每次** `kiro.payload_trimmed`
+后一秒内必然收到上游 400：
+
+```
+Bedrock error message: The number of toolResult blocks at
+messages.4.content exceeds the number of toolUse blocks of previous turn.
+```
+
+位置恒为 `messages.4.content` —— 正是当前轮的位置。
+
+成因：当前轮的 toolResults 在 `processMessages` 阶段就依据**未裁剪**的 history
+校验过（`validateToolPairing`），而体积守卫在其后才裁剪 history。
+配对的 toolUse 被切走后，没有任何环节重新校验当前轮。
+
+修复策略是**补回 toolUse** 而非删除 toolResult —— 当前轮的工具输出正是模型
+此刻推理的依据，删掉等于让它凭空失忆。
+
+修复前后对比（同一配置）：
+
+| | 修复前 | 修复后 |
+|---|---|---|
+| 上游 400（tool 配对） | 6 次 | **0 次** |
+| `history_trim` 次数 | 7 | 21 |
+| 屏幕输出 | 61KB（第 4 轮即中断） | 485KB（跑完） |
+| C1–C6 检查点 | 部分缺失 | 全部渲染 |
+| MCP 执行 | 中断 | `⏺Called inv` 正常 |
+
+典型一次裁剪：加权 121,209 → 44,443（limit 45,000），
+四个阶段全部参与：`history_tool_results` → `history_thinking` →
+`tool_definitions` → `history_trim`，`dropped_history_items=2`。
+**关键：`tool_definitions` 被压缩之后 MCP 工具依然可以正常调用。**
+
+### 10.5 针码验证（静默上下文丢失）
+
+| 场景 | 形态 | 轮数 | 针码回收 |
+|---|---|---|---|
+| A2 | 工具 + MCP + 多文件 | 7 | ✅ `⏺ZULU-42` |
+| B | 中文日志（weight=8 路径） | 5 | ✅ `⏺BRAVO-91` |
+| C3 | MCP 中文输出 + 多文件 | 4 | ✅ `⏺CHARLIE-77` |
+| R | reject 行为 | 3 | ✅ RJ1/RJ2/RJ3 |
+
+### 10.6 本节存疑
+
+- **场景 C3 的针码回收不能单独作为 BUG #3 的证据**：该次运行未触发守卫
+  （窗口内无 `kiro.payload_*` 事件），只能证明基线健康。
+  BUG #3 的真正证据是 C2（21 次裁剪 / 0 次 400）与修复前的 6 次 400 的对比。
+- **场景 B 未真正走到 weight=8 的超限路径**：`app-zh.log` 整体加权 446,999
+  （110,999 字符中 48,000 个非 ASCII，4 倍放大），但 Claude Code 的 `Read`
+  按块返回且会截断长行，累积始终未越阈。中文**压缩**路径仍缺真实上游覆盖。
+- **`kiro.payload_still_oversized` 在短会话里会大量出现**（本轮 34 次）：
+  `dropped_history_items=0` 且无 `history_trim` 阶段，
+  成因是 `nextKiroHistoryCutPoint` 找不到干净切点（全部历史都是 tool 配对），
+  守卫选择「宁可原样发也不破坏结构」。**这是刻意设计，不是故障**，
+  但告警级别为 WARN 会造成噪音，是否下调待定。
+- 本轮出现 2 次 502，经核查为账号 `kiro monthly request count exhausted`
+  （账号池配额问题），与体积守卫无关。
+- 上游真的返回 400 后的**缩减重试**路径仍未在真实环境触发。
