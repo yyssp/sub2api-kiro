@@ -741,6 +741,7 @@ func ClaudeCodeModelIDs() []string {
 	return out
 }
 
+//nolint:unused // retained for compatibility with the former model display layer.
 var familyVendor = map[string]string{
 	"claude": "Anthropic", "gpt": "OpenAI", "gemini": "Google",
 	"grok": "xAI", "kimi": "Moonshot", "glm": "Zhipu",
@@ -774,6 +775,8 @@ func liveModelsSnapshot() []ModelMeta {
 // 该函数复用真实请求记账使用的 usageBucketForModel，管理台展示与运行时
 // 的归属保持一致；Claude Code 带工具请求的例外由 toolQuotaBucketForModel
 // 单独标注。
+//
+//nolint:unused // retained for compatibility with the former model display layer.
 func modelQuotaBucket(model string) string {
 	bucket := usageBucketForModel(model)
 	switch bucket {
@@ -786,6 +789,7 @@ func modelQuotaBucket(model string) string {
 	}
 }
 
+//nolint:unused // retained for compatibility with the former model display layer.
 func modelQuotaLabel(bucket string) string {
 	switch bucket {
 	case "cursor":
@@ -803,6 +807,8 @@ func modelQuotaLabel(bucket string) string {
 // 默认请求使用 modelQuotaBucket；Claude Code 声明工具/MCP/Agent 后改走
 // AgentService，对应 Other Models。这里不把“命名模型不可用时降级到 Auto”
 // 算作同一模型的额度，因为那已经是另一个实际模型 ID。
+//
+//nolint:unused // retained for compatibility with the former model display layer.
 func modelQuotaBuckets(model string) []string {
 	primary := modelQuotaBucket(model)
 	out := []string{primary}
@@ -815,6 +821,8 @@ func modelQuotaBuckets(model string) []string {
 // toolQuotaBucketForModel 描述 Claude Code 模型的工具/MCP/Agent 请求。
 // 纯文本 Claude 请求使用 GrokBot/Sand；声明工具后必须使用 AgentService，
 // 归入 Other Models。非 Claude 模型没有额外的工具额度桶。
+//
+//nolint:unused // retained for compatibility with the former model display layer.
 func toolQuotaBucketForModel(model string) string {
 	if isClaudeCodeModelName(model) {
 		return "other"
@@ -826,6 +834,8 @@ func toolQuotaBucketForModel(model string) string {
 // sub2api 的模型列表与计费走既有通用机制（模型名驱动定价），不在协议层做。
 
 // modelTier 由模型名归类展示层级
+//
+//nolint:unused // retained for compatibility with the former model display layer.
 func modelTier(id string) string {
 	low := strings.ToLower(id)
 	switch {

@@ -110,6 +110,6 @@ func protoBool(field int, value bool) []byte {
 	if !value {
 		return nil
 	}
-	out := pbVarint(uint64(field)<<3 | 0)
+	out := pbVarint(uint64(field) << 3)
 	return append(out, pbVarint(1)...)
 }

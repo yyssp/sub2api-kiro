@@ -50,8 +50,8 @@ func ExchangeWebToken(webSession string) (access, refresh string, ok bool) {
 	if err != nil {
 		return "", "", false
 	}
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-	resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	_ = resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		return "", "", false
 	}
@@ -70,8 +70,8 @@ func ExchangeWebToken(webSession string) (access, refresh string, ok bool) {
 	if err != nil {
 		return "", "", false
 	}
-	io.Copy(io.Discard, io.LimitReader(cbResp.Body, 1<<20))
-	cbResp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(cbResp.Body, 1<<20))
+	_ = cbResp.Body.Close()
 	// 授权成功=2xx; web token 失效会 307 跳 WorkOS 授权 → 视为失败
 	if cbResp.StatusCode < 200 || cbResp.StatusCode >= 300 {
 		return "", "", false
@@ -87,7 +87,7 @@ func ExchangeWebToken(webSession string) (access, refresh string, ok bool) {
 		presp, perr := cl.Do(pr)
 		if perr == nil && presp.StatusCode == 200 {
 			body, _ := io.ReadAll(io.LimitReader(presp.Body, 1<<20))
-			presp.Body.Close()
+			_ = presp.Body.Close()
 			var d struct {
 				AccessToken  string `json:"accessToken"`
 				RefreshToken string `json:"refreshToken"`
@@ -96,7 +96,7 @@ func ExchangeWebToken(webSession string) (access, refresh string, ok bool) {
 				return d.AccessToken, d.RefreshToken, true
 			}
 		} else if presp != nil {
-			presp.Body.Close()
+			_ = presp.Body.Close()
 		}
 		time.Sleep(1200 * time.Millisecond)
 	}

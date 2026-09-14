@@ -27,12 +27,8 @@ func estimateCompletionTokens(textLen int) int {
 // 只计工具名和规范化 JSON 参数，不把调试日志、ID 或内部协议字段算入费用。
 func toolCallUsageBytes(tc ToolCall) int {
 	name := strings.TrimSpace(tc.Name)
-	args := strings.TrimSpace(string(tc.Input))
-	if args == "" {
-		args = "{}"
-	}
 	// 参数可能来自上游的非标准 JSON；normToolArgs 会保留合法 JSON 或替换为空对象。
-	args = normToolArgs(tc.Input)
+	args := normToolArgs(tc.Input)
 	return len(name) + len(args)
 }
 

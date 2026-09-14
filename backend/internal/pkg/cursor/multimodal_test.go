@@ -48,13 +48,13 @@ func testOfficeXML(files map[string]string) []byte {
 func TestRawToStringAndAttachmentsParsesImageAndPDF(t *testing.T) {
 	png := testPNG100x100()
 	pdf := testPDF("PDF-42")
-	raw, err := json.Marshal([]map[string]interface{}{
+	raw, err := json.Marshal([]map[string]any{
 		{"type": "text", "text": "inspect"},
-		{"type": "image", "source": map[string]interface{}{
+		{"type": "image", "source": map[string]any{
 			"type": "base64", "media_type": "image/png",
 			"data": base64.StdEncoding.EncodeToString(png),
 		}},
-		{"type": "document", "source": map[string]interface{}{
+		{"type": "document", "source": map[string]any{
 			"type": "base64", "media_type": "application/pdf",
 			"data": base64.StdEncoding.EncodeToString(pdf),
 		}},
@@ -81,10 +81,10 @@ func TestRawToStringAndAttachmentsParsesImageAndPDF(t *testing.T) {
 }
 
 func TestDocumentAttachmentInfersCommonTextFilesWithoutMIME(t *testing.T) {
-	raw, err := json.Marshal([]map[string]interface{}{{
+	raw, err := json.Marshal([]map[string]any{{
 		"type":     "file",
 		"filename": "notes.md",
-		"source": map[string]interface{}{
+		"source": map[string]any{
 			"type": "base64",
 			"data": base64.StdEncoding.EncodeToString([]byte("# AI2API-TEXT-42\n")),
 		},
@@ -103,7 +103,7 @@ func TestDocumentAttachmentInfersCommonTextFilesWithoutMIME(t *testing.T) {
 
 func TestDocumentAttachmentSupportsDataURLAndCommonCodeFiles(t *testing.T) {
 	dataURL := "data:text/plain;base64," + base64.StdEncoding.EncodeToString([]byte("AI2API-DATA-URL-42"))
-	doc, ok := documentAttachmentFromMap(map[string]interface{}{
+	doc, ok := documentAttachmentFromMap(map[string]any{
 		"type":      "file",
 		"filename":  "script.ts",
 		"file_data": dataURL,
@@ -113,10 +113,10 @@ func TestDocumentAttachmentSupportsDataURLAndCommonCodeFiles(t *testing.T) {
 	}
 
 	for _, name := range []string{"config.yaml", "query.sql", "main.go", "view.vue", "notebook.ipynb"} {
-		doc, ok := documentAttachmentFromMap(map[string]interface{}{
+		doc, ok := documentAttachmentFromMap(map[string]any{
 			"type":     "file",
 			"filename": name,
-			"source": map[string]interface{}{
+			"source": map[string]any{
 				"type":       "base64",
 				"media_type": "application/octet-stream",
 				"data":       base64.StdEncoding.EncodeToString([]byte("AI2API-CODE-42")),
@@ -130,7 +130,7 @@ func TestDocumentAttachmentSupportsDataURLAndCommonCodeFiles(t *testing.T) {
 
 func TestImageAttachmentSupportsOpenAIStringImageURL(t *testing.T) {
 	raw := "data:image/png;base64," + base64.StdEncoding.EncodeToString(testPNG100x100())
-	image, ok := imageAttachmentFromMap(map[string]interface{}{
+	image, ok := imageAttachmentFromMap(map[string]any{
 		"type":      "image_url",
 		"image_url": raw,
 	})
@@ -141,10 +141,10 @@ func TestImageAttachmentSupportsOpenAIStringImageURL(t *testing.T) {
 
 func TestAttachmentsInferMIMEFromFilenameAndRawURLBase64(t *testing.T) {
 	webp := []byte("RIFF0000WEBP")
-	image, ok := imageAttachmentFromMap(map[string]interface{}{
+	image, ok := imageAttachmentFromMap(map[string]any{
 		"type":     "image",
 		"filename": "photo.webp",
-		"source": map[string]interface{}{
+		"source": map[string]any{
 			"type": "base64",
 			"data": base64.RawURLEncoding.EncodeToString(webp),
 		},
@@ -154,10 +154,10 @@ func TestAttachmentsInferMIMEFromFilenameAndRawURLBase64(t *testing.T) {
 	}
 
 	pdf := testPDF("PDF-NO-MIME-42")
-	doc, ok := documentAttachmentFromMap(map[string]interface{}{
+	doc, ok := documentAttachmentFromMap(map[string]any{
 		"type":     "document",
 		"filename": "report.pdf",
-		"source": map[string]interface{}{
+		"source": map[string]any{
 			"type": "base64",
 			"data": base64.RawURLEncoding.EncodeToString(pdf),
 		},
@@ -169,10 +169,10 @@ func TestAttachmentsInferMIMEFromFilenameAndRawURLBase64(t *testing.T) {
 
 func TestImageAttachmentPromotesGenericMIMEFromFilenameAndMagic(t *testing.T) {
 	png := testPNG100x100()
-	image, ok := imageAttachmentFromMap(map[string]interface{}{
+	image, ok := imageAttachmentFromMap(map[string]any{
 		"type":     "image",
 		"filename": "photo.png",
-		"source": map[string]interface{}{
+		"source": map[string]any{
 			"type":       "base64",
 			"media_type": "application/octet-stream",
 			"data":       base64.StdEncoding.EncodeToString(png),
@@ -183,9 +183,9 @@ func TestImageAttachmentPromotesGenericMIMEFromFilenameAndMagic(t *testing.T) {
 	}
 
 	webp := append([]byte("RIFF0000"), []byte("WEBPpayload")...)
-	image, ok = imageAttachmentFromMap(map[string]interface{}{
+	image, ok = imageAttachmentFromMap(map[string]any{
 		"type": "image",
-		"source": map[string]interface{}{
+		"source": map[string]any{
 			"type":       "base64",
 			"media_type": "application/octet-stream",
 			"data":       base64.StdEncoding.EncodeToString(webp),
@@ -197,7 +197,7 @@ func TestImageAttachmentPromotesGenericMIMEFromFilenameAndMagic(t *testing.T) {
 }
 
 func TestDocumentAttachmentSupportsPercentEncodedDataURL(t *testing.T) {
-	doc, ok := documentAttachmentFromMap(map[string]interface{}{
+	doc, ok := documentAttachmentFromMap(map[string]any{
 		"type":      "file",
 		"filename":  "note.txt",
 		"file_data": "data:text/plain,hello%20AI2API%20%F0%9F%8C%8D",
@@ -208,9 +208,9 @@ func TestDocumentAttachmentSupportsPercentEncodedDataURL(t *testing.T) {
 }
 
 func TestOpenAINestedFileAttachment(t *testing.T) {
-	raw, err := json.Marshal([]map[string]interface{}{{
+	raw, err := json.Marshal([]map[string]any{{
 		"type": "file",
-		"file": map[string]interface{}{
+		"file": map[string]any{
 			"filename":  "note.txt",
 			"file_data": "data:text/plain;base64," + base64.StdEncoding.EncodeToString([]byte("NESTED-FILE-42")),
 		},
@@ -236,10 +236,10 @@ func TestOfficeXMLAttachmentExtractionForDocxXlsxAndPptx(t *testing.T) {
 		"pptx": {name: "sample.pptx", entry: "ppt/slides/slide1.xml", xml: "<p:sld><a:t>PPTX-42</a:t></p:sld>", want: "PPTX-42"},
 	}
 	for label, fx := range fixtures {
-		doc, ok := documentAttachmentFromMap(map[string]interface{}{
+		doc, ok := documentAttachmentFromMap(map[string]any{
 			"type":     "file",
 			"filename": fx.name,
-			"source": map[string]interface{}{
+			"source": map[string]any{
 				"type":       "base64",
 				"media_type": "application/octet-stream",
 				"data":       base64.StdEncoding.EncodeToString(testOfficeXML(map[string]string{fx.entry: fx.xml})),

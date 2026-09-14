@@ -125,24 +125,24 @@ func refreshCursorAuthVia(refreshToken, proxyURL string) (accessToken, rotatedRe
 	if err != nil {
 		return "", "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if readErr != nil {
 		return "", "", readErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", "", fmt.Errorf("Cursor /oauth/token: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return "", "", fmt.Errorf("cursor /oauth/token: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var parsed map[string]any
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return "", "", err
 	}
 	if shouldLogout, ok := parsed["shouldLogout"].(bool); ok && shouldLogout {
-		return "", "", fmt.Errorf("Cursor /oauth/token: refresh token invalid, re-authentication required")
+		return "", "", fmt.Errorf("cursor /oauth/token: refresh token invalid, re-authentication required")
 	}
 	accessToken = firstJSONString(parsed, "accessToken", "access_token")
 	if accessToken == "" {
-		return "", "", fmt.Errorf("Cursor /oauth/token: missing accessToken")
+		return "", "", fmt.Errorf("cursor /oauth/token: missing accessToken")
 	}
 	rotatedRefreshToken = firstJSONString(parsed, "refreshToken", "refresh_token")
 	return accessToken, rotatedRefreshToken, nil

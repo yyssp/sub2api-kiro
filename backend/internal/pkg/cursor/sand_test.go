@@ -450,7 +450,7 @@ func TestSandSurfaceUsesInferenceStream(t *testing.T) {
 		Model:   "cursor-grok-4.5-medium",
 		Message: "verify request surface",
 	}, func(piece string) {
-		text.WriteString(piece)
+		_, _ = text.WriteString(piece)
 	}, nil, nil)
 	if err != nil || !produced {
 		t.Fatalf("RunAgentStream produced=%v err=%v", produced, err)

@@ -157,22 +157,7 @@ func (s KiroPayloadGuardStats) Triggered() bool {
 // PayloadTrimStats 暴露体积守卫的处理结果，供上层写诊断日志、回响应头。
 func (c KiroRequestContext) PayloadTrimStats() KiroPayloadGuardStats {
 	t := c.PayloadTrim
-	return KiroPayloadGuardStats{
-		Trimmed:            t.Trimmed,
-		StillOversized:     t.StillOversized,
-		Compressed:         t.Compressed,
-		Rejected:           t.Rejected,
-		DeferredToUpstream: t.DeferredToUpstream,
-
-		OriginalBytes:   t.OriginalBytes,
-		FinalBytes:      t.FinalBytes,
-		OriginalWeight:  t.OriginalWeight,
-		FinalWeight:     t.FinalWeight,
-		LimitWeight:     t.LimitWeight,
-		DroppedItems:    t.DroppedItems,
-		CompressedItems: t.CompressedItems,
-		Stages:          t.Stages,
-	}
+	return KiroPayloadGuardStats(t)
 }
 
 type KiroBuildResult struct {
@@ -2085,9 +2070,9 @@ func sanitizeToolNameCharset(name string) (string, bool) {
 	for _, r := range name {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-':
-			b.WriteRune(r)
+			_, _ = b.WriteRune(r)
 		default:
-			b.WriteByte('_')
+			_ = b.WriteByte('_')
 			changed = true
 		}
 	}

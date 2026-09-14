@@ -437,7 +437,7 @@ func stripImportJSONComments(s string) string {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if inString {
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			switch {
 			case escaped:
 				escaped = false
@@ -450,7 +450,7 @@ func stripImportJSONComments(s string) string {
 		}
 		if c == '"' {
 			inString = true
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			continue
 		}
 		if c == '/' && i+1 < len(s) {
@@ -459,20 +459,20 @@ func stripImportJSONComments(s string) string {
 					i++
 				}
 				if i < len(s) {
-					b.WriteByte('\n')
+					_ = b.WriteByte('\n')
 				}
 				continue
 			}
 			if s[i+1] == '*' {
 				i += 2
-				for i+1 < len(s) && !(s[i] == '*' && s[i+1] == '/') {
+				for i+1 < len(s) && (s[i] != '*' || s[i+1] != '/') {
 					i++
 				}
 				i++ // 循环末尾的 i++ 补上第二个字符
 				continue
 			}
 		}
-		b.WriteByte(c)
+		_ = b.WriteByte(c)
 	}
 	return b.String()
 }
@@ -486,7 +486,7 @@ func stripImportTrailingCommas(s string) string {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if inString {
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			switch {
 			case escaped:
 				escaped = false
@@ -499,7 +499,7 @@ func stripImportTrailingCommas(s string) string {
 		}
 		if c == '"' {
 			inString = true
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			continue
 		}
 		if c == ',' {
@@ -512,7 +512,7 @@ func stripImportTrailingCommas(s string) string {
 				continue
 			}
 		}
-		b.WriteByte(c)
+		_ = b.WriteByte(c)
 	}
 	return b.String()
 }

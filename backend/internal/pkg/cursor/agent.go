@@ -69,9 +69,9 @@ func safeToolName(name string) string {
 			r >= 'A' && r <= 'Z',
 			r >= '0' && r <= '9',
 			r == '_', r == '-', r == '.', r == ':':
-			b.WriteRune(r)
+			_, _ = b.WriteRune(r)
 		default:
-			b.WriteByte('_')
+			_ = b.WriteByte('_')
 		}
 		if b.Len() >= 80 {
 			break
@@ -112,6 +112,7 @@ type AgentRequest struct {
 
 type agentTraceContextKey struct{}
 
+//nolint:unused // kept for compatibility with trace-aware callers.
 func withAgentTrace(ctx context.Context, traceID string) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
@@ -130,7 +131,7 @@ func agentTraceFromContext(ctx context.Context) string {
 	return strings.TrimSpace(traceID)
 }
 
-func logAgentDebug(traceID, format string, args ...interface{}) {
+func logAgentDebug(traceID, format string, args ...any) {
 	if !agentDebug {
 		return
 	}
@@ -138,7 +139,7 @@ func logAgentDebug(traceID, format string, args ...interface{}) {
 	if traceID == "" {
 		traceID = "none"
 	}
-	log.Printf("[agent] trace=%s "+format, append([]interface{}{traceID}, args...)...)
+	log.Printf("[agent] trace=%s "+format, append([]any{traceID}, args...)...)
 }
 
 // buildAgentMessage 把多轮会话拍平为单条消息文本(与上游 Ask 语义一致):
@@ -155,32 +156,32 @@ func buildAgentMessage(msgs []ChatMessage) string {
 	}
 	var b strings.Builder
 	hasAssistant := false
-	b.WriteString("[已验证的会话历史开始]\n")
+	_, _ = b.WriteString("[已验证的会话历史开始]\n")
 	for _, m := range msgs {
 		c := strings.TrimSpace(m.Content)
 		if c == "" {
 			continue
 		}
 		if m.Role == "assistant" {
-			b.WriteString("[历史助手轮]\n")
+			_, _ = b.WriteString("[历史助手轮]\n")
 			hasAssistant = true
 		} else {
-			b.WriteString("[历史用户轮]\n")
+			_, _ = b.WriteString("[历史用户轮]\n")
 		}
-		b.WriteString(c)
-		b.WriteString("\n[历史轮结束]\n\n")
+		_, _ = b.WriteString(c)
+		_, _ = b.WriteString("\n[历史轮结束]\n\n")
 	}
-	b.WriteString("[已验证的会话历史结束]\n")
+	_, _ = b.WriteString("[已验证的会话历史结束]\n")
 	// 多轮且含历史 Assistant 轮(通常伴随工具调用): agent.v1 当前是单轮协议(conversation_state={}),
 	// 整段历史被压成一条 user 文本, 模型易把自己上轮的工具调用误判为"尚未执行", 从而重复宣布计划、
 	// 反复输出同一意图却不真正推进(客户反馈: 重复输出 / 只说不做 / 中英夹杂)。追加明确框定:
 	// 历史工具调用均已执行、结果已给出, 应基于结果继续, 不重复、不复述。
 	if hasAssistant {
-		b.WriteString("[系统提示] 以上 Assistant 轮次及其中的工具调用均已实际执行完毕, 对应结果已在随后的 User 轮次中给出。" +
+		_, _ = b.WriteString("[系统提示] 以上 Assistant 轮次及其中的工具调用均已实际执行完毕, 对应结果已在随后的 User 轮次中给出。" +
 			"请直接基于这些已有结果继续推进任务: 不要重复已执行过的工具调用, 不要重新罗列计划或复述之前已表达过的意图, " +
 			"只需给出下一步的实际动作或最终答复。保持与用户一致的语言作答。")
 		if repeatedProgressTurns(msgs) {
-			b.WriteString(" 历史中已经出现重复的进度套话；本轮禁止只输出“继续”或相同的进度句，必须执行一个具体动作、给出新证据，或明确说明可复现的阻塞原因。")
+			_, _ = b.WriteString(" 历史中已经出现重复的进度套话；本轮禁止只输出“继续”或相同的进度句，必须执行一个具体动作、给出新证据，或明确说明可复现的阻塞原因。")
 		}
 	}
 	return strings.TrimSpace(b.String())
@@ -273,7 +274,7 @@ func (c *Client) bidiAppend(ctx context.Context, httpClient *http.Client, a *Acc
 		return fmt.Errorf("BidiAppend: %w", err)
 	}
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		detail := summarizeUpstreamHTTPError(respBody)
 		if detail != "" {
@@ -294,9 +295,9 @@ func summarizeUpstreamHTTPError(body []byte) string {
 	var b strings.Builder
 	for _, r := range s {
 		if r == '\n' || r == '\r' || r == '\t' || r >= 0x20 {
-			b.WriteRune(r)
+			_, _ = b.WriteRune(r)
 		} else {
-			b.WriteByte(' ')
+			_ = b.WriteByte(' ')
 		}
 		if b.Len() >= 4096 {
 			break
@@ -658,7 +659,7 @@ func (c *Client) runAgentSSEStream(ctx context.Context, agentHTTP *http.Client, 
 	logAgentDebug(traceID, "+%s RunSSE 返回 HTTP %d request_id=%s", time.Since(reqStart).Truncate(time.Millisecond), resp.StatusCode, requestID)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		logAgentDebug(traceID, "RunSSE HTTP 非成功 request_id=%s status=%d", requestID, resp.StatusCode)
 		return false, fmt.Errorf("RunSSE HTTP %d: %s", resp.StatusCode, string(body))
 	}
@@ -710,7 +711,7 @@ func (c *Client) runAgentBidiStream(ctx context.Context, agentHTTP *http.Client,
 			}
 		}
 	}()
-	defer bodyReader.Close()
+	defer func() { _ = bodyReader.Close() }()
 
 	queueFrame := func(message []byte) error {
 		frame := wrapFrame(message)
@@ -748,17 +749,17 @@ func (c *Client) runAgentBidiStream(ctx context.Context, agentHTTP *http.Client,
 		_ = bodyReader.CloseWithError(err)
 		<-writerDone
 		logAgentDebug(traceID, "Run HTTP 失败 request_id=%s err=%v", requestID, err)
-		return false, fmt.Errorf("Run: %w", err)
+		return false, fmt.Errorf("run: %w", err)
 	}
 	logAgentDebug(traceID, "+%s Run 返回 HTTP %d request_id=%s surface=%s", time.Since(reqStart).Truncate(time.Millisecond), resp.StatusCode, requestID, clientType)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		cancel()
-		_ = bodyReader.CloseWithError(fmt.Errorf("Run HTTP %d", resp.StatusCode))
+		_ = bodyReader.CloseWithError(fmt.Errorf("run HTTP %d", resp.StatusCode))
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		<-writerDone
 		logAgentDebug(traceID, "Run HTTP 非成功 request_id=%s status=%d", requestID, resp.StatusCode)
-		return false, fmt.Errorf("Run HTTP %d: %s", resp.StatusCode, string(body))
+		return false, fmt.Errorf("run HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
 	heartbeatStop := make(chan struct{})
@@ -832,7 +833,7 @@ type agentFrameMessage struct {
 func (c *Client) consumeAgentResponse(ctx context.Context, resp *http.Response, requestID, traceID string,
 	reqStart time.Time, toolByLower map[string]ToolDef, readFileContent map[string]string,
 	sendContext func([]pbPart) error, onText func(string), onReasoning func(string), onTool func(ToolCall)) (bool, error) {
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	reader := NewStreamReader(resp.Body)
 	frames := make(chan agentFrameMessage, 16)
 	done := make(chan struct{})
@@ -1095,10 +1096,13 @@ type interactionToolUpdate struct {
 // Cursor 原生工具优先映射到客户端显式声明的同名工具；当 Claude Code 没有声明
 // grep/glob/ls/delete/read 但声明了 Bash 时，使用等价 Bash 命令降级，避免 Cursor
 // 原生工具导致 mid-response 协议错误。未知原生工具和未声明 MCP 工具仍严格拒绝。
+//
+//nolint:unused // compatibility wrapper; production paths use the context-aware variant.
 func parseInteractionToolUpdates(data []byte, toolByLower map[string]ToolDef) ([]interactionToolUpdate, error) {
 	return parseInteractionToolUpdatesWithContext(data, toolByLower, "", nil)
 }
 
+//nolint:unused // compatibility wrapper; production paths use the context-aware variant.
 func parseInteractionToolUpdatesWithTrace(data []byte, toolByLower map[string]ToolDef, traceID string) ([]interactionToolUpdate, error) {
 	return parseInteractionToolUpdatesWithContext(data, toolByLower, traceID, nil)
 }
@@ -1140,7 +1144,7 @@ func sanitizeToolCallID(raw string) string {
 		for _, r := range line {
 			// 保留可打印字符；控制字符（含 NUL/制表符）一律丢弃。
 			if r > 0x1F && r != 0x7F {
-				b.WriteRune(r)
+				_, _ = b.WriteRune(r)
 			}
 		}
 		if cleaned := strings.TrimSpace(b.String()); cleaned != "" {
@@ -1151,10 +1155,13 @@ func sanitizeToolCallID(raw string) string {
 }
 
 // parseToolCallUpdate 解析 ToolCall{Started,Completed}Update: field1=call_id, field2=具体工具(oneof)。
+//
+//nolint:unused // compatibility wrapper used by package-level protocol tests.
 func parseToolCallUpdate(data []byte, toolByLower map[string]ToolDef) (call ToolCall, retErr error) {
 	return parseToolCallUpdateWithContext(data, toolByLower, "", nil)
 }
 
+//nolint:unused // compatibility wrapper; production paths use the context-aware variant.
 func parseToolCallUpdateWithTrace(data []byte, toolByLower map[string]ToolDef, traceID string) (call ToolCall, retErr error) {
 	return parseToolCallUpdateWithContext(data, toolByLower, traceID, nil)
 }
@@ -1497,6 +1504,7 @@ var nativeArgSubfields = map[int][]int{
 	8: {1}, // read:  path
 }
 
+//nolint:unused // retained for decoding legacy native tool fields.
 func defaultToolDef(fieldNum int) ToolDef {
 	switch fieldNum {
 	case 1:
@@ -2046,10 +2054,10 @@ func describePBParts(parts []pbPart, depth int) string {
 	var b strings.Builder
 	for i, p := range parts {
 		if i > 0 {
-			b.WriteString(", ")
+			_, _ = b.WriteString(", ")
 		}
 		if b.Len() > 1200 {
-			b.WriteString("…")
+			_, _ = b.WriteString("…")
 			break
 		}
 		switch p.Wire {

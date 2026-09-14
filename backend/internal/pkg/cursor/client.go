@@ -352,7 +352,7 @@ func (sr *StreamReader) ReadFrame() (byte, []byte, error) {
 		if zr, err := gzip.NewReader(bytes.NewReader(payload)); err == nil {
 			// 多读 1 字节用于判断是否触顶：读满 limit+1 说明原始数据超过上限。
 			dec, derr := io.ReadAll(io.LimitReader(zr, maxDecompressedFrameSize+1))
-			zr.Close()
+			_ = zr.Close()
 			if derr == nil {
 				if int64(len(dec)) > maxDecompressedFrameSize {
 					// ⚠️ 必须报错，不能当成「截断但成功」——半截 protobuf 交给解析器
@@ -382,6 +382,7 @@ type ChatFrame struct {
 	ToolCall *ToolCall
 }
 
+//nolint:unused // retained for compatibility with the legacy JSON frame parser.
 type frameResp struct {
 	ClientSideToolV2Call *struct {
 		ToolCallID        string          `json:"toolCallId"`
@@ -398,6 +399,7 @@ type frameResp struct {
 	Text string `json:"text"`
 }
 
+//nolint:unused // retained for compatibility with callers of the legacy parser.
 func parseFrame(payload []byte) ChatFrame {
 	var r frameResp
 	if err := json.Unmarshal(payload, &r); err != nil {
@@ -422,6 +424,7 @@ func parseFrame(payload []byte) ChatFrame {
 	return f
 }
 
+//nolint:unused // used by the legacy JSON frame parser above.
 func normalizeToolInput(raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 {
 		return json.RawMessage(`{}`)
@@ -488,7 +491,7 @@ func (c *Client) ListModels(a *Account) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("AvailableModels: HTTP %d %s", resp.StatusCode, string(body))
@@ -526,7 +529,7 @@ func (c *Client) ListModelsFull(a *Account) ([]ModelMeta, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("AvailableModels: HTTP %d %s", resp.StatusCode, string(body))
@@ -584,7 +587,7 @@ func (c *Client) GetUserMeta(a *Account) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("GetUserMeta: HTTP %d", resp.StatusCode)
@@ -618,7 +621,7 @@ func (c *Client) StartSandTrial(a *Account) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("StartSandTrial: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("StartSandTrial: HTTP %d %s", resp.StatusCode, string(body))
@@ -656,7 +659,7 @@ func (c *Client) GetCurrentPeriodUsage(a *Account) PeriodUsage {
 		logSandUsageDebug(a, "period request failed: %v", err)
 		return pu
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != 200 {
 		logSandUsageDebug(a, "period response status=%d content_type=%q bytes=%d", resp.StatusCode, resp.Header.Get("Content-Type"), len(body))
@@ -746,7 +749,7 @@ func (c *Client) GetSandUsage(a *Account) SandUsage {
 		logSandUsageDebug(a, "request failed: %v", err)
 		return su
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	su.HTTPStatus = resp.StatusCode
 	if resp.StatusCode != 200 {
@@ -785,7 +788,7 @@ func jsonFieldPresent(body []byte, field string) bool {
 	return ok
 }
 
-func logSandUsageDebug(a *Account, format string, args ...interface{}) {
+func logSandUsageDebug(a *Account, format string, args ...any) {
 	if !agentDebug {
 		return
 	}
@@ -793,5 +796,5 @@ func logSandUsageDebug(a *Account, format string, args ...interface{}) {
 	if a != nil {
 		id = a.ID
 	}
-	log.Printf("[CursorSand] account=%d "+format, append([]interface{}{id}, args...)...)
+	log.Printf("[CursorSand] account=%d "+format, append([]any{id}, args...)...)
 }

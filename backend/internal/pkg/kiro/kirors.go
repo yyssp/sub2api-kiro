@@ -251,7 +251,7 @@ func stripJSONComments(s string) string {
 		c := s[i]
 
 		if inString {
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			switch {
 			case escaped:
 				escaped = false
@@ -265,7 +265,7 @@ func stripJSONComments(s string) string {
 
 		if c == '"' {
 			inString = true
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			continue
 		}
 
@@ -276,7 +276,7 @@ func stripJSONComments(s string) string {
 					i++
 				}
 				if i < len(s) {
-					b.WriteByte('\n')
+					_ = b.WriteByte('\n')
 				}
 				continue
 			}
@@ -291,7 +291,7 @@ func stripJSONComments(s string) string {
 			}
 		}
 
-		b.WriteByte(c)
+		_ = b.WriteByte(c)
 	}
 	return b.String()
 }
@@ -308,7 +308,7 @@ func stripTrailingCommas(s string) string {
 		c := s[i]
 
 		if inString {
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			switch {
 			case escaped:
 				escaped = false
@@ -322,7 +322,7 @@ func stripTrailingCommas(s string) string {
 
 		if c == '"' {
 			inString = true
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			continue
 		}
 
@@ -337,7 +337,7 @@ func stripTrailingCommas(s string) string {
 			}
 		}
 
-		b.WriteByte(c)
+		_ = b.WriteByte(c)
 	}
 	return b.String()
 }

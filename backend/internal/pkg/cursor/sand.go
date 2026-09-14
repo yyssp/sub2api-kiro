@@ -111,6 +111,8 @@ func sandRequestedModelParameters(model string) []sandModelParameter {
 
 // encodeSandToolParameters encodes InferenceAgentTool.parameters, which is a
 // google.protobuf.Struct, not a JSON string and not google.protobuf.Value.
+//
+//nolint:unused // retained for compatibility with legacy Sand tool encoding.
 func encodeSandToolParameters(schema string) []byte {
 	var value any
 	if err := json.Unmarshal([]byte(schema), &value); err != nil {
@@ -341,14 +343,14 @@ func (c *Client) runSandStream(ctx context.Context, agentHTTP *http.Client, a *A
 		time.Since(reqStart).Truncate(time.Millisecond), resp.StatusCode, sandWireModel(model))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		detail := summarizeUpstreamHTTPError(responseBody)
 		if detail != "" {
 			return false, sandUpstreamError(fmt.Sprintf("InferenceService/Stream HTTP %d: %s", resp.StatusCode, detail))
 		}
 		return false, sandUpstreamError(fmt.Sprintf("InferenceService/Stream HTTP %d", resp.StatusCode))
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	reader := NewStreamReader(resp.Body)
 	hardTimeout := c.agentTimeout
@@ -397,9 +399,8 @@ func (c *Client) runSandStream(ctx context.Context, agentHTTP *http.Client, a *A
 	}()
 
 	produced := false
-	sawEnd := false
 	var toolParts []sandToolPart
-	var firstC <-chan time.Time = first.C
+	firstC := first.C
 loop:
 	for {
 		select {
@@ -416,16 +417,12 @@ loop:
 			}
 		case result := <-frameCh:
 			if result.err != nil {
-				if result.err == io.EOF && sawEnd {
-					break loop
-				}
 				if result.err == io.EOF || result.err == io.ErrUnexpectedEOF {
 					return produced, ErrIncompleteUpstreamStream
 				}
 				return produced, result.err
 			}
 			if result.flag&0x02 != 0 {
-				sawEnd = true
 				if detail := parseStreamError(result.payload); detail != "" {
 					return produced, sandUpstreamError(fmt.Sprintf("InferenceService/Stream: %s", detail))
 				}

@@ -158,6 +158,8 @@ func capabilityForSurface(a Account, model, clientType string) CapabilityMode {
 
 // capabilityForModel preserves the model-only compatibility contract used by
 // legacy callers and tests. Request-aware paths must use capabilityForSurface.
+//
+//nolint:unused // compatibility wrapper for model-only callers.
 func capabilityForModel(a Account, model string) CapabilityMode {
 	return capabilityForSurface(a, model, cursorClientTypeForModel(model))
 }

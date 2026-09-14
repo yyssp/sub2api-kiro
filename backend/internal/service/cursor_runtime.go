@@ -226,7 +226,7 @@ func appendUsageText(buf *strings.Builder, piece string) {
 		// 留下半个 UTF-8 序列，分词器只能把它当成替换字符处理。
 		piece = piece[:trimToRuneBoundary(piece, remain)]
 	}
-	buf.WriteString(piece)
+	_, _ = buf.WriteString(piece)
 }
 
 // trimToRuneBoundary 返回 ≤ n 且落在 UTF-8 字符边界上的最大截断位置。
@@ -688,8 +688,8 @@ func (s *GatewayService) blockCursorMessages(
 	)
 
 	_, runErr := sharedCursorClient().RunAgentStream(ctx, protoAccount, agentReq,
-		func(piece string) { mu.Lock(); text.WriteString(piece); mu.Unlock() },
-		func(piece string) { mu.Lock(); reasoning.WriteString(piece); mu.Unlock() },
+		func(piece string) { mu.Lock(); _, _ = text.WriteString(piece); mu.Unlock() },
+		func(piece string) { mu.Lock(); _, _ = reasoning.WriteString(piece); mu.Unlock() },
 		func(tc cursor.ToolCall) {
 			mu.Lock()
 			toolCalls = append(toolCalls, tc)
@@ -856,16 +856,16 @@ func (s *GatewayService) cursorAccessToken(ctx context.Context, account *Account
 // 请求发给上游、确实消耗输入 token，ai2api 漏算了这部分。
 func estimateCursorInputTokens(req cursor.AgentRequest) int {
 	var sb strings.Builder
-	sb.WriteString(req.Message)
-	sb.WriteString("\n")
-	sb.WriteString(req.System)
+	_, _ = sb.WriteString(req.Message)
+	_, _ = sb.WriteString("\n")
+	_, _ = sb.WriteString(req.System)
 	for _, t := range req.Tools {
-		sb.WriteString("\n")
-		sb.WriteString(t.Name)
-		sb.WriteString("\n")
-		sb.WriteString(t.Description)
-		sb.WriteString("\n")
-		sb.WriteString(t.InputSchema)
+		_, _ = sb.WriteString("\n")
+		_, _ = sb.WriteString(t.Name)
+		_, _ = sb.WriteString("\n")
+		_, _ = sb.WriteString(t.Description)
+		_, _ = sb.WriteString("\n")
+		_, _ = sb.WriteString(t.InputSchema)
 	}
 	if tokens := anthropictokenizer.CountTokens(sb.String()); tokens > 0 {
 		return tokens

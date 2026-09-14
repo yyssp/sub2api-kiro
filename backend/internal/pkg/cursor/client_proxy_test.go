@@ -50,7 +50,8 @@ func TestClientFor_SameAccountSameProxyReusesPool(t *testing.T) {
 	c := NewClient()
 	acct := &Account{ID: 7, ProxyURL: "http://127.0.0.1:18080"}
 
-	if c.clientFor(acct) != c.clientFor(acct) {
+	first := c.clientFor(acct)
+	if first != c.clientFor(acct) {
 		t.Fatal("同账号同代理未复用连接池")
 	}
 }

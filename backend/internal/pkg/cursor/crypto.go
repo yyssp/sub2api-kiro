@@ -202,13 +202,13 @@ func genChecksum(machID, macMachID string) string {
 		if i+2 < len(ba) {
 			c = ba[i+2]
 		}
-		enc.WriteByte(b64Alphabet[a>>2])
-		enc.WriteByte(b64Alphabet[((a&3)<<4)|(b>>4)])
+		_ = enc.WriteByte(b64Alphabet[a>>2])
+		_ = enc.WriteByte(b64Alphabet[((a&3)<<4)|(b>>4)])
 		if i+1 < len(ba) {
-			enc.WriteByte(b64Alphabet[((b&15)<<2)|(c>>6)])
+			_ = enc.WriteByte(b64Alphabet[((b&15)<<2)|(c>>6)])
 		}
 		if i+2 < len(ba) {
-			enc.WriteByte(b64Alphabet[c&63])
+			_ = enc.WriteByte(b64Alphabet[c&63])
 		}
 	}
 	if macMachID != "" {

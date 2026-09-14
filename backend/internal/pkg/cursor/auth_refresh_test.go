@@ -10,7 +10,7 @@ import (
 )
 
 func TestRefreshCursorAuthUsesOAuthTokenRefresh(t *testing.T) {
-	nextAccess := mkJWT(map[string]interface{}{
+	nextAccess := mkJWT(map[string]any{
 		"sub":  "oauth-refresh-user",
 		"type": "session",
 		"exp":  time.Now().Add(time.Hour).Unix(),
