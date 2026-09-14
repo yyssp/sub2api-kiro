@@ -326,3 +326,168 @@ T7 验证的是长 system + cache_control 能正确透传并被正确检索，
 
 **Q9 · G2 阈值仍未触达**：本轮最大请求（T7 知识库）仅 487 input tokens，
 距离 450KiB 差了几个数量级。**Q3 依然成立**。
+
+---
+
+## 八、第三轮：深度验证（回应「不要只测表面」）
+
+测试脚本：`/tmp/sub2api-run/wide_tests.py`、`/tmp/sub2api-run/tool_deep_tests.py`
+账号组：812（12 个健康 KIRO FREE 账号），模型 `claude-sonnet-4-5-20250929`。
+本轮全部为 **C 层真实上游调用**，共约 60 次真实请求。
+
+### 8.1 O 组 · tools 协议深度（8/8 PASS）
+
+| 用例 | 结果 | 实证 |
+|---|---|---|
+| O1 单轮并行多工具 | ✅ | 一轮返回 3 个 `tool_use`：`get_population/get_time/get_weather` |
+| O2 `tool_choice=any` | ✅ | 闲聊输入也强制产生 `tool_use` |
+| O3 `tool_choice=tool` | ✅ | 指定 `get_population`，实得唯一且正确 |
+| O4 `tool_choice=none` | ✅ | 明确要求用工具仍 `tool_use=0` |
+| O5 >64 字符工具名 | ✅ | 88 字符、**仅尾部不同**的两个名字，反向还原精确命中 `..._beta` |
+| O6 工具名含 `-` 和 `.` | ✅ | `my-tool.v2` 原样往返 |
+| O7 深层嵌套 schema | ✅ | 数组+枚举+嵌套对象，实得 `{"query":{"filters":[{"field":"status","op":"eq","value":"active"}],"limit":10}}` |
+| O8 draft-2020-12 关键字 | ✅ | `$schema`/`additionalProperties`/`default` 被清洗，未触发 Smithy 400 |
+
+**O5 澄清了 Q-工具名 疑问**：截断保持单射，前 64 字符完全相同也不会串号。
+**O6 修正了记忆中的存疑**：连字符**合法**，此前「连字符非法」的猜测已证伪。
+
+### 8.2 P 组 · agent 多轮工具循环（6/6 PASS）
+
+- P1 工具结果回传 → 模型据此作答（「需要带伞」引用了回传的 heavy rain/95% 湿度）
+- P2 三轮对话后再次发起新工具调用 ✅
+- P3 **并行** `tool_result` 同轮回传 2 条，两条结果都被正确消费
+- P4 **孤儿 `tool_use`**（无 `tool_result`）→ 200，未崩溃
+- P5 **孤儿 `tool_result`**（无 `tool_use`）→ 200，未崩溃
+- P6 `is_error: true` 正确传递，模型识别出「工具超时」
+
+### 8.3 Q 组 · websearch（真实生效）
+
+`server_tool_use` → `web_search_tool_result` → `text` 三段齐全，**10 条真实结果**：
+
+```json
+{"title":"Canberra","url":"https://en.wikipedia.org/wiki/Canberra",
+ "encrypted_content":"Canberra ... is the capital city of Australia ...",
+ "type":"web_search_result"}
+```
+
+⚠️ **`citations` 字段为 `null`**：模型改以 markdown 内联链接给出处
+（`[Britannica](https://...)`）。经查为**上游行为**，结构体本身完整透传，
+非移植缺陷。但「Anthropic 原生 citations 数组」在 Kiro 上游**不可用**。
+
+### 8.4 R 组 · 流式协议（3/3 PASS）
+
+- R1 `message_start→content_block_start→delta→stop→message_delta→message_stop` 六事件齐全，无缺失
+- R2 `input_json_delta` 拼接得到合法 JSON `{"city":"Tokyo"}`
+- R3 `message_delta` 携带 usage
+
+### 8.5 K 组 · 图片多格式（回应 Q7，5/5 有效）
+
+语义判据（非「HTTP 200 即通过」）：必须答对**形状+颜色**才算 PASS。
+
+| 格式/尺寸 | 结果 | 模型实际描述 |
+|---|---|---|
+| PNG 300×300 红圆蓝底 | ✅ | "circle ... Red/orange-red" |
+| JPEG 300×300 红圆蓝底 | ✅ | "a circle ... in red" |
+| GIF 320×240 三色带 | ✅ | "Top: Bright red / Middle / ..." 三条带全中 |
+| PNG 1400×1400 超大 | ✅ | "a large circle ... bright red" |
+| 三图同轮混格式 | ✅ | 逐图正确：红圆 / 三横条 / **黑白棋盘格** |
+
+**K5 边界（有价值的负面用例）**：PNG 数据谎称 `image/jpeg` → 上游 400
+`"The image was specified using the image/jpeg media type, but the image ..."`。
+说明**媒体类型未被我们伪造或纠正**，忠实透传。
+
+⚠️ **WebP 未测**：本机 `sips` 不支持导出 WebP，无法生成样本。**保持未验证**。
+
+### 8.6 L 组 · 文档识别
+
+- **L1 PDF `document` 块**：✅ 真实可用。自造 PDF 内嵌 `SECRET CODE: ZEBRA-9931`，
+  模型答出 `ZEBRA-9931` —— 证明 **PDF 被真实解析**，非 OCR 图片路径。
+- **L2 文本 `document` 块**（`source.type=text`）：🔴 **发现真实缺陷 → 已修复并复验**。
+
+  初测传入 `Project PHOENIX. Owner: Li Wei. Budget: 42000 USD.`，
+  模型回答「我没有看到 owner 相关信息」—— 请求 200，但文档内容根本没进负载。
+
+  **根因**（`translator.go:2656` 修复前）：`buildDocumentTextFallback` 里
+  第 2649 行刚把 text 源 base64 编码好，第 2656 行紧接着
+  `if format != "pdf" { return "" }` —— 一切非 PDF 格式**全部静默丢弃**。
+  而 `kiroDocumentFormat` 明明已支持 `txt/csv/html/json/doc/docx`，
+  属于「映射表写了、消费端没接」的死代码路径。此处**此前无任何测试覆盖**，
+  这正是缺陷能长期存活的原因。
+
+  **修复**：非 PDF 的文本类格式解码后直接内联，附 6000 字符截断保护，
+  并拒绝非 UTF-8 二进制（避免 docx/doc 把乱码塞进负载）。PDF 路径原样保留。
+
+  **真实上游复验**（修复后重新编译重启）：
+  | 用例 | 结果 |
+  |---|---|
+  | L2 `text/plain` | ✅ "The owner is Li Wei and the budget is 42000 USD." |
+  | L3 `text/csv` | ✅ "The amount for INV-7742 is 980."（新增用例） |
+  | L1 `application/pdf` 回归 | ✅ "The secret code is: ZEBRA-9931"（未破坏） |
+
+  **新增测试**：`internal/pkg/kiro/document_block_test.go`（5 条，全绿）——
+  覆盖 text 源内联、base64 文本内联、超长截断、非 UTF-8 拒绝、PDF 路径回归。
+
+### 8.7 M 组 · 大知识库（回应 Q8）—— 发现真实缺陷
+
+| 规模 | 结果 |
+|---|---|
+| ASCII 331KiB（5000 条） | ✅ 答对，`input_tokens=84870` |
+| 中文 441KiB（2000 条） | ✅ 答对，`input_tokens=27939` |
+| 中文 661KiB（3000 条） | ⚠️ **200 但答错**（"I can't discuss that."） |
+| 中文 882KiB+ 单条消息 | ❌ 400 `Input content length exceeds threshold.` |
+
+**🔴 G1-B（新发现的真实缺陷）：体积守卫静默丢失上下文**
+
+构造 3080KiB 请求，暗号放在**第 0 轮**，问题在最后一轮，**稳定复现 2/2**：
+
+```
+kiro.payload_trimmed  original_bytes=1581502  final_bytes=421705
+                      limit_bytes=460800  dropped_history_items=48
+```
+
+模型自述：**「您只发送了标记为第22段到第29段的填充文本」** —— 前 22 轮被静默裁掉。
+接口返回 **HTTP 200**，用户**完全无法察觉上下文已被截断**，只会得到一个自信的错误答案。
+
+**另一半问题**：单条超大消息**无历史可裁**，守卫放弃：
+```
+kiro.payload_still_oversized  original_bytes=992552  final_bytes=992552  dropped_history_items=0
+```
+原样发给上游，换来一个上游 400。应在入口就返回可读错误，而非浪费一次上游往返。
+
+→ 已登记待办 **#47**。
+
+### 8.8 N 组 · OpenAI 兼容路径（3/3 PASS）
+
+- N1 基础对话 ✅ / N2 `tool_calls` 结构正确 ✅ / N3 `image_url` + base64 data URI 图片识别 ✅
+
+### 8.9 计费与落库（#44）
+
+API 返回 `input_tokens=23, output_tokens=4`，落库 `usage_logs` id=9497 **完全一致**。
+
+**🟡 G4 结论更新（推翻记忆中的判断）**：开 `KIRO_UPSTREAM_TRACE=1` 抓取**全部**上游事件类型：
+
+```
+40 assistantResponseEvent   10 toolUseEvent
+ 7 meteringEvent            7 metadataEvent      7 contextUsageEvent
+```
+
+`meteringEvent` 只有 `{"unit":"credit","usage":0.143...}`，
+`contextUsageEvent` 只有百分比，**全程没有任何 `tokenUsage` 事件，也没有 cache 字段**。
+
+两次相同大 system（136KB）请求，`cache_read_input_tokens` 均为 0，落库也为 0。
+→ **在 KIRO FREE 个人号上，上游确实不下发 cache 用量**，当前「本地推算」的实现是合理的。
+⚠️ 但此结论**仅限 FREE 档**，付费档是否下发**无法验证**。
+
+### 8.10 并发与调度（#45）
+
+12 路并发：**HTTP 200 = 12/12，内容正确 = 12/12**（每路校验专属 `CONC-{i}` 标记），
+总耗时 13.7s，**无串话、无内容错配**。12 条全部落在账号 658 —— 符合 sticky 亲和设计预期。
+
+### 8.11 本轮存疑汇总
+
+- **Q10 WebP 图片格式未验证**（工具链限制，非代码问题）
+- ~~**Q11 `document` 块 `source.type="text"` 内容丢失**~~ —— ✅ **已定位并修复**，
+  真实上游复验通过，已补 5 条单测（见 8.6）
+- **Q12 G4 结论仅在 FREE 档成立**，付费档 cache 用量下发情况未知
+- **Q13 websearch `citations` 数组在 Kiro 上游不可得**，依赖该字段的客户端会拿到 null
+- **Q3 依旧成立**：所有测试受限于 haiku/sonnet + 200k 上下文，opus 与长上下文行为未知
