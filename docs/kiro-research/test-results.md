@@ -688,9 +688,12 @@ messages.4.content exceeds the number of toolUse blocks of previous turn.
 - **场景 C3 的针码回收不能单独作为 BUG #3 的证据**：该次运行未触发守卫
   （窗口内无 `kiro.payload_*` 事件），只能证明基线健康。
   BUG #3 的真正证据是 C2（21 次裁剪 / 0 次 400）与修复前的 6 次 400 的对比。
-- **场景 B 未真正走到 weight=8 的超限路径**：`app-zh.log` 整体加权 446,999
-  （110,999 字符中 48,000 个非 ASCII，4 倍放大），但 Claude Code 的 `Read`
-  按块返回且会截断长行，累积始终未越阈。中文**压缩**路径仍缺真实上游覆盖。
+- ~~**场景 B 未真正走到 weight=8 的超限路径**~~ → **已于 §11 复现并定位到新缺陷**。
+
+  订正：此处原先写的成因（"Claude Code 的 `Read` 按块返回且会截断长行"）是**错的**。
+  实测 `app-zh.log` 1500 行**每行恰好 73 字符**，根本没有长行可截。
+  真实成因是阈值标定失误：所请求的前 400 行加权 **119,199**，
+  而当时阈值 120,000 —— 仅差 801 未越线。把阈值降到 45,000 后必然触发。
 - **`kiro.payload_still_oversized` 在短会话里会大量出现**（本轮 34 次）：
   `dropped_history_items=0` 且无 `history_trim` 阶段，
   成因是 `nextKiroHistoryCutPoint` 找不到干净切点（全部历史都是 tool 配对），
@@ -699,3 +702,71 @@ messages.4.content exceeds the number of toolUse blocks of previous turn.
 - 本轮出现 2 次 502，经核查为账号 `kiro monthly request count exhausted`
   （账号池配额问题），与体积守卫无关。
 - 上游真的返回 400 后的**缩减重试**路径仍未在真实环境触发。
+
+---
+
+## 11. 中文 weight=8 路径复现（2026-09-14 补测）
+
+针对 §10.6 中「可复现但未测到」的那一项做定向复现，结果**暴露出一个新缺陷**。
+
+### 11.1 标定与复现
+
+`app-zh.log` 每行恰好 73 字符（非 ASCII 按 weight=8 计），实测加权：
+
+| 读取范围 | 加权值 |
+|---|---|
+| 前 300 行 | 89,399 |
+| 前 400 行 | **119,199** |
+| 前 500 行 | 148,999 |
+| 全 1500 行 | 446,999 |
+
+原测阈值 120,000 恰好高出前 400 行 801，故从未越线。改用阈值 **45,000** 后，
+交互式 CLI 6 轮会话（spec_B3）触发 **10 次 `kiro.payload_trimmed`**，
+四个压缩阶段与 `history_trim` 全部参与，例如：
+
+```
+original_weight=132577 → final_weight=36461 (limit 45000)
+stages=[history_tool_results, history_thinking, tool_definitions, history_trim]
+compressed_items=14, dropped_history_items=8
+```
+
+**BUG #3 的中文侧验证：10 次裁剪、0 次 `toolResult blocks ... exceeds` 400。**
+屏幕渲染 B1–B5 全部正常、无 `API Error`。
+（会话中另有 13 次 404，模型均为 `claude-3-5-haiku-20241022`，
+即 `ANTHROPIC_SMALL_FAST_MODEL`；本批账号仅支持 4.5 系列，属预期，与守卫无关。）
+
+### 11.2 BUG #4：守卫通知头在流式路径被白名单过滤（新发现）
+
+needle 测试暴露问题：turn 1 种下的 `BRAVO-91`，第 6 轮询问时模型答 `A1`；
+curl 复现同样答「我没有看到你之前让我记住的编号」。此时服务端
+`trimmed=true, dropped_history_items=14`，**而客户端响应头里
+一个 `x-sub2api-context-*` 都没有** —— 即 §10 里为防止静默丢失而设计的
+通知机制在流式路径上完全失效。
+
+成因：`openKiroAnthropicStreamResponse` 把通知头写进它返回的 `resp.Header`，
+而 `handleStreamingResponse` 按**上游头白名单**
+（`internal/util/responseheaders` 的 `FilterHeaders`，不在 `allowed` 即丢弃）转发。
+这几个头是网关自加的、不是上游回的，因此被整组过滤。
+非流式路径反而正常（`setKiroPayloadTrimHeaders` 直接写 gin writer）。
+
+修复：在调用 `handleStreamingResponse` **之前**用 `copyKiroTrimHeaders`
+把通知头搬到 `c.Writer.Header()`。
+
+| 项目 | 修复前 | 修复后 |
+|---|---|---|
+| 流式响应通知头 | 无 | `Trimmed=true` / `Dropped-Items=14` / `Stages=history_trim` |
+| 非流式响应通知头 | 正常 | 正常（未回归） |
+| 未触发守卫时 | 无 | 无（无误报） |
+
+用例 `kiro_trim_header_passthrough_test.go` 带**反向对照**：
+去掉修复后用例失败（已实测），确保其非空转。
+`internal/service` 与 `internal/pkg/kiro` 全量回归通过。
+
+### 11.3 仍然存疑
+
+- **裁剪导致的上下文丢失本身并未消除**，只是从「完全静默」变为「响应头可见」。
+  客户端（含 Claude Code CLI）默认不展示这些头，用户**在 UI 上仍然看不到**
+  自己的历史被裁掉了。是否需要在 SSE 流内插入可见提示，待定。
+- `kiro.payload_still_oversized` 的告警级别仍未决（同 §10.6）。
+- 上游真的返回 400 后的缩减重试路径仍未在真实环境触发（需 >1.3M 加权，
+  成本与风控风险较高）。
