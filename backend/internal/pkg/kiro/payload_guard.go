@@ -254,6 +254,8 @@ func enforceKiroPayloadSizeWithConfig(payload *KiroPayload, payloadBytes []byte,
 
 	// ---- 最后手段: 裁剪整轮历史 ----
 	history := payload.ConversationState.History
+	// 必须在任何裁剪之前采集: 被裁掉的 toolUse 事后无从查名。
+	toolUseNames := collectToolUseNames(history)
 	for result.FinalWeight > limit {
 		cut := nextKiroHistoryCutPoint(history)
 		if cut <= 0 {
@@ -267,9 +269,26 @@ func enforceKiroPayloadSizeWithConfig(payload *KiroPayload, payloadBytes []byte,
 		_, orphaned := validateToolPairing(history, nil)
 		removeOrphanedToolUses(history, orphaned)
 		history = alignKiroHistoryToUser(history)
+		// align 可能丢掉开头带 toolUse 的 Assistant，使紧随其后的
+		// user(toolResult) 失去配对，因此必须在 align **之后**再清一次。
+		removeOrphanedToolResults(history)
+
+		// 关键: 当前轮的 toolResults 是在 processMessages 阶段就依据
+		// **未裁剪**的 history 校验过的(translator.go 的 validateToolPairing),
+		// 裁剪把配对的 toolUse 切走后没有任何环节会重新校验它们。
+		// 结果是上游稳定回:
+		//   The number of toolResult blocks at messages.N.content
+		//   exceeds the number of toolUse blocks of previous turn.
+		// 2026-09-14 真实上游实测(scenario C, 7 轮 + MCP): 每次
+		// kiro.payload_trimmed 后一秒内必然收到该 400, 且位置恒为
+		// messages.4.content —— 正是当前轮的位置。
+		payload.ConversationState.History = history
+		removeOrphanedCurrentToolResults(&payload.ConversationState, history, toolUseNames)
+		// 补回 toolUse 时会往 History 末尾追加消息，必须同步回本地变量，
+		// 否则下一轮循环会用旧切片覆盖掉刚补的那条。
+		history = payload.ConversationState.History
 
 		result.DroppedItems += cut
-		payload.ConversationState.History = history
 
 		if err := reserialize(); err != nil {
 			return nil, result, err

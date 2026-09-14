@@ -2358,6 +2358,132 @@ func removeOrphanedToolUses(history []KiroHistoryMessage, orphaned map[string]bo
 	}
 }
 
+// removeOrphanedToolResults 清理"有 toolResult、但配对 toolUse 已不在 history 里"的残留。
+//
+// 这是 removeOrphanedToolUses 的镜像方向，两者缺一不可：
+// 前者处理"调用了工具却没有结果"，本函数处理"有结果却找不到调用"。
+//
+// 属纵深防御：nextKiroHistoryCutPoint 会主动避开带 toolResult 的 user 消息，
+// 因此常规形态下 history 内部不会产生这种孤儿（线上 400 的真正成因是
+// 当前轮失配，见 removeOrphanedCurrentToolResults）。但 alignKiroHistoryToUser
+// 会无条件丢弃开头的 Assistant 消息，切点形态一变就可能打破配对。
+//
+// 不清理的后果是上游直接 400：
+//
+//	The number of toolResult blocks at messages.N.content exceeds
+//	the number of toolUse blocks of previous turn.
+//
+// 返回被移除的数量，便于调用方决定是否需要继续收敛。
+func removeOrphanedToolResults(history []KiroHistoryMessage) int {
+	liveToolUseIDs := make(map[string]bool)
+	for _, h := range history {
+		if h.AssistantResponseMessage == nil {
+			continue
+		}
+		for _, tu := range h.AssistantResponseMessage.ToolUses {
+			liveToolUseIDs[tu.ToolUseID] = true
+		}
+	}
+
+	removed := 0
+	for i := range history {
+		msg := history[i].UserInputMessage
+		if msg == nil || msg.UserInputMessageContext == nil {
+			continue
+		}
+		results := msg.UserInputMessageContext.ToolResults
+		if len(results) == 0 {
+			continue
+		}
+		filtered := results[:0]
+		for _, tr := range results {
+			if liveToolUseIDs[tr.ToolUseID] {
+				filtered = append(filtered, tr)
+				continue
+			}
+			removed++
+		}
+		msg.UserInputMessageContext.ToolResults = filtered
+	}
+	return removed
+}
+
+// collectToolUseNames 采集 history 里所有 toolUseID -> 工具名的映射。
+// 供裁剪后重建 toolUse 使用, 必须在裁剪前调用。
+func collectToolUseNames(history []KiroHistoryMessage) map[string]string {
+	namesByID := make(map[string]string)
+	for _, h := range history {
+		if h.AssistantResponseMessage == nil {
+			continue
+		}
+		for _, tu := range h.AssistantResponseMessage.ToolUses {
+			namesByID[tu.ToolUseID] = tu.Name
+		}
+	}
+	return namesByID
+}
+
+// removeOrphanedCurrentToolResults 修复"当前轮 toolResult 的配对 toolUse 已被裁掉"。
+//
+// 与 history 内部的孤儿不同, 当前轮的 toolResult 是模型正在推理的依据,
+// 直接删掉等于让它凭空失去刚拿到的工具输出。因此这里**优先补回 toolUse**:
+// 在裁剪后的 history 末尾追加一条只含该 toolUse 的 Assistant 消息,
+// 既满足上游"toolResult 必须有前序 toolUse"的约束, 代价也远小于丢结果。
+//
+// 只有在连工具名都无从得知时(理论上不会发生, 兜底防御)才退而删除该 toolResult。
+//
+// namesByID 必须由调用方在**任何裁剪发生之前**采集并全程复用:
+// 被裁掉的 toolUse 已经不在 state.History 里了, 事后再查必然查不到,
+// 结果就是本该补回的 toolUse 退化成"丢弃 toolResult"。
+//
+// 返回是否修改过 payload。
+func removeOrphanedCurrentToolResults(state *KiroConversationState, history []KiroHistoryMessage, namesByID map[string]string) bool {
+	ctx := state.CurrentMessage.UserInputMessage.UserInputMessageContext
+	if ctx == nil || len(ctx.ToolResults) == 0 {
+		return false
+	}
+
+	liveToolUseIDs := make(map[string]bool)
+	for _, h := range history {
+		if h.AssistantResponseMessage == nil {
+			continue
+		}
+		for _, tu := range h.AssistantResponseMessage.ToolUses {
+			liveToolUseIDs[tu.ToolUseID] = true
+		}
+	}
+
+	var restored []KiroToolUse
+	kept := ctx.ToolResults[:0]
+	changed := false
+	for _, tr := range ctx.ToolResults {
+		if liveToolUseIDs[tr.ToolUseID] {
+			kept = append(kept, tr)
+			continue
+		}
+		name := namesByID[tr.ToolUseID]
+		if name == "" {
+			// 兜底: 无法重建就只能丢弃, 否则上游必然 400。
+			changed = true
+			continue
+		}
+		restored = append(restored, KiroToolUse{ToolUseID: tr.ToolUseID, Name: name, Input: map[string]any{}})
+		kept = append(kept, tr)
+		changed = true
+	}
+	ctx.ToolResults = kept
+
+	if len(restored) > 0 {
+		state.History = append(history, KiroHistoryMessage{
+			AssistantResponseMessage: &KiroAssistantResponseMessage{
+				Content:  "",
+				ToolUses: restored,
+			},
+		})
+	}
+	return changed
+}
+
 func collectHistoryToolNames(history []KiroHistoryMessage) []string {
 	seen := make(map[string]bool)
 	var names []string
