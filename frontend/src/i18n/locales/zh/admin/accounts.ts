@@ -56,8 +56,14 @@ export default {
       kiroImportParamsHint: '下方表单的分组、代理、优先级、并发等参数会套用到全部导入的账号；凭证自带优先级时以凭证为准。',
       cursorImportTabToken: 'Token 文本',
       cursorImportTabJson: 'JSON',
-      cursorImportHintToken: '每行一个凭证，支持裸 JWT、`uid::JWT`，以及整段 `WorkosCursorSessionToken=...` cookie（含 Path 等属性也能识别）。可用 `token|备注` 追加备注，井号开头的行视为注释。',
-      cursorImportHintJson: '自动识别单个对象、数组、JSONL 多行，以及 accounts / credentials 包装格式。字段支持 camelCase / snake_case，accessToken、token、session、cookie 等写法均可；refreshToken、machineId、email、备注与停用状态会一并沿用。',
+      cursorImportHintToken:
+        '每行一个凭证，支持裸 JWT、`uid::JWT`，以及整段 `WorkosCursorSessionToken=...` cookie（含 Path 等属性也能识别）。可追加 refresh token：`token----refreshToken`，分隔符用 `----` 或 `|` 均可，不写则只导入 access token。带 refresh token 的账号才能自动续期。账号名自动生成（优先用邮箱）并避开已有账号，井号开头的行视为注释。',
+      cursorImportHintJson:
+        '自动识别单个对象、数组、JSONL 多行，以及 accounts / credentials 包装格式。字段支持 camelCase / snake_case，accessToken、token、session、cookie 等写法均可；refreshToken、machineId、email、备注与停用状态会一并沿用。带 refreshToken 的账号才能自动续期。',
+      cursorImportPlaceholderToken:
+        '# 仅 access token（到期后需重新导入）\neyJhbGciOi...\n\n# 带 refresh token（可自动续期）\neyJhbGciOi...----rt_9f3a7c21b5e8\n\n# 也可用竖线分隔\nuser_01ABC::eyJhbGciOi...|rt_9f3a7c21b5e8\n\nWorkosCursorSessionToken=user_01ABC::eyJhbGciOi...',
+      cursorImportPlaceholderJson:
+        '[\n  {\n    "accessToken": "eyJhbGciOi...",\n    "refreshToken": "rt_9f3a7c21b5e8",\n    "email": "a@example.com"\n  },\n  { "accessToken": "eyJhbGciOi..." }\n]',
       cursorImportFile: '凭证文件',
       cursorImportSelectFile: '请选择凭证文件',
       cursorImportContent: '凭证内容',

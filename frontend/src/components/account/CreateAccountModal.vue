@@ -7862,7 +7862,9 @@ const handleKiroImport = async () => {
 const handleCursorParse = async () => {
   if (!isCursorImportMode.value) return
   cursorCreateError.value = ''
-  await cursorImporter.parse(t('admin.accounts.cursorImportEmpty'))
+  // 表单里填的名称当前缀：批量导入是一对多，一个名字不够分，
+  // 生成时统一加 hash / 序号后缀区分。
+  await cursorImporter.parse(t('admin.accounts.cursorImportEmpty'), form.name)
 }
 
 /**
@@ -7875,7 +7877,7 @@ const handleCursorParse = async () => {
 const handleCursorImport = async () => {
   if (!isCursorImportMode.value) return
 
-  const selected = cursorImporter.collectCreatable()
+  const selected = cursorImporter.collectCreatable(form.name)
   if (selected.length === 0) return
 
   cursorCreateError.value = ''

@@ -56,8 +56,14 @@ export default {
       kiroImportParamsHint: 'Group, proxy, priority, concurrency and other parameters from the form below apply to every imported account; credentials that carry their own priority keep it.',
       cursorImportTabToken: 'Token text',
       cursorImportTabJson: 'JSON',
-      cursorImportHintToken: 'One credential per line. Accepts a bare JWT, `uid::JWT`, or a full `WorkosCursorSessionToken=...` cookie (attributes such as Path are tolerated). Use `token|note` to attach a note; lines starting with # are treated as comments.',
-      cursorImportHintJson: 'Automatically detects single objects, arrays, multi-line JSONL, and accounts / credentials wrappers. Keys may be camelCase or snake_case, and accessToken / token / session / cookie are all recognized; refreshToken, machineId, email, note and the disabled flag are carried over.',
+      cursorImportHintToken:
+        'One credential per line. Accepts a bare JWT, `uid::JWT`, or a full `WorkosCursorSessionToken=...` cookie (attributes such as Path are tolerated). Optionally append a refresh token: `token----refreshToken`; either `----` or `|` works as the separator, and omitting it imports the access token only. Only accounts carrying a refresh token can be renewed automatically. Account names are generated automatically (email preferred) and avoid existing ones. Lines starting with # are treated as comments.',
+      cursorImportHintJson:
+        'Automatically detects single objects, arrays, multi-line JSONL, and accounts / credentials wrappers. Keys may be camelCase or snake_case, and accessToken / token / session / cookie are all recognized; refreshToken, machineId, email, note and the disabled flag are carried over. Only accounts carrying a refreshToken can be renewed automatically.',
+      cursorImportPlaceholderToken:
+        '# access token only (re-import required once it expires)\neyJhbGciOi...\n\n# with a refresh token (renews automatically)\neyJhbGciOi...----rt_9f3a7c21b5e8\n\n# or use a pipe separator\nuser_01ABC::eyJhbGciOi...|rt_9f3a7c21b5e8\n\nWorkosCursorSessionToken=user_01ABC::eyJhbGciOi...',
+      cursorImportPlaceholderJson:
+        '[\n  {\n    "accessToken": "eyJhbGciOi...",\n    "refreshToken": "rt_9f3a7c21b5e8",\n    "email": "a@example.com"\n  },\n  { "accessToken": "eyJhbGciOi..." }\n]',
       cursorImportFile: 'Credential file',
       cursorImportSelectFile: 'Please select a credential file',
       cursorImportContent: 'Credential content',

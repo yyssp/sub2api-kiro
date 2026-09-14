@@ -86,17 +86,64 @@ func TestParseImportCredentials_PlainTextVariants(t *testing.T) {
 	}
 }
 
-func TestParseImportCredentials_PlainTextWithNoteAndComments(t *testing.T) {
+func TestParseImportCredentials_PlainTextWithComments(t *testing.T) {
 	token := sessionJWT("n@example.com")
-	res, err := ParseImportCredentials("# 我的账号清单\n" + token + " | 主力号\n")
+	res, err := ParseImportCredentials("# 我的账号清单\n" + token + " | rt_main\n")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(res.Credentials) != 1 {
 		t.Fatalf("want 1 credential, got %d", len(res.Credentials))
 	}
-	if res.Credentials[0].Note != "主力号" {
-		t.Errorf("note: got %q want 主力号", res.Credentials[0].Note)
+	if res.Credentials[0].RefreshToken != "rt_main" {
+		t.Errorf("refresh_token: got %q want rt_main", res.Credentials[0].RefreshToken)
+	}
+	// 纯文本不再解析备注：分隔符之后的内容整体是 refresh token。
+	if res.Credentials[0].Note != "" {
+		t.Errorf("note should stay empty, got %q", res.Credentials[0].Note)
+	}
+}
+
+// 纯文本形态必须能带出 refresh token：拿不到它的账号会在 access token
+// 到期后静默失去续期能力，且界面上看不出差别。
+func TestParseImportCredentials_PlainTextRefreshToken(t *testing.T) {
+	token := sessionJWT("r@example.com")
+
+	cases := []struct {
+		name        string
+		line        string
+		wantRefresh string
+	}{
+		{"仅 access token", token, ""},
+		{"短横线分隔", token + "----rt_dash", "rt_dash"},
+		{"竖线分隔", token + "|rt_pipe", "rt_pipe"},
+		{"分隔符两侧留空格", token + " ---- rt_space ", "rt_space"},
+		{"uid::JWT 形态", "user_01ABC::" + token + "----rt_uid", "rt_uid"},
+		{"cookie 形态", "WorkosCursorSessionToken=user_01ABC::" + token + "|rt_cookie", "rt_cookie"},
+		// cookie 属性粘在 refresh token 尾部时必须剥掉：带着 "; Path=/"
+		// 去续期，每一次都会失败。
+		{"cookie 属性不得混入 refresh", "WorkosCursorSessionToken=" + token + "----rt_attr; Path=/", "rt_attr"},
+		{"cookie 属性 + 竖线分隔", "WorkosCursorSessionToken=" + token + "|rt_attr2; Path=/; Secure", "rt_attr2"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := ParseImportCredentials(tc.line + "\n")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(res.Credentials) != 1 {
+				t.Fatalf("want 1 credential, got %d", len(res.Credentials))
+			}
+			got := res.Credentials[0]
+			if got.RefreshToken != tc.wantRefresh {
+				t.Errorf("refresh_token: got %q want %q", got.RefreshToken, tc.wantRefresh)
+			}
+			// 分隔符不能污染 access token 本体。
+			if got.AccessToken != token {
+				t.Errorf("access_token got mangled: %q", got.AccessToken)
+			}
+		})
 	}
 }
 

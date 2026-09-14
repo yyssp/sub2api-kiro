@@ -233,10 +233,13 @@ const currentSourceHint = computed(() =>
     : t('admin.accounts.cursorImportHintToken')
 )
 
+// 占位符要把 refresh token 的写法示范出来：它决定账号能否自动续期，
+// 而解析结果里看不出「这条没带 refresh」与「这条不支持续期」的区别，
+// 用户只能从示例里知道该怎么填。
 const currentPlaceholder = computed(() =>
   source.value === 'json'
-    ? '[\n  { "accessToken": "eyJhbGciOi...", "email": "a@example.com" },\n  { "accessToken": "eyJhbGciOi..." }\n]'
-    : 'eyJhbGciOi...\nuser_01ABC::eyJhbGciOi...\nWorkosCursorSessionToken=user_01ABC::eyJhbGciOi...\n# 井号开头为注释'
+    ? t('admin.accounts.cursorImportPlaceholderJson')
+    : t('admin.accounts.cursorImportPlaceholderToken')
 )
 
 /** 到期时间按本地化短格式展示；解析不出就显示占位符。 */

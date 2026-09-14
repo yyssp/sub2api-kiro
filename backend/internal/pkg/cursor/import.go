@@ -3,6 +3,7 @@ package cursor
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -13,6 +14,13 @@ import (
 // 想复用就得改上游文件把它们导出——那正是旁挂式接入要避免的合并冲突面。
 // 这里借鉴它的**分层降级思路**（纯文本 → 整体 JSON → JSONL → 递归解包容器 →
 // 逐条归一化且坏条目不中断），但字段语义完全按 Cursor 自己的凭证形态来。
+
+// plainTextFieldSeparator 拆分纯文本形态里的 access token / refresh token / 备注。
+//
+// `----` 与 `|` 等价，任选其一即可：`----` 在一行长 JWT 里视觉上更容易辨认，
+// `|` 则与既有的备注分隔符保持同一套语法。四连短横线不会出现在 JWT 本体
+// （base64url 字符集虽含 `-`，但不会连续四个）也不会出现在 `uid::JWT` 前缀里。
+var plainTextFieldSeparator = regexp.MustCompile(`\s*(?:----|\|)\s*`)
 
 // ImportCredential 是一条解析出来的 Cursor 凭证。
 //
@@ -159,23 +167,51 @@ func parseImportPlainText(raw string) ([]*ImportCredential, bool) {
 		if strings.HasPrefix(line, "{") || strings.HasPrefix(line, "[") {
 			return nil, false
 		}
-		// 允许 `token|备注` 形式。
-		note := ""
-		if idx := strings.IndexByte(line, '|'); idx >= 0 {
-			note = strings.TrimSpace(line[idx+1:])
-			line = strings.TrimSpace(line[:idx])
-		}
-		cred, err := newImportCredential(line)
+		token, refreshToken := splitPlainTextFields(line)
+		cred, err := newImportCredential(token)
 		if err != nil {
 			return nil, false
 		}
-		cred.Note = note
+		cred.RefreshToken = refreshToken
 		creds = append(creds, cred)
 	}
 	if len(creds) == 0 {
 		return nil, false
 	}
 	return creds, true
+}
+
+// splitPlainTextFields 把一行纯文本拆成 access token 与 refresh token。
+//
+// 支持的形态（refresh token 可省略）：
+//
+//	eyJ...                      仅 access token
+//	eyJ...----rt_xxx            access + refresh
+//	eyJ...|rt_xxx               同上（改用 `|`）
+//
+// ⚠️ 只切一刀：分隔符之后的全部内容都是 refresh token，不再解析第三段。
+// refresh token 本身不含 `|` 或 `----`，切多刀只会把它截断。
+func splitPlainTextFields(line string) (token, refreshToken string) {
+	parts := plainTextFieldSeparator.Split(line, 2)
+
+	token = strings.TrimSpace(parts[0])
+	if len(parts) > 1 {
+		refreshToken = trimCookieAttributes(strings.TrimSpace(parts[1]))
+	}
+	return token, refreshToken
+}
+
+// trimCookieAttributes 去掉 refresh token 尾部粘连的 cookie 属性。
+//
+// ⚠️ access token 一侧由 NormalizeToken 负责剥离属性，但它在切分**之后**
+// 才执行，管不到 refresh token 这一段。整段 cookie 追加 refresh token 时
+// （`WorkosCursorSessionToken=...----rt_x; Path=/`），`; Path=/` 会留在
+// refresh token 里，让后续每一次续期都带着垃圾后缀去请求上游并失败。
+func trimCookieAttributes(s string) string {
+	if idx := strings.IndexByte(s, ';'); idx >= 0 {
+		return strings.TrimSpace(s[:idx])
+	}
+	return s
 }
 
 // newImportCredential 从一个 token 字符串构造条目。
