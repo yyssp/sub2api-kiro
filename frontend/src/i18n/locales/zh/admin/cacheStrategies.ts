@@ -241,9 +241,9 @@ export default {
         description: "从默认配置开始，自行调整缓存范围、读写比例、usage 整形和创建频控。",
       },
       kiroRsTool: {
-        name: "kiro-rs-tool（参考实现对齐）",
+        name: "kiro-rs-tool",
         description:
-          "复刻参考实现 kiro.rs 的 kiro-rs-tool 档：只保留 8 个核心参数，关闭本地模拟放大、创建频控和最终上限，上报值贴近真实前缀命中。未缓存输入夹在 32~4096，覆盖率 100%，适合需要与参考实现表现一致的分组。",
+          "覆盖率 100%、不放大 token、不限制创建频率，上报值贴近真实前缀命中。未缓存输入固定在 32~4096，适合以工具调用为主的 Claude Code 会话。",
       },
       highCache: {
         name: "高缓存（默认）",
