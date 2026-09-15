@@ -29,6 +29,11 @@ const (
 	CacheScopeModeGroupSession        = "group_session"
 	CacheDynamicContentExclude        = "exclude"
 	CacheDynamicContentAllow          = "allow"
+	// 上报档位。CacheTTLTierUnset 表示「本级未表态」，要继续往优先级链的下一级问，
+	// 而不是就地当成 5m —— 5m 只能在四级全部未表态时作为协议缺省兜底。
+	CacheTTLTierUnset = ""
+	CacheTTLTier5m    = "5m"
+	CacheTTLTier1h    = "1h"
 )
 
 var (
@@ -195,6 +200,16 @@ type CacheStrategyConfig struct {
 	MaxSimulatedInputTokens    int                  `json:"max_simulated_input_tokens"`
 	DefaultTTLSeconds          int                  `json:"default_ttl_seconds"`
 	HourTTLSeconds             int                  `json:"hour_ttl_seconds"`
+	// ForcedTTLTier 强制上报档位，优先级链的第 1 级（最高）。
+	// ""（或字段缺失）= 不强制，按后续级别解析；"5m" / "1h" = 一律按该档上报。
+	// 必须保留空串语义：存量 JSONB 记录没有这个 key，反序列化得到 ""，正好等于
+	// 「不强制」，存量策略行为零变化。
+	ForcedTTLTier string `json:"forced_ttl_tier,omitempty"`
+	// TrustUpstreamTTLTier 是否采信上游响应实际返回的档位（优先级链第 2 级）。
+	// 用指针是必须的：存量记录缺这个 key，裸 bool 会得到 false，等于把「跟随上游」
+	// 静默关掉，让三方按 1h 计费而我们按 5m 上报，直接造成亏损。
+	// nil ⇒ 视为 true（见 trustUpstreamTTLTier）。
+	TrustUpstreamTTLTier *bool `json:"trust_upstream_ttl_tier,omitempty"`
 	MaxEntriesPerScope         int                  `json:"max_entries_per_scope"`
 	MaxEntriesGlobal           int                  `json:"max_entries_global"`
 	EstimatedBytesLimit        int64                `json:"estimated_bytes_limit"`
@@ -302,6 +317,12 @@ func NormalizeCacheStrategyConfig(in CacheStrategyConfig) (CacheStrategyConfig, 
 	}
 	if in.RatioMode != CacheRatioModeUniform && in.RatioMode != CacheRatioModeIndependent {
 		return in, fmt.Errorf("config.ratio_mode must be uniform or independent")
+	}
+	in.ForcedTTLTier = strings.ToLower(strings.TrimSpace(in.ForcedTTLTier))
+	switch in.ForcedTTLTier {
+	case CacheTTLTierUnset, CacheTTLTier5m, CacheTTLTier1h:
+	default:
+		return in, fmt.Errorf("config.forced_ttl_tier must be empty, 5m or 1h")
 	}
 	if in.BreakpointMode == "" {
 		in.BreakpointMode = CacheBreakpointHybrid

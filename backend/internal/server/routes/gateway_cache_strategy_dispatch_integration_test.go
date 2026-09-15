@@ -228,6 +228,26 @@ type routeCacheUpstream struct {
 	failAll    bool
 	inputBase  int
 	outputBase int
+	// upstreamCacheCreation > 0 时，mock 会在 usage 里带上
+	// cache_creation_input_tokens 及其 ephemeral 明细，用来模拟「三方上游按自己的
+	// 档位计费」。留 0 则完全不输出缓存字段，保持原有用例的行为不变。
+	upstreamCacheCreation int
+	upstreamCacheTier     string
+}
+
+// upstreamCacheUsageJSON 渲染上游 usage 里的缓存部分（含前导逗号），
+// 未配置时返回空串。
+func (u *routeCacheUpstream) upstreamCacheUsageJSON() string {
+	if u.upstreamCacheCreation <= 0 {
+		return ""
+	}
+	five, hour := u.upstreamCacheCreation, 0
+	if u.upstreamCacheTier == "1h" {
+		five, hour = 0, u.upstreamCacheCreation
+	}
+	return fmt.Sprintf(
+		`,"cache_creation_input_tokens":%d,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":%d,"ephemeral_1h_input_tokens":%d}`,
+		u.upstreamCacheCreation, five, hour)
 }
 
 func (u *routeCacheUpstream) handler(w http.ResponseWriter, r *http.Request) {
@@ -273,7 +293,7 @@ func (u *routeCacheUpstream) handler(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprintf(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_mock_%d\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-4-6\",\"usage\":{\"input_tokens\":%d,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":%d}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n", index+1, input, output)
 		return
 	}
-	_, _ = fmt.Fprintf(w, `{"id":"msg_mock_%d","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":%d,"output_tokens":%d}}`, index+1, input, output)
+	_, _ = fmt.Fprintf(w, `{"id":"msg_mock_%d","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":%d,"output_tokens":%d%s}}`, index+1, input, output, u.upstreamCacheUsageJSON())
 }
 
 func (u *routeCacheUpstream) callCount() int {

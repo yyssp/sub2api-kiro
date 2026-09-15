@@ -144,6 +144,15 @@ export default {
       hourTtlSeconds: "1 小时 TTL（秒）",
       hourTtlSecondsHint:
         "标记为 1 小时的断点生命周期；必须不小于默认 TTL，最长受系统支持范围限制。",
+      forcedTtlTier: "强制上报档位",
+      forcedTtlTierHint:
+        "上报档位按「强制档位 → 上游返回 → 客户端声明 → 5m」四级优先级决定，本项是最高级。选择「跟随」即不强制；选 5m 或 1h 则无视上游与客户端，一律按该档上报。只影响上报给客户的计费分桶，不改变上游实际成本。",
+      forcedTtlTierFollow: "跟随（不强制）",
+      forcedTtlTier5m: "强制 5 分钟",
+      forcedTtlTier1h: "强制 1 小时",
+      trustUpstreamTtlTier: "采信上游档位",
+      trustUpstreamTtlTierHint:
+        "开启后，上游响应实际返回哪个档位就按哪个上报，使收入口径与成本口径对齐。三方接入若不遵守客户端声明（客户端要 5m、上游按 1h 计费），关闭本项会导致差价由平台承担。上游未返回档位时自动退回客户端声明。",
       tokenScale: "Token 缩放系数",
       tokenScaleHint:
         "长输入达到阈值后用于 usage 模拟的放大系数，不改变发送给上游的 prompt。",

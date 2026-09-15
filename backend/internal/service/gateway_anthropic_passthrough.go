@@ -635,10 +635,15 @@ func rewriteAnthropicPassthroughUsageEvent(data string, accumulated *ClaudeUsage
 	}
 	projected := *accumulated
 	upstreamEvidence := claudeUsageHasCacheEvidence(&projected)
+	// 与 mergeAndCommitCachePlan 同理：投影会覆盖两个 ephemeral 桶，上游档位必须先抓。
+	upstream5m, upstream1h := projected.CacheCreation5mTokens, projected.CacheCreation1hTokens
 	projectClaudeUsage(&projected, plan.result(), plan.usagePolicy, plan.usageSeed())
 	if plan.result() != nil && !upstreamEvidence {
 		constrainClaudeUsageTotal(&projected, plan.profile.reportedInputTokens, plan.profile.policy.ReportedInputMinTokens)
 	}
+	// 流式与非流式必须解析出同一个档位，否则同一次会话在两种模式下的账单口径会不一致。
+	applyTTLTierToClaudeUsage(&projected, resolveReportedTTLTier(
+		plan.policyConfig(), plan.profile.clientTTLTier(), upstream5m, upstream1h))
 	updated := []byte(data)
 	for path, value := range map[string]int{
 		prefix + ".input_tokens":                             projected.InputTokens,

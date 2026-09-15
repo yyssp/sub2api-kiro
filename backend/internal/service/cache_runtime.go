@@ -117,6 +117,16 @@ func (p *cacheEmulationPlan) skipProjection() bool {
 	return p != nil && p.nonStream && p.usagePolicy.SkipNonStreamUsageProjection
 }
 
+// policyConfig 安全读取计划所属的策略配置。profile 在部分路径上可能为 nil
+// （见 applyReportedInputWithoutCacheClaude 的显式判空），零值配置正好等于
+// 「不强制档位 + 采信上游」，与优先级链的默认语义一致。
+func (p *cacheEmulationPlan) policyConfig() CacheStrategyConfig {
+	if p == nil || p.profile == nil {
+		return CacheStrategyConfig{}
+	}
+	return p.profile.policy
+}
+
 func (p *cacheEmulationPlan) result() *cacheEmulationUsage {
 	if p == nil {
 		return nil
@@ -636,6 +646,9 @@ func mergeAndCommitCachePlan(c *gin.Context, usage *ClaudeUsage, success bool) {
 	}
 	if usage != nil && !plan.skipProjection() {
 		upstreamEvidence := claudeUsageHasCacheEvidence(usage)
+		// 必须在 projectClaudeUsage 之前抓取：投影会把两个 ephemeral 桶改写成本地
+		// 合成值，之后就再也读不到上游的真实档位了。
+		upstream5m, upstream1h := usage.CacheCreation5mTokens, usage.CacheCreation1hTokens
 		projectClaudeUsage(usage, plan.result(), plan.usagePolicy, plan.usageSeed())
 		if !upstreamEvidence {
 			if plan.result() == nil {
@@ -644,6 +657,10 @@ func mergeAndCommitCachePlan(c *gin.Context, usage *ClaudeUsage, success bool) {
 				constrainClaudeUsageTotal(usage, plan.profile.reportedInputTokens, uncachedInputFloor(plan.profile.policy).min)
 			}
 		}
+		// 放在所有会改动 cache_creation_input_tokens 的步骤之后：分桶必须按最终
+		// 总额重算，否则 5m+1h 与总额对不上，下游计费会算错。
+		applyTTLTierToClaudeUsage(usage, resolveReportedTTLTier(
+			plan.policyConfig(), plan.profile.clientTTLTier(), upstream5m, upstream1h))
 	}
 	if success {
 		plan.commit()
@@ -722,6 +739,12 @@ func applyUsagePolicyWithoutPlanClaude(c *gin.Context, usage *ClaudeUsage) {
 	seed := usageSeedWithoutPlan(c)
 	applyUsageProjectionClaude(usage, usage.InputTokens, usage.OutputTokens, policy, seed,
 		claudeUsageHasCacheEvidence(usage))
+	// 这条路径上缓存字段保持上游原值，档位本就与上游一致（第 2 级），无需改写。
+	// 唯一例外是管理员配了强制档位（第 1 级），它必须压过上游。
+	if cfg, enabled := effectiveCacheStrategyConfig(cacheGroupFromContext(c, nil)); enabled &&
+		(cfg.ForcedTTLTier == CacheTTLTier5m || cfg.ForcedTTLTier == CacheTTLTier1h) {
+		applyTTLTierToClaudeUsage(usage, cfg.ForcedTTLTier)
+	}
 }
 
 func applyUsagePolicyWithoutPlanOpenAI(c *gin.Context, usage *OpenAIUsage) {
@@ -2321,18 +2344,111 @@ func (p *cacheProfile) cacheTokensForBreakpoint(cumulativeTokens int) int {
 }
 
 func (p *cacheProfile) ttlBreakdown(matchedTokens int) (int, int) {
-	lastBreakpoint := p.lastCacheableBreakpoint()
-	if lastBreakpoint == nil {
-		return 0, 0
-	}
-	newTokens := max(p.cacheTokensForBreakpoint(lastBreakpoint.cumulativeTokens)-matchedTokens, 0)
+	newTokens := p.creationTokens(matchedTokens)
 	if newTokens == 0 {
 		return 0, 0
 	}
-	if lastBreakpoint.ttl >= cacheOneHourTTL {
+	// 这里只按「客户端声明」（优先级第 3 级）先做一次分桶。第 1、2 级在
+	// mergeAndCommit* 里拿到上游响应后才可能翻转，见 resolveReportedTTLTier。
+	if p.clientTTLTier() == CacheTTLTier1h {
 		return 0, newTokens
 	}
 	return newTokens, 0
+}
+
+// creationTokens 是本次请求新写入缓存的 token 数，ttlBreakdown 的两个桶之和恒等于它。
+func (p *cacheProfile) creationTokens(matchedTokens int) int {
+	lastBreakpoint := p.lastCacheableBreakpoint()
+	if lastBreakpoint == nil {
+		return 0
+	}
+	return max(p.cacheTokensForBreakpoint(lastBreakpoint.cumulativeTokens)-matchedTokens, 0)
+}
+
+// clientTTLTier 返回客户端通过 cache_control.ttl 表达的档位（优先级第 3 级）。
+//
+// 注意这里无法区分「客户端显式写了 5m」和「客户端没表态、断点吃了默认 TTL」：
+// 两者在 breakpointTTL 上都落成 DefaultTTLSeconds。这个区分对最终结果没有影响 ——
+// 第 4 级的协议缺省也是 5m，两条路殊途同归。真正需要区分「未表态」的只有第 1、2 级，
+// 它们各有独立的表达方式（空串 / 两个桶都为 0）。
+func (p *cacheProfile) clientTTLTier() string {
+	if p == nil {
+		return CacheTTLTierUnset
+	}
+	lastBreakpoint := p.lastCacheableBreakpoint()
+	if lastBreakpoint == nil {
+		return CacheTTLTierUnset
+	}
+	if lastBreakpoint.ttl >= cacheOneHourTTL {
+		return CacheTTLTier1h
+	}
+	return CacheTTLTier5m
+}
+
+// trustUpstreamTTLTier：nil ⇒ true。存量策略没有这个字段，默认必须是「采信上游」，
+// 否则三方按 1h 计费而我们按 5m 上报，差价由平台吃掉。
+func trustUpstreamTTLTier(policy CacheStrategyConfig) bool {
+	return policy.TrustUpstreamTTLTier == nil || *policy.TrustUpstreamTTLTier
+}
+
+// upstreamTTLTier 读上游响应实际返回的档位（优先级第 2 级）。
+// 两个桶都为 0 ⇒ 上游未表态，返回 Unset 让优先级链继续往下走；
+// 两个桶都非零（混合写入）⇒ 取较大的一侧，因为分桶是二选一，无法如实表达混合。
+func upstreamTTLTier(fiveMin, oneHour int) string {
+	if oneHour > 0 && oneHour >= fiveMin {
+		return CacheTTLTier1h
+	}
+	if fiveMin > 0 {
+		return CacheTTLTier5m
+	}
+	return CacheTTLTierUnset
+}
+
+// resolveReportedTTLTier 按四级优先级链定出最终上报档位：
+//
+//	1. 策略强制档位     —— 管理员意志
+//	2. 上游实际返回档位 —— 成本真相（可由 trust_upstream_ttl_tier 关闭）
+//	3. 客户端声明档位   —— 用户意图
+//	4. 5m              —— Anthropic 协议缺省（未声明 ttl 即为 5m）
+//
+// 返回值恒为 CacheTTLTier5m 或 CacheTTLTier1h，绝不返回 Unset：上报时
+// cache_creation_input_tokens 必须与两个桶自洽，留空会让下游计费算出 0。
+func resolveReportedTTLTier(policy CacheStrategyConfig, clientTier string, upstream5m, upstream1h int) string {
+	if policy.ForcedTTLTier == CacheTTLTier5m || policy.ForcedTTLTier == CacheTTLTier1h {
+		return policy.ForcedTTLTier
+	}
+	if trustUpstreamTTLTier(policy) {
+		if tier := upstreamTTLTier(upstream5m, upstream1h); tier != CacheTTLTierUnset {
+			return tier
+		}
+	}
+	if clientTier == CacheTTLTier1h || clientTier == CacheTTLTier5m {
+		return clientTier
+	}
+	return CacheTTLTier5m
+}
+
+// applyTTLTierToClaudeUsage 把已经算好的 cache_creation_input_tokens 全额压进
+// 目标档位的桶，另一个桶清零。总额不变 —— 这是「能被正常计费」的硬要求：
+// ephemeral_5m + ephemeral_1h 必须恒等于 cache_creation_input_tokens。
+func applyTTLTierToClaudeUsage(usage *ClaudeUsage, tier string) {
+	if usage == nil {
+		return
+	}
+	total := usage.CacheCreationInputTokens
+	if total <= 0 {
+		// 没有新建缓存时两个桶都必须是 0，不能残留上一次投影的值。
+		usage.CacheCreation5mTokens = 0
+		usage.CacheCreation1hTokens = 0
+		return
+	}
+	if tier == CacheTTLTier1h {
+		usage.CacheCreation5mTokens = 0
+		usage.CacheCreation1hTokens = total
+		return
+	}
+	usage.CacheCreation5mTokens = total
+	usage.CacheCreation1hTokens = 0
 }
 
 func (t *cacheTracker) update(cacheKey uint64, profile *cacheProfile) {

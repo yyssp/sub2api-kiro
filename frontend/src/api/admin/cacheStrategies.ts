@@ -32,6 +32,16 @@ export interface CacheStrategyConfig {
   max_simulated_input_tokens: number;
   default_ttl_seconds: number;
   hour_ttl_seconds: number;
+  /**
+   * 强制上报档位（优先级链第 1 级，最高）。
+   * ""（默认）= 不强制，按上游 → 客户端 → 5m 依次解析；"5m" / "1h" = 一律按该档上报。
+   */
+  forced_ttl_tier?: "" | "5m" | "1h";
+  /**
+   * 是否采信上游响应实际返回的档位（第 2 级）。未配置（undefined）视为开启。
+   * 关掉它意味着上游按 1h 计费时我们仍按客户端声明上报，差价由平台承担。
+   */
+  trust_upstream_ttl_tier?: boolean;
   max_entries_per_scope: number;
   max_entries_global: number;
   estimated_bytes_limit: number;

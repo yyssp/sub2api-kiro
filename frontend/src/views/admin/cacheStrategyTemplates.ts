@@ -86,6 +86,9 @@ export function createDefaultCacheStrategyConfig(
     max_simulated_input_tokens: 300000,
     default_ttl_seconds: 300,
     hour_ttl_seconds: 3600,
+    // 默认不强制档位、采信上游返回的档位，与后端的优先级链默认一致。
+    forced_ttl_tier: "",
+    trust_upstream_ttl_tier: true,
     // 容量与生命周期采用通用参考实现的页面默认值：单作用域 200 条、全局 20000 条、
     // 估算字节上限 256MB、空闲 1 小时过期。
     max_entries_per_scope: 200,

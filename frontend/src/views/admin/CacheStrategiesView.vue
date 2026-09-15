@@ -1162,6 +1162,33 @@
             </div>
             <div>
               <label class="input-label">
+                {{ t("admin.cacheStrategies.form.forcedTtlTier") }}
+              </label>
+              <Select
+                v-model="editing.config.forced_ttl_tier"
+                :options="forcedTtlTierOptions"
+              />
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.forcedTtlTierHint") }}
+              </p>
+            </div>
+            <div>
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  v-model="editing.config.trust_upstream_ttl_tier"
+                  type="checkbox"
+                  class="checkbox"
+                />
+                <span>
+                  {{ t("admin.cacheStrategies.form.trustUpstreamTtlTier") }}
+                </span>
+              </label>
+              <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-dark-400">
+                {{ t("admin.cacheStrategies.form.trustUpstreamTtlTierHint") }}
+              </p>
+            </div>
+            <div>
+              <label class="input-label">
                 {{ t("admin.cacheStrategies.form.tokenScale") }}
               </label>
               <input
@@ -1745,6 +1772,22 @@ const breakpointOptions = computed(() => [
   },
 ]);
 
+// 空串 = 不强制，必须是第一项（默认值），与后端 CacheTTLTierUnset 对齐。
+const forcedTtlTierOptions = computed(() => [
+  {
+    value: "",
+    label: t("admin.cacheStrategies.form.forcedTtlTierFollow"),
+  },
+  {
+    value: "5m",
+    label: t("admin.cacheStrategies.form.forcedTtlTier5m"),
+  },
+  {
+    value: "1h",
+    label: t("admin.cacheStrategies.form.forcedTtlTier1h"),
+  },
+]);
+
 // 默认项排在最前：分组 + 会话。
 const scopeModeOptions = computed(() => [
   {
@@ -1970,6 +2013,12 @@ async function load() {
 async function edit(item: CacheStrategy) {
   selectedTemplateId.value = "blank";
   const cloned = JSON.parse(JSON.stringify(item)) as CacheStrategy;
+  // 存量策略的 config 里没有这两个 key，直接绑定会让下拉框落到 undefined、
+  // 复选框渲染成未勾选 —— 页面显示「不采信上游」而后端其实在采信，
+  // 管理员一旦保存就把这个误解写回了库里。这里按后端默认语义补齐。
+  cloned.config.forced_ttl_tier = cloned.config.forced_ttl_tier ?? "";
+  cloned.config.trust_upstream_ttl_tier =
+    cloned.config.trust_upstream_ttl_tier ?? true;
   editing.value = cloned;
   lastSelectedKind.value = cloned.config.kind;
 

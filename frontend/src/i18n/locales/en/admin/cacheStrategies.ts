@@ -148,6 +148,15 @@ export default {
       hourTtlSeconds: "1-hour TTL (seconds)",
       hourTtlSecondsHint:
         "Lifetime for breakpoints marked as one-hour; it must be at least the default TTL and remains system-bounded.",
+      forcedTtlTier: "Forced reporting tier",
+      forcedTtlTierHint:
+        "The reported tier resolves through four levels: forced tier, upstream response, client declaration, then 5m. This field is the highest. Choose Follow to leave it unforced, or pick 5m/1h to report that tier regardless of upstream and client. It only shapes the billing split reported to clients; upstream cost is unchanged.",
+      forcedTtlTierFollow: "Follow (not forced)",
+      forcedTtlTier5m: "Force 5 minutes",
+      forcedTtlTier1h: "Force 1 hour",
+      trustUpstreamTtlTier: "Trust upstream tier",
+      trustUpstreamTtlTierHint:
+        "When enabled, the tier the upstream actually returned is the one reported, keeping revenue aligned with cost. If a third-party upstream ignores the client declaration (client asked for 5m but upstream bills 1h), disabling this leaves the platform absorbing the difference. Falls back to the client declaration when upstream reports no tier.",
       tokenScale: "Token scale",
       tokenScaleHint:
         "Scales long-input usage simulation after the threshold; it does not change the prompt sent upstream.",

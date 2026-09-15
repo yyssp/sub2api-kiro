@@ -139,6 +139,15 @@ describe("cache strategy templates", () => {
     });
   });
 
+  // 上报档位优先级链的默认值：不强制 + 采信上游。改动任一项都会改变计费口径，
+  // 「采信上游」被关掉时上游按 1h 计费而我们按 5m 上报，差价由平台吃掉。
+  it("defaults to an unforced tier that follows the upstream", () => {
+    const config = createDefaultCacheStrategyConfig();
+
+    expect(config.forced_ttl_tier).toBe("");
+    expect(config.trust_upstream_ttl_tier).toBe(true);
+  });
+
   it("returns independent default config objects", () => {
     const first = createDefaultCacheStrategyConfig();
     const second = createDefaultCacheStrategyConfig();
