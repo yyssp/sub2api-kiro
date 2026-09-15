@@ -193,13 +193,13 @@ type CacheStrategyConfig struct {
 	// 退还目标在 [min, max] 内按请求指纹抖动，避免每条都是同一个数字。
 	// 注意：input 已经高于下限时不做任何处理 —— 不会把 input 反向塞进 creation，
 	// 那会把便宜的 input 计成更贵的 creation。
-	UncachedInputMinTokens     int                  `json:"uncached_input_min_tokens"`
-	UncachedInputMaxTokens     int                  `json:"uncached_input_max_tokens"`
-	TokenScale                 float64              `json:"token_scale"`
-	ScaleMinInputTokens        int                  `json:"scale_min_input_tokens"`
-	MaxSimulatedInputTokens    int                  `json:"max_simulated_input_tokens"`
-	DefaultTTLSeconds          int                  `json:"default_ttl_seconds"`
-	HourTTLSeconds             int                  `json:"hour_ttl_seconds"`
+	UncachedInputMinTokens  int     `json:"uncached_input_min_tokens"`
+	UncachedInputMaxTokens  int     `json:"uncached_input_max_tokens"`
+	TokenScale              float64 `json:"token_scale"`
+	ScaleMinInputTokens     int     `json:"scale_min_input_tokens"`
+	MaxSimulatedInputTokens int     `json:"max_simulated_input_tokens"`
+	DefaultTTLSeconds       int     `json:"default_ttl_seconds"`
+	HourTTLSeconds          int     `json:"hour_ttl_seconds"`
 	// ForcedTTLTier 强制上报档位，优先级链的第 1 级（最高）。
 	// ""（或字段缺失）= 不强制，按后续级别解析；"5m" / "1h" = 一律按该档上报。
 	// 必须保留空串语义：存量 JSONB 记录没有这个 key，反序列化得到 ""，正好等于
@@ -209,7 +209,7 @@ type CacheStrategyConfig struct {
 	// 用指针是必须的：存量记录缺这个 key，裸 bool 会得到 false，等于把「跟随上游」
 	// 静默关掉，让三方按 1h 计费而我们按 5m 上报，直接造成亏损。
 	// nil ⇒ 视为 true（见 trustUpstreamTTLTier）。
-	TrustUpstreamTTLTier *bool `json:"trust_upstream_ttl_tier,omitempty"`
+	TrustUpstreamTTLTier       *bool                `json:"trust_upstream_ttl_tier,omitempty"`
 	MaxEntriesPerScope         int                  `json:"max_entries_per_scope"`
 	MaxEntriesGlobal           int                  `json:"max_entries_global"`
 	EstimatedBytesLimit        int64                `json:"estimated_bytes_limit"`

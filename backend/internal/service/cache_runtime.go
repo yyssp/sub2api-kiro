@@ -2406,10 +2406,10 @@ func upstreamTTLTier(fiveMin, oneHour int) string {
 
 // resolveReportedTTLTier 按四级优先级链定出最终上报档位：
 //
-//	1. 策略强制档位     —— 管理员意志
-//	2. 上游实际返回档位 —— 成本真相（可由 trust_upstream_ttl_tier 关闭）
-//	3. 客户端声明档位   —— 用户意图
-//	4. 5m              —— Anthropic 协议缺省（未声明 ttl 即为 5m）
+//  1. 策略强制档位     —— 管理员意志
+//  2. 上游实际返回档位 —— 成本真相（可由 trust_upstream_ttl_tier 关闭）
+//  3. 客户端声明档位   —— 用户意图
+//  4. 5m              —— Anthropic 协议缺省（未声明 ttl 即为 5m）
 //
 // 返回值恒为 CacheTTLTier5m 或 CacheTTLTier1h，绝不返回 Unset：上报时
 // cache_creation_input_tokens 必须与两个桶自洽，留空会让下游计费算出 0。
