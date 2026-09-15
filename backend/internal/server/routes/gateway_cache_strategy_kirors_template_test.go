@@ -86,13 +86,29 @@ func kiroRsToolTemplateConfig() service.CacheStrategyConfig {
 	// —— usage 投影：kiro-rs-tool 直接上报算出来的桶，不做二次采样/抬升 ——
 	cfg.Usage = service.DefaultCacheUsagePolicy()
 	cfg.Usage.Enabled = true
-	cfg.Usage.Input = service.CacheUsageFieldPolicy{Mode: service.CacheUsageFieldRaw, NormalMaxMultiplier: 1}
-	cfg.Usage.Output = service.CacheUsageFieldPolicy{Mode: service.CacheUsageFieldRaw, NormalMaxMultiplier: 1}
-	cfg.Usage.CacheRead = service.CacheUsageFieldPolicy{Mode: service.CacheUsageFieldRaw, NormalMaxMultiplier: 1}
-	cfg.Usage.CacheCreation = service.CacheUsageFieldPolicy{Mode: service.CacheUsageFieldRaw, NormalMaxMultiplier: 1}
+	cfg.Usage.Input = service.CacheUsageFieldPolicy{Mode: service.CacheUsageFieldRaw, NormalMaxMultiplier: 1.1}
+	cfg.Usage.Output = service.CacheUsageFieldPolicy{Mode: service.CacheUsageFieldRaw, NormalMaxMultiplier: 1.1}
+	cfg.Usage.CacheRead = service.CacheUsageFieldPolicy{Mode: service.CacheUsageFieldRaw, NormalMaxMultiplier: 1.1}
+	cfg.Usage.CacheCreation = service.CacheUsageFieldPolicy{Mode: service.CacheUsageFieldRaw, NormalMaxMultiplier: 1.1}
 	cfg.Usage.OutputUpliftEnabled = boolPtr(false)
 	cfg.Usage.OutputUpliftMinTokens = 0
 	cfg.Usage.OutputUpliftPercent = 0
+
+	// 三组最终上限保留 DefaultCacheStrategyConfig 的通用护栏
+	// （读 700000 / 写 400000 / 输出 200000，均带 12345~45312 扣减区间）。
+	// 严格照抄 kiro.rs 该档应当是「不设上限」，但真实流量一旦异常放大就会把
+	// 离谱数值直接上报出去，没有任何兜底。实测该档峰值单轮 cache_read ≈42 万、
+	// creation ≈3 万，距上限仍有一倍以上余量：正常形态不会被夹，只在异常时兜底。
+	cfg.Usage.FinalOutputGuardEnabled = boolPtr(true)
+	cfg.Usage.FinalOutputMaxTokens = 200000
+	cfg.Usage.FinalOutputJitterMinTokens = 12345
+	cfg.Usage.FinalOutputJitterMaxTokens = 45312
+	cfg.Usage.FinalCacheReadMaxTokens = 700000
+	cfg.Usage.FinalCacheReadJitterMinTokens = 12345
+	cfg.Usage.FinalCacheReadJitterMaxTokens = 45312
+	cfg.Usage.FinalCacheCreationMaxTokens = 400000
+	cfg.Usage.FinalCacheCreationJitterMinTokens = 12345
+	cfg.Usage.FinalCacheCreationJitterMaxTokens = 45312
 
 	// 上游（Kiro FREE 档）实测不下发任何 cache 字段，必须由本地合成，
 	// 否则 preserve 会让整条策略静默失效 —— 那测的是 mock，不是策略。

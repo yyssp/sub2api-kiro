@@ -23,6 +23,10 @@ export interface CacheStrategyConfig {
   min_cacheable_tokens: number;
   reported_input_min_tokens: number;
   reported_input_max_tokens: number;
+  // 夹取「未缓存输入桶」（cache_read/creation 之外剩下的那部分），
+  // 与上面夹取上报总输入的 reported_input_* 口径不同，勿混用。
+  uncached_input_min_tokens: number;
+  uncached_input_max_tokens: number;
   token_scale: number;
   scale_min_input_tokens: number;
   max_simulated_input_tokens: number;

@@ -247,6 +247,11 @@ export default {
         description:
           "Start from the defaults and configure cache scope, read/write ratios, usage shaping, and creation pacing yourself.",
       },
+      kiroRsTool: {
+        name: "kiro-rs-tool (reference-aligned)",
+        description:
+          "Reproduces the kiro-rs-tool tier from the kiro.rs reference implementation: only 8 core parameters, with local simulation scaling, creation throttling, and final caps all disabled so reported usage tracks real prefix hits. Uncached input is clamped to 32-4096 with full coverage. Use it for groups that must match the reference behavior.",
+      },
       highCache: {
         name: "High cache (default)",
         description:
