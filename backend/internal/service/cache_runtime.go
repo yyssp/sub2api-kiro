@@ -17,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/anthropictokenizer"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
@@ -154,7 +155,13 @@ func projectClaudeUsage(dst *ClaudeUsage, simulated *cacheEmulationUsage, policy
 		return
 	}
 	rawInput, rawOutput := dst.InputTokens, dst.OutputTokens
-	hadCacheEvidence := policy.PreserveUpstreamCacheUsage &&
+	// 策略算出了合成值就一律采信，preserve_upstream_cache_usage 不再能否决它。
+	//
+	// 语义是「分组挂了生效的缓存策略 ⇒ 强制整形」：上报曲线必须完全由策略决定，
+	// 不能因为上游某一档突然开始下发 cache 字段就断档（Kiro FREE 不发、付费档未知）。
+	// preserve 退化成「没有合成值时是否保留上游真值」的开关，仍然有意义，
+	// 但不再影响“有策略时用谁的数”。
+	hadCacheEvidence := simulated == nil && policy.PreserveUpstreamCacheUsage &&
 		(dst.CacheReadInputTokens > 0 || dst.CacheCreationInputTokens > 0 ||
 			dst.CacheCreation5mTokens > 0 || dst.CacheCreation1hTokens > 0)
 	if !hadCacheEvidence && simulated != nil {
@@ -175,7 +182,8 @@ func projectOpenAIUsage(dst *OpenAIUsage, simulated *cacheEmulationUsage, policy
 		return
 	}
 	rawInput, rawOutput := dst.InputTokens, dst.OutputTokens
-	hadCacheEvidence := policy.PreserveUpstreamCacheUsage &&
+	// 与 projectClaudeUsage 同理：有合成值就强制采信，见那边的说明。
+	hadCacheEvidence := simulated == nil && policy.PreserveUpstreamCacheUsage &&
 		(dst.CacheReadInputTokens > 0 || dst.CacheCreationInputTokens > 0)
 	if !hadCacheEvidence && simulated != nil {
 		dst.InputTokens = simulated.InputTokens + simulated.CacheReadInputTokens + simulated.CacheCreationInputTokens
@@ -509,6 +517,15 @@ func cacheGroupFromContext(c *gin.Context, account *Account) *Group {
 				return group
 			}
 		}
+		// SetCacheGroupContext 只有 OpenAI 兼容层的三个 handler 会调用，Anthropic 原生
+		// 路由从不写 gin key。分组其实一直在 request context 里（鉴权中间件的
+		// setGroupContext 写入 ctxkey.Group），这里兜底读它，否则所有 Anthropic 请求
+		// 都会被当成「没有分组」⇒ 强制整形静默失效。
+		if c.Request != nil {
+			if group, ok := c.Request.Context().Value(ctxkey.Group).(*Group); ok && group != nil {
+				return group
+			}
+		}
 	}
 	if account != nil {
 		for _, group := range account.Groups {
@@ -601,9 +618,6 @@ func prepareCachePlanForContext(ctx context.Context, c *gin.Context, account *Ac
 // errors.
 func mergeAndCommitCachePlan(c *gin.Context, usage *ClaudeUsage, success bool) {
 	plan := cachePlanFromContext(c)
-	if plan == nil {
-		return
-	}
 	// usage 改写发生在响应即将返回给客户端时，此处 panic 会毁掉一个本已成功的请求。
 	// 宁可这次不上报缓存字段，也不能让请求失败。
 	defer func() {
@@ -612,6 +626,14 @@ func mergeAndCommitCachePlan(c *gin.Context, usage *ClaudeUsage, success bool) {
 				zap.Any("panic", r))
 		}
 	}()
+	if plan == nil {
+		// 分组挂了生效的缓存策略 ⇒ 强制整形。建不出缓存档案（无会话标识、断点全被
+		// min_cacheable_tokens 卡掉、请求体畸形）不等于「这个分组不整形」，那会让
+		// 大量真实流量绕过策略、上报原始上游数字。缓存字段保持 0（诚实：确实没缓存），
+		// 但 input/output 仍按策略投影。
+		applyUsagePolicyWithoutPlanClaude(c, usage)
+		return
+	}
 	if usage != nil && !plan.skipProjection() {
 		upstreamEvidence := claudeUsageHasCacheEvidence(usage)
 		projectClaudeUsage(usage, plan.result(), plan.usagePolicy, plan.usageSeed())
@@ -637,6 +659,8 @@ func commitCachePlan(c *gin.Context) {
 func mergeAndCommitOpenAICachePlan(c *gin.Context, usage *OpenAIUsage, success bool) {
 	plan := cachePlanFromContext(c)
 	if plan == nil {
+		// 与 mergeAndCommitCachePlan 同理：挂了生效策略就一定整形。
+		applyUsagePolicyWithoutPlanOpenAI(c, usage)
 		return
 	}
 	if usage != nil && !plan.skipProjection() {
@@ -653,6 +677,64 @@ func mergeAndCommitOpenAICachePlan(c *gin.Context, usage *OpenAIUsage, success b
 	if success {
 		plan.commit()
 	}
+}
+
+// usagePolicyWithoutPlan 取出「没有缓存档案时」仍应生效的 usage 策略。
+//
+// 只有分组挂着一个**生效**的策略才返回 ok：未挂、禁用、策略被删（registry 查不到）、
+// kind=disabled 四种情况都由 effectiveCacheStrategyConfig 归并成 enabled=false，
+// 此时必须原样透传上游数字，不做任何整形。
+func usagePolicyWithoutPlan(c *gin.Context) (CacheUsagePolicy, bool) {
+	if c == nil {
+		return CacheUsagePolicy{}, false
+	}
+	group := cacheGroupFromContext(c, nil)
+	policy, enabled := effectiveCacheStrategyConfig(group)
+	if !enabled || !policy.Usage.Enabled {
+		return CacheUsagePolicy{}, false
+	}
+	return policy.Usage, true
+}
+
+// usageSeedWithoutPlan 派生确定性种子，保证同一请求重试时上报值一致。
+// 没有缓存档案可用，退而用请求路径与 request id 作为稳定来源。
+func usageSeedWithoutPlan(c *gin.Context) uint64 {
+	h := fnv.New64a()
+	if c != nil {
+		if c.Request != nil && c.Request.URL != nil {
+			_, _ = h.Write([]byte(c.Request.URL.Path))
+		}
+		_, _ = h.Write([]byte(c.GetString("request_id")))
+	}
+	return splitmix64(h.Sum64())
+}
+
+// applyUsagePolicyWithoutPlanClaude 在没有缓存档案时仍按策略整形 input/output。
+// 缓存字段保持上游原值（通常为 0）：确实没有缓存，不能凭空造出 cache_read。
+func applyUsagePolicyWithoutPlanClaude(c *gin.Context, usage *ClaudeUsage) {
+	if usage == nil {
+		return
+	}
+	policy, ok := usagePolicyWithoutPlan(c)
+	if !ok {
+		return
+	}
+	seed := usageSeedWithoutPlan(c)
+	applyUsageProjectionClaude(usage, usage.InputTokens, usage.OutputTokens, policy, seed,
+		claudeUsageHasCacheEvidence(usage))
+}
+
+func applyUsagePolicyWithoutPlanOpenAI(c *gin.Context, usage *OpenAIUsage) {
+	if usage == nil {
+		return
+	}
+	policy, ok := usagePolicyWithoutPlan(c)
+	if !ok {
+		return
+	}
+	seed := usageSeedWithoutPlan(c)
+	applyUsageProjectionOpenAI(usage, usage.InputTokens, usage.OutputTokens, policy, seed,
+		openAIUsageHasCacheEvidence(usage))
 }
 
 func claudeUsageHasCacheEvidence(usage *ClaudeUsage) bool {
@@ -790,15 +872,31 @@ func (s *GatewayService) buildCacheEmulationUsage(ctx context.Context, account *
 	return plan.result()
 }
 
+// effectiveMinCacheableTokens 解析「最小可缓存 token」门槛。
+//
+// 语义（与页面提示一致）：
+//   - 未挂生效策略：按模型取硬编码兜底（opus 4096，其余 1024）。
+//   - 策略显式配了正数：用该值。
+//   - 策略配了 0：不设门槛。0 曾经被当成「没填」而回退到硬编码兜底 —— 在 opus 上
+//     反而收紧到 4096，与「0 = 不限制」的直觉完全相反，且该门槛一旦卡住全部断点
+//     会让整条策略静默失效（buildCacheProfile* 返回 false → 无 plan）。
+func effectiveMinCacheableTokens(group *Group, model string) int {
+	policy, enabled := effectiveCacheStrategyConfig(group)
+	if !enabled {
+		return minimumCacheableTokens(model)
+	}
+	if policy.MinCacheableTokens < 0 {
+		return minimumCacheableTokens(model)
+	}
+	return policy.MinCacheableTokens
+}
+
 func (s *GatewayService) prepareCacheEmulationUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *cacheEmulationPlan {
 	NormalizeGroupRuntimeFields(group)
 	if group == nil || account == nil || account.ID <= 0 || len(body) == 0 {
 		return nil
 	}
-	minCacheable := minimumCacheableTokens(model)
-	if policy, enabled := effectiveCacheStrategyConfig(group); enabled && policy.MinCacheableTokens > 0 {
-		minCacheable = policy.MinCacheableTokens
-	}
+	minCacheable := effectiveMinCacheableTokens(group, model)
 	profile, ok := buildCacheProfileWithMin(ctx, body, model, inputTokens, minCacheable)
 	if !ok {
 		return nil
@@ -813,10 +911,7 @@ func (s *GatewayService) prepareResponsesCacheUsage(ctx context.Context, account
 	if group == nil || account == nil || account.ID <= 0 || len(body) == 0 {
 		return nil
 	}
-	minCacheable := minimumCacheableTokens(model)
-	if policy, enabled := effectiveCacheStrategyConfig(group); enabled && policy.MinCacheableTokens > 0 {
-		minCacheable = policy.MinCacheableTokens
-	}
+	minCacheable := effectiveMinCacheableTokens(group, model)
 	profile, ok := buildResponsesCacheProfileWithMin(ctx, body, model, inputTokens, minCacheable)
 	if !ok {
 		return nil
@@ -831,10 +926,7 @@ func (s *GatewayService) prepareChatCompletionsCacheUsage(ctx context.Context, a
 	if group == nil || account == nil || account.ID <= 0 || len(body) == 0 {
 		return nil
 	}
-	minCacheable := minimumCacheableTokens(model)
-	if policy, enabled := effectiveCacheStrategyConfig(group); enabled && policy.MinCacheableTokens > 0 {
-		minCacheable = policy.MinCacheableTokens
-	}
+	minCacheable := effectiveMinCacheableTokens(group, model)
 	profile, ok := buildChatCompletionsCacheProfileWithMin(ctx, body, model, inputTokens, minCacheable)
 	if !ok {
 		return nil

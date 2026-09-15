@@ -70,7 +70,7 @@ export function createDefaultCacheStrategyConfig(
     max_coverage_tokens: 0,
     max_new_creation_tokens_per_request: 0,
     incremental_create_enabled: true,
-    min_cacheable_tokens: 1024,
+    min_cacheable_tokens: 0,
     reported_input_min_tokens: 0,
     reported_input_max_tokens: 0,
     // 模拟与触顶参数对齐参考实现的通用默认值：token_scale 2.0、

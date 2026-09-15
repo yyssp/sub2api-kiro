@@ -131,7 +131,11 @@ export default {
         "Chooses client, automatic, or hybrid breakpoints; without a usable breakpoint there is no cache read/write.",
       minCacheableTokens: "Minimum cacheable tokens",
       minCacheableTokensHint:
-        "Breakpoints below this size stay out of the tracker; small requests are not padded up to this value.",
+        "⚠️ Setting this too high disables the whole strategy. It compares the cumulative prefix tokens at each " +
+        "breakpoint, not the total request size; when every breakpoint falls below it the entire cache profile is " +
+        "discarded and the request reports no cache_read / cache_creation at all. " +
+        "0 (the default) removes the gate entirely so every breakpoint is cacheable. " +
+        "It only filters; small requests are never padded up to this value.",
       maxCoverageTokens: "Maximum coverage tokens",
       maxCoverageTokensHint:
         "Absolute cap on the cached prefix; reads can continue after it is reached while new creation tapers to zero.",

@@ -128,7 +128,10 @@ export default {
         "决定使用客户端断点、自动断点还是混合断点；没有可用断点时不会产生缓存读写。",
       minCacheableTokens: "最小可缓存 Token",
       minCacheableTokensHint:
-        "小于该值的断点不会进入 tracker；它不会把小请求向上补到这个数值。",
+        "⚠️ 该值过高会让整条缓存策略失效。比较的是「断点处的累计前缀 Token」而非请求总量；" +
+        "当所有断点都低于该值时，整个缓存档案会被丢弃，该请求完全不产生 cache_read / cache_creation。" +
+        "填 0（默认）表示不设门槛，所有断点都可缓存。" +
+        "它只做过滤，不会把小请求向上补到这个数值。",
       maxCoverageTokens: "最大覆盖 Token",
       maxCoverageTokensHint:
         "实际缓存前缀的绝对上限；达到后 read 可以继续命中，但新的 creation 会逐渐变少或为 0。",

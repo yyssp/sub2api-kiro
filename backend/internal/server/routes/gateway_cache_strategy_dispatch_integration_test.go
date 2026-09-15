@@ -16,6 +16,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -478,13 +479,25 @@ func noCacheUsageRouteConfig() service.CacheStrategyConfig {
 	return cfg
 }
 
+// routeCacheTestMaxBodySize 是测试网关的请求体上限。默认 1MB 与线上一致；
+// 真实 Claude Code 量级的会话（几十 K token）会超过它，那类用例用
+// withRouteCacheTestMaxBodySize 临时放宽，避免为了迁就上限把负载缩成玩具级。
+var routeCacheTestMaxBodySize int64 = 1024 * 1024
+
+func withRouteCacheTestMaxBodySize(t *testing.T, size int64) {
+	t.Helper()
+	previous := routeCacheTestMaxBodySize
+	routeCacheTestMaxBodySize = size
+	t.Cleanup(func() { routeCacheTestMaxBodySize = previous })
+}
+
 func newRouteCacheTestRouter(t *testing.T, group *service.Group, apiKey *service.APIKey, accountRepo *routeCacheAccountRepo, groupRepo *routeCacheGroupRepo, gatewayCache *routeCacheGatewayCache, upstream *routeCacheHTTPUpstream) (*gin.Engine, *service.BillingCacheService) {
 	t.Helper()
 	cfg := &config.Config{
 		RunMode: config.RunModeSimple,
 		Gateway: config.GatewayConfig{
-			MaxBodySize:     1024 * 1024,
-			TextMaxBodySize: 1024 * 1024,
+			MaxBodySize:     routeCacheTestMaxBodySize,
+			TextMaxBodySize: routeCacheTestMaxBodySize,
 			Scheduling: config.GatewaySchedulingConfig{
 				LoadBatchEnabled:         false,
 				StickySessionMaxWaiting:  3,
@@ -538,6 +551,12 @@ func newRouteCacheTestRouter(t *testing.T, group *service.Group, apiKey *service
 			Concurrency: apiKey.User.Concurrency,
 		})
 		c.Set(string(servermiddleware.ContextKeyUserRole), apiKey.User.Role)
+		// 真实的 APIKeyAuthMiddleware 通过 setGroupContext 把分组写进 request
+		// context（ctxkey.Group），缓存整形依赖它。这里必须用同一个 key 复现，
+		// 不能改用 SetCacheGroupContext 的 gin key —— 那样测试会绿，但线上
+		// Anthropic 路由（只有 ctxkey.Group）仍然读不到分组。
+		c.Request = c.Request.WithContext(
+			context.WithValue(c.Request.Context(), ctxkey.Group, apiKey.Group))
 		c.Next()
 	})
 	RegisterGatewayRoutes(

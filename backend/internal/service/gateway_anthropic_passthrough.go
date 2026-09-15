@@ -945,12 +945,18 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 			return nil, err
 		}
 	}
-	// Apply the group-bound cache strategy to passthrough responses only when
-	// the request actually produced a plan. Unbound groups must preserve the
-	// upstream JSON byte-for-byte (apart from the legacy ForceCacheBilling
-	// classification above), otherwise we would add zero-valued cache fields
-	// to clients that did not opt into a cache strategy.
-	if cachePlanFromContext(c) != nil {
+	// Apply the group-bound cache strategy to passthrough responses. Groups
+	// without an effective strategy must preserve the upstream JSON
+	// byte-for-byte (apart from the legacy ForceCacheBilling classification
+	// above), otherwise we would add zero-valued cache fields to clients that
+	// did not opt into a cache strategy.
+	//
+	// 有 plan 就走完整投影；没有 plan 但分组挂了**生效**策略，仍要强制整形
+	// input/output（缓存字段保持上游原值）。这里必须用 effectiveCacheStrategyConfig
+	// 而不是 hasBoundCacheStrategy —— 后者刻意把「挂了但禁用」也算作已绑定，用它当
+	// 闸门会让禁用策略的分组被 rewriteClaudeUsageJSON 塞进零值 cache 字段。
+	_, cacheStrategyEnabled := effectiveCacheStrategyConfig(cacheGroupFromContext(c, account))
+	if cachePlanFromContext(c) != nil || cacheStrategyEnabled {
 		mergeAndCommitCachePlan(c, usage, true)
 		body = rewriteClaudeUsageJSON(body, usage)
 	}
