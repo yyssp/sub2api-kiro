@@ -22,9 +22,8 @@ func TestFetchOpenAIAccountModelsFillsPickerLabels(t *testing.T) {
 	require.GreaterOrEqual(t, len(models), 2)
 	require.Equal(t, "gpt-5.6-terra", models[0].ID)
 	require.Equal(t, "codex-auto-review", models[1].ID)
-	for _, model := range models[:2] {
-		require.Equal(t, model.ID, model.DisplayName)
-	}
+	require.Equal(t, "GPT-5.6 Terra", models[0].DisplayName)
+	require.Equal(t, "Codex Auto Review", models[1].DisplayName)
 	for _, model := range models[2:] {
 		require.True(t, IsGPTImageGenerationModel(model.ID),
 			"only image_generation models may be appended, got %q", model.ID)

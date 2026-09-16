@@ -14,6 +14,7 @@ import (
 var monitorBindableProviders = []string{
 	"openai", "anthropic", "gemini", "grok",
 	"antigravity", "kiro", "kimi", "zhipu", "deepseek",
+	"cursor", "minimax", "opencode_go",
 }
 
 func TestChannelMonitorRequestValidationAcceptsAllProviders(t *testing.T) {

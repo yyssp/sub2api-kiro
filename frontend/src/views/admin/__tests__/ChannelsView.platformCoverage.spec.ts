@@ -8,8 +8,8 @@ import { CONCRETE_PLATFORM_OPTIONS } from "@/constants/platforms";
 
 // ⚠️ 这里钉的是「渠道页的平台清单必须覆盖全部具体平台」。
 //
-// 缺陷形态：platformOrder / compositePlatforms 是手写的 10 元组，独独漏了
-// cursor。三个权威来源其实都已经认了 cursor：
+// 缺陷形态：platformOrder / compositePlatforms 是手写的平台元组，容易漏掉
+// 新增平台。三个权威来源都必须与渠道页同步：
 //   - 后端 isConcreteRequestPlatform 显式含 PlatformCursor
 //   - 迁移 239 重建的 composite_model_routes_target_platform_check 含 'cursor'
 //   - 前端 CONCRETE_PLATFORM_OPTIONS 含 cursor
@@ -29,7 +29,7 @@ function readPlatformList(name: string): string[] {
     new RegExp(`const ${name}: GroupPlatform\\[\\] = \\[([^\\]]*)\\]`),
   );
   if (!match) return [];
-  return [...match[1].matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
+  return [...match[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
 }
 
 describe("ChannelsView 平台清单覆盖度", () => {

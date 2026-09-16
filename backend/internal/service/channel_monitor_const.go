@@ -59,8 +59,8 @@ const (
 	providerGeminiPathTemplate = "/v1beta/models/%s:generateContent"
 
 	// MonitorProviderOpenAI 等 provider 字符串常量（也是 ent enum 的实际值）。
-	// 后 5 个 provider（antigravity/kiro/kimi/zhipu/deepseek）为配额模式引入：
-	// antigravity 与 kiro 无探活 adapter（仅配额），国产 3 个复用 OpenAI 兼容探活。
+	// 后 6 个 provider（antigravity/kiro/kimi/zhipu/deepseek/opencode_go）为配额模式引入：
+	// antigravity、kiro 与 OpenCode Go 无探活 adapter（仅配额），国产 3 个复用 OpenAI 兼容探活。
 	// kiro 走 AWS CodeWhisperer event-stream 协议，与 providerAdapters 假定的
 	// 「JSON POST + gjson 取文本」形态不兼容，故不注册探活。
 	MonitorProviderOpenAI      = "openai"
@@ -77,6 +77,8 @@ const (
 	// 与 providerAdapters 假定的「JSON POST + gjson 取文本」形态不兼容，
 	// 且每次调用都消耗真实额度，故不注册探活，仅支持配额模式。
 	MonitorProviderCursor = "cursor"
+	// OpenCode Go 只提供配额数据，不注册探活 adapter，仅支持配额模式。
+	MonitorProviderOpenCodeGo = "opencode_go"
 
 	// MonitorCheckMode 检测模式（channel_monitors.check_mode）。
 	//   probe       - LLM 探活（默认，原有行为）
@@ -177,7 +179,7 @@ var (
 		"CHANNEL_MONITOR_NOT_FOUND", "channel monitor not found",
 	)
 	ErrChannelMonitorInvalidProvider = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_INVALID_PROVIDER", "provider must be one of openai/anthropic/gemini/grok/antigravity/kimi/zhipu/deepseek/minimax",
+		"CHANNEL_MONITOR_INVALID_PROVIDER", "provider must be one of openai/anthropic/gemini/grok/antigravity/kiro/cursor/kimi/zhipu/deepseek/minimax/opencode_go",
 	)
 	ErrChannelMonitorInvalidCheckMode = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_CHECK_MODE", "check_mode must be one of probe/quota/quota_probe; antigravity only supports quota",
@@ -220,7 +222,7 @@ var (
 		"CHANNEL_MONITOR_ENDPOINT_SCHEME", "endpoint must use https scheme",
 	)
 	ErrChannelMonitorEndpointPath = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_ENDPOINT_PATH", "endpoint must be base origin only (no path/query/fragment)",
+		"CHANNEL_MONITOR_ENDPOINT_PATH", "endpoint must not contain query parameters or a fragment",
 	)
 	ErrChannelMonitorEndpointPrivate = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_ENDPOINT_PRIVATE", "endpoint must be a public host",

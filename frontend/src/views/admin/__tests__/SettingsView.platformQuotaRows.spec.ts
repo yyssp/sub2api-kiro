@@ -8,13 +8,13 @@ import { PLATFORM_QUOTA_PLATFORMS, normalizePlatformQuotasMap } from "@/api/admi
 
 // ⚠️ 这里钉的是「默认限额表格的渲染行必须覆盖全部平台」。
 //
-// 缺陷形态：normalizePlatformQuotasMap 早已按 11 个平台填好 form 数据，
+// 缺陷形态：normalizePlatformQuotasMap 早已按全部平台填好 form 数据，
 // 但两处表格的 v-for 是手写的 6 元组字面量（漏掉 cursor/kimi/zhipu/
 // deepseek/minimax）。后果不是报错而是**静默漏配**：
 //   管理员在设置页看不到 cursor 那一行 → 永远设不上限额
 //   → 后端 DailyLimitUSD 为 nil → nil 即无限额 → 该平台无限花钱。
 //
-// 类型系统挡不住：PlatformQuotaPlatform union 有全部 11 个，
+// 类型系统挡不住：PlatformQuotaPlatform union 有全部平台，
 // 模板里的 `as const` 数组比它自己的类型更窄，TS 视为合法子集。
 //
 // 因此断言绑定到同一个数组来源，而不是「列表里有 cursor」——
@@ -43,9 +43,10 @@ describe("SettingsView 默认限额表格的平台行", () => {
     ).toBe(2);
   });
 
-  it("统一清单覆盖全部 11 个平台且包含 cursor", () => {
+  it("统一清单覆盖全部具体平台且包含 cursor 与 opencode_go", () => {
     expect(PLATFORM_QUOTA_PLATFORMS).toContain("cursor");
-    expect(PLATFORM_QUOTA_PLATFORMS).toHaveLength(11);
+    expect(PLATFORM_QUOTA_PLATFORMS).toContain("opencode_go");
+    expect(PLATFORM_QUOTA_PLATFORMS).toHaveLength(12);
   });
 
   it("清单中每个平台都能在归一化后的表单数据里拿到非空档位", () => {

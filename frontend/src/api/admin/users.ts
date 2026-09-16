@@ -350,6 +350,7 @@ export type PlatformQuotaPlatform =
   | 'zhipu'
   | 'deepseek'
   | 'minimax'
+  | 'opencode_go'
 export type PlatformQuotaWindow = 'daily' | 'weekly' | 'monthly'
 
 export interface PlatformQuotaItem {

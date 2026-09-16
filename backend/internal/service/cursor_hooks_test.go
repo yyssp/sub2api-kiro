@@ -29,11 +29,21 @@ func TestCursorAppearsInCompositeMatchingPlatforms(t *testing.T) {
 }
 
 func TestCursorIsInSchedulerSnapshotPlatforms(t *testing.T) {
-	// ⚠️ 这里是 [11]string 定长数组：新增平台必须同时改长度，
-	// 漏改会编译失败（这是好事），但改错顺序不会——所以断言内容而不只是长度。
 	platforms := schedulerSnapshotPlatforms()
-	require.Contains(t, platforms[:], PlatformCursor)
-	require.Len(t, platforms, 11)
+	require.Equal(t, []string{
+		PlatformAnthropic,
+		PlatformGemini,
+		PlatformOpenAI,
+		PlatformAntigravity,
+		PlatformKiro,
+		PlatformGrok,
+		PlatformKimi,
+		PlatformZhipu,
+		PlatformDeepseek,
+		PlatformMiniMax,
+		PlatformCursor,
+		PlatformOpenCodeGo,
+	}, platforms[:])
 }
 
 func TestCursorIsInAllPlatformsForErrorPassthrough(t *testing.T) {

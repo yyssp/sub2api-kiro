@@ -210,7 +210,7 @@ func isConcreteRequestPlatform(platform string) bool {
 		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax,
 		// cursor 与 kiro 同理：模型名是 claude-* / gpt-*，DetectModelPlatform 推断不出，
 		// 只能通过显式 composite_model_routes 路由行命中。
-		PlatformCursor:
+		PlatformCursor, PlatformOpenCodeGo:
 		return true
 	default:
 		return false
