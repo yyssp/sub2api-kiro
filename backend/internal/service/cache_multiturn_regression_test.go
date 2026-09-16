@@ -162,6 +162,120 @@ func TestCreationControlAccumulatesPendingAndJittersEventCap(t *testing.T) {
 	require.Greater(t, len(seen), 10, "event cap jitter must produce multiple stable values")
 }
 
+// prefix 默认值必须能每轮都放行一点 cache_creation。
+//
+// 三个频率闸门（min_creation_delta_tokens / min_successful_requests_between /
+// min_creation_interval_seconds）原本抄的是 kiro.rs 的线上配置，那边一次创建写整段
+// 前缀（几万 token、间隔很久）；我们 incremental_create_enabled 默认开着，每轮只写
+// 增量（实测几百~几千 token、间隔不到 1 秒），于是每个闸门都能单独把每轮上报的
+// creation 压成 0。2026-09-16 真实上游 20 轮实测：12000/2/6 这组值下 creation 只有
+// 2/20 轮非零；三个闸门归零后是 20/20。上限保留 —— 那只是防离谱值的护栏。
+func TestPrefixDefaultReleasesCreationEveryTurn(t *testing.T) {
+	resetCacheTracker()
+	strategyID := int64(900307)
+	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg.AllowDerivedSession = true
+	require.True(t, cfg.CreationControl.Enabled, "上限护栏要留着")
+	require.Zero(t, cfg.CreationControl.MinCreationDeltaTokens)
+	require.Zero(t, cfg.CreationControl.MinSuccessfulRequestsBetween)
+	require.Zero(t, cfg.CreationControl.MinCreationIntervalSeconds)
+	require.Positive(t, cfg.CreationControl.MaxCreationTokensPerEvent)
+	cfg, err := NormalizeCacheStrategyConfig(cfg)
+	require.NoError(t, err)
+	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
+		ID: strategyID, Name: "prefix default", Enabled: true, Revision: 1, Config: cfg,
+	})
+	defer GlobalCacheStrategyRegistry().Delete(strategyID)
+
+	group := &Group{ID: 9319, Platform: PlatformAnthropic, CacheStrategyID: &strategyID}
+	account := &Account{ID: 9320, Platform: PlatformAnthropic}
+	svc := &GatewayService{}
+
+	const turns = 20
+	creationTurns, bothTurns := 0, 0
+	creationValues := map[int]struct{}{}
+	lastRead := 0
+	for turn := 1; turn <= turns; turn++ {
+		body := buildMultiTurnBody("prefix-default-session", turn)
+		plan := svc.prepareCacheEmulationUsage(context.Background(), account, group, body,
+			"claude-sonnet-4-6", 6000*turn)
+		require.NotNil(t, plan)
+		r := plan.result()
+		if r == nil {
+			// 前缀还没到可缓存下限的那几轮没有估算结果，不计入统计。
+			plan.commit()
+			continue
+		}
+		if r.CacheCreationInputTokens > 0 {
+			creationTurns++
+			creationValues[r.CacheCreationInputTokens] = struct{}{}
+		}
+		if r.CacheCreationInputTokens > 0 && r.CacheReadInputTokens > 0 {
+			bothTurns++
+		}
+		require.GreaterOrEqual(t, r.CacheReadInputTokens, lastRead,
+			"第 %d 轮 cache_read 回退：%d → %d", turn, lastRead, r.CacheReadInputTokens)
+		lastRead = r.CacheReadInputTokens
+		plan.commit()
+	}
+
+	// 第 1 轮前缀还没到可缓存下限（没有估算结果），第 2 轮才刚写入第一段前缀、
+	// 没有可读的已缓存内容，所以 creation 的分母是 turns-1、both 的是 turns-2。
+	require.GreaterOrEqual(t, creationTurns, turns-1,
+		"默认值下每轮都该放行增量 creation，实际只有 %d/%d 轮", creationTurns, turns)
+	require.GreaterOrEqual(t, bothTurns, turns-2,
+		"read 与 create 同时为正的轮次只有 %d/%d", bothTurns, turns)
+	require.Greater(t, len(creationValues), 10,
+		"creation 只有 %d 个取值，每轮同一个数字一眼假", len(creationValues))
+}
+
+// 闸门归零后仍然留着的「窗口上限」是有副作用的，这里把它钉死成已知行为：
+// 默认 600k/300s，一旦本窗口内累计放行量用完，后续轮次的 creation 会被压成 0
+// （read 不受影响）。单轮 5 万量级的重会话大约十来轮就会撞上。
+// 这是刻意保留的护栏（防一次上报离谱数值），要放宽得显式调
+// max_creation_tokens_per_window —— 但别再把它误诊成闸门回归。
+func TestCreationWindowBudgetStillThrottlesHeavySessions(t *testing.T) {
+	resetCacheTracker()
+	strategyID := int64(900309)
+	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	cfg.AllowDerivedSession = true
+	require.Equal(t, 600000, cfg.CreationControl.MaxCreationTokensPerWindow)
+	cfg, err := NormalizeCacheStrategyConfig(cfg)
+	require.NoError(t, err)
+	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
+		ID: strategyID, Name: "window budget", Enabled: true, Revision: 1, Config: cfg,
+	})
+	defer GlobalCacheStrategyRegistry().Delete(strategyID)
+
+	group := &Group{ID: 9321, Platform: PlatformAnthropic, CacheStrategyID: &strategyID}
+	account := &Account{ID: 9322, Platform: PlatformAnthropic}
+	svc := &GatewayService{}
+
+	released, throttled := 0, 0
+	for turn := 1; turn <= 20; turn++ {
+		body := buildMultiTurnBody("window-budget-session", turn)
+		// 每轮 +6 万 token 的重会话：单轮放行量 5 万上下，很快吃掉 600k 窗口预算。
+		plan := svc.prepareCacheEmulationUsage(context.Background(), account, group, body,
+			"claude-sonnet-4-6", 60000*turn)
+		require.NotNil(t, plan)
+		r := plan.result()
+		if r == nil {
+			plan.commit()
+			continue
+		}
+		if r.CacheCreationInputTokens > 0 {
+			released++
+		} else {
+			throttled++
+			require.Positive(t, r.CacheReadInputTokens, "窗口限流只影响 creation，read 必须照常")
+		}
+		plan.commit()
+	}
+
+	require.Positive(t, released, "窗口预算用完之前必须先正常放行")
+	require.Positive(t, throttled, "600k/300s 的窗口预算在重会话里必须真的会命中")
+}
+
 // 缓存是旁路能力：畸形请求体、离谱配置都不能让请求失败。
 func TestCachePlanNeverFailsRequestOnMalformedBody(t *testing.T) {
 	resetCacheTracker()
@@ -289,10 +403,10 @@ func TestKindDefaultsAreSeparate(t *testing.T) {
 
 // smallPayloadCacheConfig 给玩具级负载的单测用。
 //
-// 生产默认值对齐 kiro.rs：创建增量下限 12000 token、未缓存 input 下限 1024。
-// 而这些单测的请求体只有一两千 token，带着生产默认值跑，创建永远达不到下限，
-// 结果恒为 nil —— 测的就不是被测行为了。需要真实量级的用例请直接用
-// DefaultCacheStrategyConfig，并把负载做到每轮几十 K。
+// 生产默认值带着未缓存 input 下限 1024 与创建上限（单次 10 万 / 窗口 60 万），
+// 而这些单测的请求体只有一两千 token，带着生产默认值跑，结果常常恒为 nil ——
+// 测的就不是被测行为了。需要真实量级的用例请直接用 DefaultCacheStrategyConfig，
+// 并把负载做到每轮几十 K。
 func smallPayloadCacheConfig(kind string) CacheStrategyConfig {
 	cfg := DefaultCacheStrategyConfig(kind)
 	cfg.CreationControl = CacheCreationControl{}
@@ -311,9 +425,11 @@ func TestCreationControlSuppressionDoesNotStallCacheGrowth(t *testing.T) {
 	strategyID := int64(900305)
 	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
 	cfg.AllowDerivedSession = true
+	// 节流必须显式配：默认值里三个频率闸门已归零（见
+	// TestPrefixDefaultReleasesCreationEveryTurn），靠默认值就测不到压制路径了。
+	cfg.CreationControl.MinCreationIntervalSeconds = 6
 	cfg, err := NormalizeCacheStrategyConfig(cfg)
 	require.NoError(t, err)
-	// 默认值必须自带节流，否则这条测试测不到压制路径。
 	require.True(t, cfg.CreationControl.Enabled)
 	require.Positive(t, cfg.CreationControl.MinCreationIntervalSeconds)
 	GlobalCacheStrategyRegistry().Put(&CacheStrategy{
@@ -340,7 +456,7 @@ func TestCreationControlSuppressionDoesNotStallCacheGrowth(t *testing.T) {
 		plan.commit()
 	}
 
-	// 默认 6 秒最小间隔意味着这组无等待调用里只有第 1 轮能上报创建，后面全被压制 ——
+	// 6 秒最小间隔意味着这组无等待调用里只有第 1 轮能上报创建，后面全被压制 ——
 	// 而 cache_read 必须照常跟着上下文往上走。
 	//
 	// 前两轮不做断言：断点位置由 token 估算推导，上下文体量变化时会整体平移，

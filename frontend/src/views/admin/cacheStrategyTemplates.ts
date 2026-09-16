@@ -122,15 +122,20 @@ export function createDefaultCacheStrategyConfig(
       final_output_jitter_min_tokens: 12345,
       final_output_jitter_max_tokens: 45312,
     },
-    // 创建控制对齐参考实现的 PromptCacheCreationControlConfig：
-    // （5 分钟窗口 60 万、单次 10 万、增量下限 1.2 万、最小间隔 6 秒、
-    // 最少间隔 2 次成功请求）。这组值避免快速会话被 60 秒/30k 默认值
-    // 压成低频、固定的缓存写入。
+    // 创建控制默认只留「上限」，三个频率闸门一律留 0（= 不节流）。
+    // 与后端 DefaultCacheStrategyConfig 逐项一致，改这里必须同步改那边。
+    //
+    // 上限（单次 10 万 / 5 分钟 60 万）是防离谱值的护栏。而闸门三项
+    // （增量下限 12000、最少间隔 2 次请求、最小间隔 6 秒）抄自参考实现，
+    // 那边一次创建写整段前缀；我们默认开增量创建，每轮只写几百到几千 token，
+    // 于是每个闸门都能单独把每轮上报的 cache_creation 压成 0。
+    // 真实上游 20 轮实测：闸门开着时 create 唯一值 2/20、read&create 同时为正
+    // 0/20；三项归零后是 20/20 与 19/20。需要节流请显式配置（见 rapid_growth）。
     creation_control: {
       enabled: true,
-      min_creation_delta_tokens: 12000,
-      min_successful_requests_between: 2,
-      min_creation_interval_seconds: 6,
+      min_creation_delta_tokens: 0,
+      min_successful_requests_between: 0,
+      min_creation_interval_seconds: 0,
       max_creation_tokens_per_event: 100000,
       creation_budget_window_seconds: 300,
       max_creation_tokens_per_window: 600000,

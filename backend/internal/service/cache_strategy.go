@@ -255,15 +255,31 @@ func DefaultCacheStrategyConfig(kind string) CacheStrategyConfig {
 		// 触顶抖动。留 0 的话所有触顶请求会上报同一个数值，一眼看去就是伪造的。
 		CapJitterMinTokens: 12000, CapJitterMaxTokens: 24000,
 		UncachedInputMinTokens: 1024, UncachedInputMaxTokens: 4096,
-		// 创建控制的默认限额对齐线上 kiro.rs 运行配置：
-		// 5 分钟窗口 60 万、单次 10 万、增量下限 1.2 万、最小间隔 6 秒、
-		// 至少间隔 2 次成功请求。旧的 60 秒 / 3 万 / 12 万组合会让快速会话
-		// 看起来像「十几条请求才写一次」，并把大量记录压成 30k。
+		// 创建控制默认只留「上限」，三个频率闸门一律留 0（= 不节流）。
+		//
+		// 上限（单次 10 万 / 5 分钟窗口 60 万）是防离谱值的护栏，留着无副作用。
+		// 但下面三项是**闸门**，它们会把 cache_creation 直接压成 0：
+		//   min_creation_delta_tokens       原值 12000
+		//   min_successful_requests_between 原值 2
+		//   min_creation_interval_seconds   原值 6
+		// 这三个值抄自 kiro.rs 的线上配置，那边一次创建写的是整段前缀（几万 token、
+		// 间隔很久）；我们 incremental_create_enabled 默认开着，每轮只写增量
+		// （实测 342~2929 token、间隔不到 1 秒），于是三个闸门每一个都能单独让
+		// 每轮上报的 creation 恒为 0：
+		//   - delta 12000：增量永远达不到门槛（20 轮累计才一万出头）
+		//   - requests_between 2：最好情况也只能每 3 轮写一次
+		//   - interval 6s：每轮不到 1 秒，等于每 6~7 轮才放行一次
+		// 2026-09-16 真实上游 20 轮实测：这组默认值下 cache_creation 唯一值 2/20、
+		// read 与 create 同时为正 0/20；只把三个闸门归零后变成 20/20 与 19/20。
+		// 对照组（原生 Anthropic 上游）几乎每轮都同时下发 read 与 creation，
+		// 所以「每轮都写一点」才是要复刻的形态。
+		//
+		// 要节流请显式配这三项 —— 内置模板 rapid_growth 就是这么做的。
 		CreationControl: CacheCreationControl{
 			Enabled:                      true,
-			MinCreationDeltaTokens:       12000,
-			MinSuccessfulRequestsBetween: 2,
-			MinCreationIntervalSeconds:   6,
+			MinCreationDeltaTokens:       0,
+			MinSuccessfulRequestsBetween: 0,
+			MinCreationIntervalSeconds:   0,
 			MaxCreationTokensPerEvent:    100000,
 			CreationBudgetWindowSeconds:  300,
 			MaxCreationTokensPerWindow:   600000,

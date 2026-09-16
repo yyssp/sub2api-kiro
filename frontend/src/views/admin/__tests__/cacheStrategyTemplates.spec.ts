@@ -98,9 +98,15 @@ describe("cache strategy templates", () => {
       scale_min_input_tokens: 20000,
       max_simulated_input_tokens: 300000,
     });
+    // 三个频率闸门必须留 0：incremental_create 每轮只写增量（实测几百~几千
+    // token、间隔不到 1 秒），任一闸门非零都会把每轮上报的 cache_creation 压成 0。
+    // 2026-09-16 真实上游 20 轮实测：原来的 12000/2/6 让 creation 唯一值只有 2/20；
+    // 归零后变成 20/20。上限保留，那只是防离谱值的护栏。
     expect(config?.creation_control).toMatchObject({
-      min_successful_requests_between: 2,
-      min_creation_interval_seconds: 6,
+      enabled: true,
+      min_creation_delta_tokens: 0,
+      min_successful_requests_between: 0,
+      min_creation_interval_seconds: 0,
       max_creation_tokens_per_event: 100000,
       max_creation_tokens_per_window: 600000,
     });
