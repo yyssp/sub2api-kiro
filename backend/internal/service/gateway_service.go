@@ -606,6 +606,11 @@ type ClaudeUsage struct {
 	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
 	KiroCredits              float64
+	// UpstreamBillingScale 为真表示上面那三个 token 字段是上游的**计费口径**，
+	// 不是真实 token 数（判据见 upstreamUsageIsBillingScale）。
+	// preserve_upstream_cache_usage 靠它决定「上游真值」到底能不能采信。
+	// json:"-"：这是我们自己的判定结果，不能出现在回给客户端的响应里。
+	UpstreamBillingScale bool `json:"-"`
 }
 
 // ForwardResult 转发结果

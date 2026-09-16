@@ -412,16 +412,29 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 	}
 }
 
-func mergeKiroCreditsFromAnthropicPayload(dst *ClaudeUsage, payload string) {
+// mergeKiroSignalsFromAnthropicPayload 从 Anthropic 形态的 payload 里取两个 Kiro 侧信号：
+// 积分消耗，以及「这份 usage 是不是计费口径」（见 upstreamUsageIsBillingScale）。
+// 两者都藏在同一个 usage 对象里，分开解析等于把同一段 JSON 走两遍。
+func mergeKiroSignalsFromAnthropicPayload(dst *ClaudeUsage, payload string) {
 	if dst == nil || payload == "" || !gjson.Valid(payload) {
 		return
 	}
-	if credits := kiroCreditsFromUsageGJSON(gjson.Get(payload, "usage")); credits > 0 {
-		dst.KiroCredits = credits
-		return
-	}
-	if credits := kiroCreditsFromUsageGJSON(gjson.Get(payload, "message.usage")); credits > 0 {
-		dst.KiroCredits = credits
+	creditsFound := false
+	for _, path := range []string{"usage", "message.usage"} {
+		usage := gjson.Get(payload, path)
+		if !usage.Exists() {
+			continue
+		}
+		if !creditsFound {
+			if credits := kiroCreditsFromUsageGJSON(usage); credits > 0 {
+				dst.KiroCredits = credits
+				creditsFound = true
+			}
+		}
+		// 只置位、不清零：带 kiro_* 字段的往往只有其中一帧。
+		if upstreamUsageIsBillingScale(usage) {
+			dst.UpstreamBillingScale = true
+		}
 	}
 }
 
@@ -522,7 +535,7 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 			if event.Usage != nil {
 				mergeAnthropicUsage(&usage, *event.Usage)
 			}
-			mergeKiroCreditsFromAnthropicPayload(&usage, payload)
+			mergeKiroSignalsFromAnthropicPayload(&usage, payload)
 			if event.Delta != nil && event.Delta.StopReason != "" {
 				sawTerminalEvent = true
 				if finalResp != nil {
@@ -799,7 +812,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			continue
 		}
 
-		mergeKiroCreditsFromAnthropicPayload(&usage, payload)
+		mergeKiroSignalsFromAnthropicPayload(&usage, payload)
 
 		if processEvent(&event) {
 			return resultWithUsage(), nil

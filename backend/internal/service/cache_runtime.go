@@ -176,7 +176,11 @@ func projectClaudeUsage(dst *ClaudeUsage, simulated *cacheEmulationUsage, policy
 	// `simulated == nil && policy.Preserve...`，而挂了策略 simulated 必然非 nil，于是开关
 	// 恒不生效 —— UI 上的「优先保留上游缓存 usage」是个死开关。实测上游下发 0/0/21 的那轮
 	// 被报成 19/0/5300（253x）。开关既然暴露给运维，就得真的能把真值放出来。
-	hadCacheEvidence := policy.PreserveUpstreamCacheUsage &&
+	//
+	// 再让位一层：上游 usage 是「计费口径」时不能采信（判据见
+	// upstreamUsageIsBillingScale）。Kiro 系上游折价后的三个字段之和只有真实 prompt
+	// 的三分之一，采信它会把上下文规模连带计费一起缩掉三分之二。
+	hadCacheEvidence := upstreamCacheUsageIsTrustworthy(policy.PreserveUpstreamCacheUsage, dst.UpstreamBillingScale) &&
 		(dst.CacheReadInputTokens > 0 || dst.CacheCreationInputTokens > 0 ||
 			dst.CacheCreation5mTokens > 0 || dst.CacheCreation1hTokens > 0)
 	if !hadCacheEvidence && simulated != nil {
@@ -197,9 +201,9 @@ func projectOpenAIUsage(dst *OpenAIUsage, simulated *cacheEmulationUsage, policy
 		return
 	}
 	rawInput, rawOutput := dst.InputTokens, dst.OutputTokens
-	// 与 projectClaudeUsage 同理：默认强制整形，preserve 开着且上游确有 cache 字段时
-	// 让位于真值，见那边的说明。
-	hadCacheEvidence := policy.PreserveUpstreamCacheUsage &&
+	// 与 projectClaudeUsage 同理：默认强制整形，preserve 开着、上游确有 cache 字段
+	// 且那份 usage 不是计费口径时才让位于真值，见那边的说明。
+	hadCacheEvidence := upstreamCacheUsageIsTrustworthy(policy.PreserveUpstreamCacheUsage, dst.UpstreamBillingScale) &&
 		(dst.CacheReadInputTokens > 0 || dst.CacheCreationInputTokens > 0)
 	if !hadCacheEvidence && simulated != nil {
 		dst.InputTokens = simulated.InputTokens + simulated.CacheReadInputTokens + simulated.CacheCreationInputTokens

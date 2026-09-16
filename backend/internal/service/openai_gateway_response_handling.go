@@ -1539,17 +1539,31 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		CacheReadInputTokens:     cacheReadTokens,
 		ImageOutputTokens:        int(imageOutputTokens),
 		KiroCredits:              kiroCreditsFromUsageGJSON(value),
+		UpstreamBillingScale:     upstreamUsageIsBillingScale(value),
 	}, true
 }
 
-func mergeOpenAIUsageKiroCreditsFromJSON(usage *OpenAIUsage, body []byte) {
+// mergeOpenAIUsageKiroSignalsFromJSON 从响应体里取两个 Kiro 侧信号：积分消耗，
+// 以及「这份 usage 是不是计费口径」（见 upstreamUsageIsBillingScale）。
+func mergeOpenAIUsageKiroSignalsFromJSON(usage *OpenAIUsage, body []byte) {
 	if usage == nil || len(body) == 0 || !gjson.ValidBytes(body) {
 		return
 	}
+	creditsFound := false
 	for _, path := range []string{"usage", "response.usage", "message.usage"} {
-		if credits := kiroCreditsFromUsageGJSON(gjson.GetBytes(body, path)); credits > 0 {
-			usage.KiroCredits = credits
-			return
+		node := gjson.GetBytes(body, path)
+		if !node.Exists() {
+			continue
+		}
+		if !creditsFound {
+			if credits := kiroCreditsFromUsageGJSON(node); credits > 0 {
+				usage.KiroCredits = credits
+				creditsFound = true
+			}
+		}
+		// 只置位、不清零：带 kiro_* 字段的往往只有其中一帧/一个位置。
+		if upstreamUsageIsBillingScale(node) {
+			usage.UpstreamBillingScale = true
 		}
 	}
 }

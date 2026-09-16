@@ -228,6 +228,9 @@ type OpenAIUsage struct {
 	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
 	KiroCredits              float64
+	// UpstreamBillingScale 与 ClaudeUsage 同名字段同义：上游给的是计费口径而非
+	// 真实 token 数，preserve_upstream_cache_usage 不能采信。
+	UpstreamBillingScale bool `json:"-"`
 }
 
 // OpenAIForwardResult represents the result of forwarding

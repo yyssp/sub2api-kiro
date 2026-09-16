@@ -767,7 +767,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if event.Response != nil && event.Response.Usage != nil {
 				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
 			}
-			mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
+			mergeOpenAIUsageKiroSignalsFromJSON(&usage, []byte(payload))
 			if terminalEventType == "response.completed" || terminalEventType == "response.done" {
 				mergeAndCommitOpenAICachePlan(c, &usage, false)
 				if event.Response != nil {

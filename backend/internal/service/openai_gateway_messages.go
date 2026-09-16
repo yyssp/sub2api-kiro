@@ -862,7 +862,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 							if response.Usage != nil {
 								usage = copyOpenAIUsageFromResponsesUsage(response.Usage)
 							}
-							mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
+							mergeOpenAIUsageKiroSignalsFromJSON(&usage, []byte(payload))
 							return response, usage, acc, nil
 						}
 					}
@@ -912,7 +912,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				if response.Usage != nil {
 					usage = copyOpenAIUsageFromResponsesUsage(response.Usage)
 				}
-				mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
+				mergeOpenAIUsageKiroSignalsFromJSON(&usage, []byte(payload))
 				return response, usage, acc, nil
 			}
 
@@ -1042,7 +1042,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			if event.Usage != nil {
 				usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
 			}
-			mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
+			mergeOpenAIUsageKiroSignalsFromJSON(&usage, []byte(payload))
 			if eventType == "response.completed" || eventType == "response.done" {
 				mergeAndCommitOpenAICachePlan(c, &usage, false)
 				if event.Response != nil {

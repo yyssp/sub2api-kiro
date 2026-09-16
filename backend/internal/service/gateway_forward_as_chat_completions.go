@@ -309,7 +309,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 			if event.Usage != nil {
 				mergeAnthropicUsage(&usage, *event.Usage)
 			}
-			mergeKiroCreditsFromAnthropicPayload(&usage, payload)
+			mergeKiroSignalsFromAnthropicPayload(&usage, payload)
 			if event.Delta != nil && event.Delta.StopReason != "" {
 				sawTerminalEvent = true
 				if finalResp != nil {
@@ -535,7 +535,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
 		}
-		mergeKiroCreditsFromAnthropicPayload(&usage, payload)
+		mergeKiroSignalsFromAnthropicPayload(&usage, payload)
 
 		if processAnthropicEvent(&event) {
 			return resultWithUsage(), nil
