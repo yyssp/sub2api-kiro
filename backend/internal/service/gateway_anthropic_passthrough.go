@@ -559,7 +559,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 
 			if !clientDisconnected {
 				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
-				restored = stripSub2apiInternalUsageFields(restored)
+				restored = stripPrivateUsageFieldsFromSSELine(restored)
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
@@ -674,16 +674,17 @@ func extractAnthropicSSEDataLine(line string) (string, bool) {
 	return line[start:], true
 }
 
-func stripSub2apiInternalUsageFields(line string) string {
-	if !strings.Contains(line, "_sub2api_kiro_credits") {
-		return line
-	}
+// stripPrivateUsageFieldsFromSSELine 清掉 SSE data 行 usage 里的私有字段
+// （我们自己的内部标记 + 上游的 kiro_* 私有字段，见
+// gateway_downstream_usage_sanitize.go）。passthrough 是逐行转发的，所以这里是
+// 这条链路上唯一能拦住它们的地方。
+func stripPrivateUsageFieldsFromSSELine(line string) string {
 	data, ok := extractAnthropicSSEDataLine(line)
 	if !ok {
 		return line
 	}
-	cleaned, err := sjson.Delete(data, "usage._sub2api_kiro_credits")
-	if err != nil {
+	cleaned := stripPrivateUsageFieldsFromJSON(data)
+	if cleaned == data {
 		return line
 	}
 	return line[:len(line)-len(data)] + cleaned
@@ -772,6 +773,10 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 	usageNode := parsed.Get("usage")
 	if parsed.Get("type").String() == "message_start" {
 		usageNode = parsed.Get("message.usage")
+	}
+	// 只置位、不清零：带 kiro_* 字段的往往只有其中一帧，后面的帧不该把判定抹掉。
+	if upstreamUsageIsBillingScale(usageNode) {
+		usage.UpstreamBillingScale = true
 	}
 	normalizeAnthropicCompatiblePromptUsage(usageNode, usage)
 }
@@ -972,6 +977,10 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 		contentType = "application/json"
 	}
 	body = reverseToolNamesIfPresent(c, body)
+	// 私有 usage 字段不出下游（见 gateway_downstream_usage_sanitize.go）。这是上面
+	// 「没挂策略就原样透传上游 JSON」的唯一例外：kiro_* 之类的私有字段本就不属于
+	// Anthropic 协议，字节级保真不能用来当转发私有协议内容的理由。
+	body = stripPrivateUsageFieldsFromJSONBytes(body)
 	c.Data(resp.StatusCode, contentType, body)
 	return usage, nil
 }

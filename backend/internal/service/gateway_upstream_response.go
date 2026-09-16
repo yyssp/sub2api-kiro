@@ -993,13 +993,11 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 				}
 			}
 		}
-		if eventType == "message_delta" {
-			if usageObj, ok := event["usage"].(map[string]any); ok {
-				if _, exists := usageObj["_sub2api_kiro_credits"]; exists {
-					delete(usageObj, "_sub2api_kiro_credits")
-					eventChanged = true
-				}
-			}
+		// 私有 usage 字段一律不出下游。必须放在 extractSSEUsagePatch/投影之后：
+		// 内部标记与 kiro_* 判据都要先读到，再从回给客户端的事件里抹掉。
+		// 见 gateway_downstream_usage_sanitize.go。
+		if eventType == "message_start" || eventType == "message_delta" {
+			eventChanged = sanitizeEventUsageForClient(event) || eventChanged
 		}
 		if anthropicStreamEventIsTerminal(eventName, dataLine) {
 			sawTerminalEvent = true
@@ -1276,6 +1274,9 @@ type sseUsagePatch struct {
 	hasCacheCreation1h       bool
 	kiroCredits              float64
 	hasKiroCredits           bool
+	// billingScale 一旦在任意一帧被识别出来就不再翻回去：message_start 带着
+	// kiro_* 字段、message_delta 不带是常见形态，后面的帧不该把判定抹掉。
+	billingScale bool
 }
 
 func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePatch {
@@ -1315,6 +1316,7 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 				patch.hasCacheCreation1h = true
 			}
 		}
+		patch.billingScale = upstreamUsageMapIsBillingScale(usageObj)
 		return patch
 
 	case "message_delta":
@@ -1354,6 +1356,7 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 			patch.kiroCredits = v
 			patch.hasKiroCredits = true
 		}
+		patch.billingScale = upstreamUsageMapIsBillingScale(usageObj)
 		return patch
 	}
 
@@ -1385,6 +1388,10 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	}
 	if patch.hasKiroCredits {
 		usage.KiroCredits = patch.kiroCredits
+	}
+	// 只置位、不清零：见 sseUsagePatch.billingScale 的说明。
+	if patch.billingScale {
+		usage.UpstreamBillingScale = true
 	}
 }
 
@@ -1543,6 +1550,9 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		response.Usage.CacheCreation5mTokens = int(cc5m.Int())
 		response.Usage.CacheCreation1hTokens = int(cc1h.Int())
 	}
+	if upstreamUsageIsBillingScale(gjson.GetBytes(body, "usage")) {
+		response.Usage.UpstreamBillingScale = true
+	}
 
 	// 兼容 Kimi cached_tokens → cache_read_input_tokens
 	if response.Usage.CacheReadInputTokens == 0 {
@@ -1612,6 +1622,9 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	}
 
 	body = reverseToolNamesIfPresent(c, body)
+	// 私有 usage 字段不出下游（见 gateway_downstream_usage_sanitize.go）。
+	// 放在最后一步：上面的解析/整形都已经读完自己需要的字段。
+	body = stripPrivateUsageFieldsFromJSONBytes(body)
 
 	// 写入响应
 	c.Data(resp.StatusCode, contentType, body)

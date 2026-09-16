@@ -256,6 +256,8 @@ func (s *OpenAIGatewayService) handleNativeAnthropicBufferedResponse(
 		contentType = "application/json"
 	}
 	body = reverseToolNamesIfPresent(c, body)
+	// 私有 usage 字段不出下游，见 gateway_downstream_usage_sanitize.go。
+	body = stripPrivateUsageFieldsFromJSONBytes(body)
 	c.Data(resp.StatusCode, contentType, body)
 
 	return &OpenAIForwardResult{
@@ -464,6 +466,8 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 
 			if !clientDisconnected {
 				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
+				// 私有 usage 字段不出下游，见 gateway_downstream_usage_sanitize.go。
+				restored = stripPrivateUsageFieldsFromSSELine(restored)
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
 					logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
