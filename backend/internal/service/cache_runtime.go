@@ -37,6 +37,10 @@ const (
 	// 缓存粒度，不应随 default 一起调整。见 minimumCacheableTokens。
 	cacheMinTokensGPT        = 1024
 	cachePrefixLookbackLimit = 10
+	// cacheSampleMaxMinJitterTokens 是 sample_max 抖动带的绝对下限。纯比例带
+	// （5%）在小上限下会塌缩成单值：max_tokens<=20 时恒等于 max_tokens-1，
+	// 与 seed 无关。见 sampleMaxWithJitter。
+	cacheSampleMaxMinJitterTokens = 4
 	// Hard safety ceiling used when the model capability registry does not
 	// provide a context window. Strategy values can further reduce it. Keep
 	// this above the combined 700k read + 500k creation stress boundary; a
@@ -165,13 +169,14 @@ func projectClaudeUsage(dst *ClaudeUsage, simulated *cacheEmulationUsage, policy
 		return
 	}
 	rawInput, rawOutput := dst.InputTokens, dst.OutputTokens
-	// 策略算出了合成值就一律采信，preserve_upstream_cache_usage 不再能否决它。
+	// 默认「挂了生效的缓存策略 ⇒ 强制整形」：上报曲线由策略决定，不能因为上游某一档
+	// 突然开始下发 cache 字段就断档（Kiro FREE 不发、付费档未知）。
 	//
-	// 语义是「分组挂了生效的缓存策略 ⇒ 强制整形」：上报曲线必须完全由策略决定，
-	// 不能因为上游某一档突然开始下发 cache 字段就断档（Kiro FREE 不发、付费档未知）。
-	// preserve 退化成「没有合成值时是否保留上游真值」的开关，仍然有意义，
-	// 但不再影响“有策略时用谁的数”。
-	hadCacheEvidence := simulated == nil && policy.PreserveUpstreamCacheUsage &&
+	// 但 preserve_upstream_cache_usage 开着时，这条默认让位于上游真值。此前这里写的是
+	// `simulated == nil && policy.Preserve...`，而挂了策略 simulated 必然非 nil，于是开关
+	// 恒不生效 —— UI 上的「优先保留上游缓存 usage」是个死开关。实测上游下发 0/0/21 的那轮
+	// 被报成 19/0/5300（253x）。开关既然暴露给运维，就得真的能把真值放出来。
+	hadCacheEvidence := policy.PreserveUpstreamCacheUsage &&
 		(dst.CacheReadInputTokens > 0 || dst.CacheCreationInputTokens > 0 ||
 			dst.CacheCreation5mTokens > 0 || dst.CacheCreation1hTokens > 0)
 	if !hadCacheEvidence && simulated != nil {
@@ -192,8 +197,9 @@ func projectOpenAIUsage(dst *OpenAIUsage, simulated *cacheEmulationUsage, policy
 		return
 	}
 	rawInput, rawOutput := dst.InputTokens, dst.OutputTokens
-	// 与 projectClaudeUsage 同理：有合成值就强制采信，见那边的说明。
-	hadCacheEvidence := simulated == nil && policy.PreserveUpstreamCacheUsage &&
+	// 与 projectClaudeUsage 同理：默认强制整形，preserve 开着且上游确有 cache 字段时
+	// 让位于真值，见那边的说明。
+	hadCacheEvidence := policy.PreserveUpstreamCacheUsage &&
 		(dst.CacheReadInputTokens > 0 || dst.CacheCreationInputTokens > 0)
 	if !hadCacheEvidence && simulated != nil {
 		dst.InputTokens = simulated.InputTokens + simulated.CacheReadInputTokens + simulated.CacheCreationInputTokens
@@ -489,14 +495,20 @@ func cacheMaxFloat(a, b float64) float64 {
 // sampleMaxWithJitter returns a positive value at or below maxTokens. The
 // range is intentionally small (up to 5% of the cap) so sample_max remains a
 // ceiling rather than becoming a target-shaped projection.
+//
+// The 5% band alone degenerates at small caps: maxTokens/20 floors to 1 for
+// any cap <= 20, and jitterWithin(1, 1, …) ignores the seed entirely, so every
+// capped record reports exactly maxTokens-1. A strategy configured with
+// max_tokens=20 emitted input_tokens=19 on all 22 turns of a real session —
+// precisely the "the numbers never move" symptom the jitter exists to prevent.
+//
+// So the band gets an absolute floor as well as the proportional one. It stays
+// clamped below maxTokens, which keeps sample_max a ceiling.
 func sampleMaxWithJitter(maxTokens int, seed uint64) int {
 	if maxTokens <= 1 {
 		return maxTokens
 	}
-	jitterMax := maxTokens / 20
-	if jitterMax < 1 {
-		jitterMax = 1
-	}
+	jitterMax := max(maxTokens/20, cacheSampleMaxMinJitterTokens)
 	if jitterMax >= maxTokens {
 		jitterMax = maxTokens - 1
 	}
@@ -796,9 +808,12 @@ func applyReportedInputWithoutCacheOpenAI(usage *OpenAIUsage, plan *cacheEmulati
 }
 
 // constrainClaudeUsageTotal applies the profile's projected total cap after
-// field-level sampling. It keeps cache reads as the strongest evidence,
-// removes creation first, and then preserves the configured uncached floor
-// whenever the cap leaves enough room.
+// field-level sampling. Overflow is taken from creation first, then from the
+// uncached input above the floor, and only last from cache reads — a read is
+// evidence of an already-existing prefix.
+//
+// Restoring the uncached floor is the exception: it takes its room from
+// cache_read first, see the comment on that branch.
 func constrainClaudeUsageTotal(usage *ClaudeUsage, totalCap, minInput int) {
 	if usage == nil || totalCap <= 0 {
 		return
@@ -830,12 +845,16 @@ func constrainClaudeUsageTotal(usage *ClaudeUsage, totalCap, minInput int) {
 	}
 	if usage.InputTokens < minInput {
 		deficit := minInput - usage.InputTokens
-		reduceCreation := min(deficit, usage.CacheCreationInputTokens)
-		usage.CacheCreationInputTokens -= reduceCreation
-		deficit -= reduceCreation
+		// 从 cache_read 里让位，而不是先砍 cache_creation，理由同
+		// constrainReportedCacheUsage：连续会话里 read 早已占满上报总量，而每轮
+		// 真实新增只有几百 token，先砍 creation 会把"本轮写入"这个事件整个抹掉，
+		// 报成"全是命中"；少报一点 read 不会凭空捏造任何东西。
+		reduceRead := min(deficit, usage.CacheReadInputTokens)
+		usage.CacheReadInputTokens -= reduceRead
+		deficit -= reduceRead
 		if deficit > 0 {
-			reduceRead := min(deficit, usage.CacheReadInputTokens)
-			usage.CacheReadInputTokens -= reduceRead
+			reduceCreation := min(deficit, usage.CacheCreationInputTokens)
+			usage.CacheCreationInputTokens -= reduceCreation
 		}
 		usage.InputTokens = max(totalCap-usage.CacheReadInputTokens-usage.CacheCreationInputTokens, 0)
 	}
@@ -871,12 +890,13 @@ func constrainOpenAIUsageTotal(usage *OpenAIUsage, totalCap, minInput int) {
 	}
 	if uncached < minInput {
 		deficit := minInput - uncached
-		reduceCreation := min(deficit, usage.CacheCreationInputTokens)
-		usage.CacheCreationInputTokens -= reduceCreation
-		deficit -= reduceCreation
+		// 让位顺序与 constrainClaudeUsageTotal 保持一致：先 read 再 creation。
+		reduceRead := min(deficit, usage.CacheReadInputTokens)
+		usage.CacheReadInputTokens -= reduceRead
+		deficit -= reduceRead
 		if deficit > 0 {
-			reduceRead := min(deficit, usage.CacheReadInputTokens)
-			usage.CacheReadInputTokens -= reduceRead
+			reduceCreation := min(deficit, usage.CacheCreationInputTokens)
+			usage.CacheCreationInputTokens -= reduceCreation
 		}
 		uncached = max(totalCap-usage.CacheReadInputTokens-usage.CacheCreationInputTokens, 0)
 		usage.InputTokens = uncached + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
@@ -1109,6 +1129,8 @@ func uncachedInputFloor(policy CacheStrategyConfig) uncachedInputBand {
 // total and preserves the configured uncached-input floor whenever feasible.
 // Cache creation is trimmed before cache reads because writes are optional
 // state transitions, while a hit is evidence of an already-existing prefix.
+// The uncached-input floor below is the exception: it takes its room from
+// cache_read first, see the comment there.
 //
 // The restored value is jittered inside [band.min, band.max] and derived from
 // the request fingerprint, so a capped conversation does not report the exact
@@ -1134,12 +1156,19 @@ func constrainReportedCacheUsage(result *cacheEmulationUsage, reportedTotal int,
 	if minInput > 0 && input < minInput {
 		target := jitterWithin(minInput, min(max(band.max, minInput), reportedTotal), seed)
 		deficit := target - input
-		reduceCreation := min(deficit, result.CacheCreationInputTokens)
-		result.CacheCreationInputTokens -= reduceCreation
-		deficit -= reduceCreation
+		// 从 cache_read 里让位，而不是先砍 cache_creation。
+		//
+		// 连续会话里每轮新增的内容不多（实测约 530 token），而 read 已经占满了
+		// 上报总量。先砍 creation 会把这几百 token 整个抹掉，于是 cache_creation
+		// 从第二轮起恒为 0：本轮确实写入了新前缀，却被报成"全是命中"。read 反而
+		// 是更该让位的一方 —— 它体量大得多，少报一点不会凭空捏造出一次缓存写入，
+		// 而抹掉 creation 会让"写入"这个事件在账单上彻底消失。
+		reduceRead := min(deficit, result.CacheReadInputTokens)
+		result.CacheReadInputTokens -= reduceRead
+		deficit -= reduceRead
 		if deficit > 0 {
-			reduceRead := min(deficit, result.CacheReadInputTokens)
-			result.CacheReadInputTokens -= reduceRead
+			reduceCreation := min(deficit, result.CacheCreationInputTokens)
+			result.CacheCreationInputTokens -= reduceCreation
 		}
 		result.CacheCreation5mInputTokens, result.CacheCreation1hInputTokens = capCacheCreationBreakdown(
 			result.CacheCreation5mInputTokens,
