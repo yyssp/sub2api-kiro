@@ -719,14 +719,27 @@ Because step 5 above pre-creates `config.yaml`, the setup wizard will be **skipp
 #### Development Mode
 
 ```bash
-# Backend (with hot reload)
+# Backend (hot reload, listens on 48788)
 cd backend
-go run ./cmd/server
+air                 # install: go install github.com/air-verse/air@latest
 
-# Frontend (with hot reload)
+# Frontend (hot reload, listens on 48780)
 cd frontend
 pnpm run dev
 ```
+
+> **Local dev ports are `48780` (frontend) and `48788` (backend) — not the `8080`
+> used in the deployment sections above.** That `8080` only applies to packaged
+> runs (script install / Docker / compiled binary).
+> The frontend proxies `/api`, `/v1` and `/setup` to the backend; for API work,
+> load tests and traffic capture, talk to `48788` directly and skip the proxy layer.
+>
+> ```bash
+> lsof -nP -iTCP -sTCP:LISTEN | grep 4878   # confirm both are running
+> curl -sS http://127.0.0.1:48788/health    # {"status":"ok"}
+> ```
+>
+> See [`docs/dev-ports.md`](docs/dev-ports.md).
 
 #### Code Generation
 

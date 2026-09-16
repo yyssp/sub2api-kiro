@@ -146,6 +146,7 @@ docs/*
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
 !docs/cursor-protocol-hardening.md
+!docs/dev-ports.md
 !docs/kiro-protocol-ecosystem-analysis.md
 !docs/kiro-research/
 !docs/kiro-research/*.md

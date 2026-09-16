@@ -706,14 +706,25 @@ websocat -H="Sec-WebSocket-Protocol: sub2api-admin, jwt.<ADMIN_TOKEN>" ws://loca
 #### 开发模式
 
 ```bash
-# 后端（支持热重载）
+# 后端（热重载，监听 48788）
 cd backend
-go run ./cmd/server
+air                 # 安装：go install github.com/air-verse/air@latest
 
-# 前端（支持热重载）
+# 前端（热重载，监听 48780）
 cd frontend
 pnpm run dev
 ```
+
+> **本地开发端口是 `48780`（前端）和 `48788`（后端），不是本文档部署章节里的 `8080`。**
+> 部署章节的 `8080` 只适用于打包运行（脚本安装 / Docker / 源码编译产物）。
+> 前端把 `/api`、`/v1`、`/setup` 反代到后端；联调、压测、抓包请直连 `48788`，绕开代理层。
+>
+> ```bash
+> lsof -nP -iTCP -sTCP:LISTEN | grep 4878   # 确认两个服务在跑
+> curl -sS http://127.0.0.1:48788/health    # {"status":"ok"}
+> ```
+>
+> 详见 [`docs/dev-ports.md`](docs/dev-ports.md)。
 
 #### 代码生成
 
