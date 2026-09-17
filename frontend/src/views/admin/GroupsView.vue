@@ -503,6 +503,19 @@
           />
           <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
         </div>
+        <div v-if="!authStore.isSimpleMode">
+          <label class="input-label">{{
+            t("admin.groups.form.cacheStrategy")
+          }}</label>
+          <Select
+            v-model="createForm.cache_strategy_id"
+            :options="cacheStrategyOptions"
+            :placeholder="t('admin.groups.form.noCacheStrategy')"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.form.cacheStrategyHint") }}
+          </p>
+        </div>
         <!-- 从分组复制账号 -->
         <div v-if="!authStore.isSimpleMode && copyAccountsGroupOptions.length > 0">
           <div class="mb-1.5 flex items-center gap-1">
@@ -2168,6 +2181,19 @@
             data-tour="group-form-platform"
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
+        </div>
+        <div v-if="!authStore.isSimpleMode">
+          <label class="input-label">{{
+            t("admin.groups.form.cacheStrategy")
+          }}</label>
+          <Select
+            v-model="editForm.cache_strategy_id"
+            :options="cacheStrategyOptions"
+            :placeholder="t('admin.groups.form.noCacheStrategy')"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.form.cacheStrategyHint") }}
+          </p>
         </div>
         <template v-if="!authStore.isSimpleMode">
         <!-- 从分组复制账号（编辑时） -->
@@ -4304,6 +4330,7 @@ import { useAppStore } from "@/stores/app";
 import { useAuthStore } from "@/stores/auth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
+import type { CacheStrategy } from "@/api/admin/cacheStrategies";
 import type {
   AdminGroup,
   CodexModelsManifestConfig,
@@ -4349,7 +4376,7 @@ import {
 import type { ChannelModelPricing } from "@/api/admin/channels";
 import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
-import { extractApiErrorMessage } from "@/utils/apiError";
+import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
 import { useKeyedDebouncedSearch } from "@/composables/useKeyedDebouncedSearch";
 import { getPersistedPageSize } from "@/composables/usePersistedPageSize";
 import {
@@ -4936,6 +4963,17 @@ type ReasoningEffortPolicyFieldsExpose = {
 };
 const createReasoningEffortPolicyRef = ref<ReasoningEffortPolicyFieldsExpose | null>(null);
 const editReasoningEffortPolicyRef = ref<ReasoningEffortPolicyFieldsExpose | null>(null);
+const cacheStrategies = ref<CacheStrategy[]>([]);
+const cacheStrategyOptions = computed(() => [
+  {
+    value: null,
+    label: t("admin.groups.form.noCacheStrategy"),
+  },
+  ...cacheStrategies.value.map((strategy) => ({
+    value: strategy.id,
+    label: strategy.name,
+  })),
+]);
 
 // 固定账号获取 Codex Model Manifest（仅 openai 分组编辑对话框）
 type CodexManifestAccountsFieldExpose = {
@@ -4990,6 +5028,7 @@ const createForm = reactive({
   name: "",
   description: "",
   platform: "anthropic" as GroupPlatform,
+  cache_strategy_id: null as number | null,
   rate_multiplier: 1.0,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
@@ -5357,6 +5396,7 @@ const editForm = reactive({
   name: "",
   description: "",
   platform: "anthropic" as GroupPlatform,
+  cache_strategy_id: null as number | null,
   rate_multiplier: 1.0,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
@@ -5699,6 +5739,19 @@ const loadGroups = async () => {
   }
 };
 
+const loadCacheStrategies = async () => {
+  if (authStore.isSimpleMode) {
+    cacheStrategies.value = [];
+    return;
+  }
+  try {
+    cacheStrategies.value = await adminAPI.cacheStrategies.list();
+  } catch (error) {
+    cacheStrategies.value = [];
+    console.error("Error loading cache strategies:", error);
+  }
+};
+
 const formatCost = (cost: number): string => {
   if (cost >= 1000) return cost.toFixed(0);
   if (cost >= 100) return cost.toFixed(1);
@@ -5823,6 +5876,7 @@ const closeCreateModal = () => {
   createForm.name = "";
   createForm.description = "";
   createForm.platform = "anthropic";
+  createForm.cache_strategy_id = null;
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
@@ -6100,7 +6154,12 @@ const handleCreateGroup = async () => {
     }
   } catch (error: any) {
     appStore.showError(
-      extractApiErrorMessage(error, t("admin.groups.failedToCreate")),
+      extractI18nErrorMessage(
+        error,
+        t,
+        "admin.groups",
+        t("admin.groups.failedToCreate"),
+      ),
     );
     console.error("Error creating group:", error);
     // Don't advance tour on error
@@ -6114,6 +6173,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.name = group.name;
   editForm.description = group.description || "";
   editForm.platform = group.platform;
+  editForm.cache_strategy_id = group.cache_strategy_id ?? null;
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
@@ -6243,6 +6303,7 @@ const closeEditModal = () => {
   clearAllAccountSearchState();
   showEditModal.value = false;
   editingGroup.value = null;
+  editForm.cache_strategy_id = null;
   editForm.max_reasoning_effort = "";
   editForm.max_reasoning_effort_over_limit = reasoningEffortOverLimitDowngrade;
   editForm.reasoning_effort_mappings = [];
@@ -6460,7 +6521,12 @@ const handleUpdateGroup = async () => {
     loadGroups();
   } catch (error: any) {
     appStore.showError(
-      extractApiErrorMessage(error, t("admin.groups.failedToUpdate")),
+      extractI18nErrorMessage(
+        error,
+        t,
+        "admin.groups",
+        t("admin.groups.failedToUpdate"),
+      ),
     );
     console.error("Error updating group:", error);
   } finally {
@@ -6960,6 +7026,7 @@ const saveSortOrder = async () => {
 onMounted(() => {
   loadGroups();
   if (!authStore.isSimpleMode) {
+    void loadCacheStrategies();
     void loadLiveCapability();
     loadModelAllowlistCandidates("create", 0, createForm.platform);
   }

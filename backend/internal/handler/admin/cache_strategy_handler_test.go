@@ -15,8 +15,10 @@ import (
 )
 
 type cacheStrategyHandlerRepoStub struct {
-	boundGroups []service.Group
-	setGroupIDs []int64
+	boundGroups     []service.Group
+	setGroupIDs     []int64
+	boundGroupCount int
+	deleteCalls     int
 }
 
 func (s *cacheStrategyHandlerRepoStub) Create(context.Context, *service.CacheStrategy) error {
@@ -36,11 +38,12 @@ func (s *cacheStrategyHandlerRepoStub) Update(context.Context, *service.CacheStr
 }
 
 func (s *cacheStrategyHandlerRepoStub) Delete(context.Context, int64) error {
-	panic("unexpected Delete call")
+	s.deleteCalls++
+	return nil
 }
 
 func (s *cacheStrategyHandlerRepoStub) CountBoundGroups(context.Context, int64) (int, error) {
-	return 0, nil
+	return s.boundGroupCount, nil
 }
 
 func (s *cacheStrategyHandlerRepoStub) ListBoundGroups(context.Context, int64) ([]service.Group, error) {
@@ -104,6 +107,27 @@ func TestCacheStrategyHandlerBindGroupsReturnsStructuredConflict(t *testing.T) {
 		"reason":                "group is already bound to another cache strategy; unbind it before rebinding",
 	}, envelope.Metadata)
 	require.Empty(t, repo.setGroupIDs)
+}
+
+func TestCacheStrategyHandlerDeleteBoundStrategyReturnsStructuredConflict(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &cacheStrategyHandlerRepoStub{boundGroupCount: 3}
+	handler := NewCacheStrategyHandler(service.NewCacheStrategyService(repo))
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/admin/cache-strategies/7001", nil)
+	c.Params = gin.Params{{Key: "id", Value: "7001"}}
+
+	handler.Delete(c)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	var envelope response.Response
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &envelope))
+	require.Equal(t, http.StatusConflict, envelope.Code)
+	require.Equal(t, "CACHE_STRATEGY_BOUND_TO_GROUPS", envelope.Reason)
+	require.Equal(t, "3", envelope.Metadata["bound_group_count"])
+	require.Zero(t, repo.deleteCalls)
 }
 
 func int64Ptr(v int64) *int64 { return &v }

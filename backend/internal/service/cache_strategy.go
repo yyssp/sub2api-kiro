@@ -46,6 +46,19 @@ var (
 		"CACHE_STRATEGY_GROUP_CONFLICT",
 		"group is already bound to a cache strategy",
 	)
+	ErrCacheStrategyNotFound = infraerrors.NotFound(
+		"CACHE_STRATEGY_NOT_FOUND",
+		"cache strategy not found",
+	)
+)
+
+// ErrCacheStrategyBoundToGroups is returned when an administrator attempts to
+// delete a strategy that is still referenced by one or more groups. Keeping
+// this as a structured conflict ensures the API exposes an actionable business
+// error instead of falling back to the generic "internal error" response.
+var ErrCacheStrategyBoundToGroups = infraerrors.Conflict(
+	"CACHE_STRATEGY_BOUND_TO_GROUPS",
+	"cache strategy cannot be deleted while it is bound to groups",
 )
 
 // CacheUsageFieldMode controls how one usage bucket is projected to the
@@ -688,7 +701,9 @@ func (s *CacheStrategyService) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 	if count > 0 {
-		return fmt.Errorf("cache strategy is still bound to %d group(s)", count)
+		return ErrCacheStrategyBoundToGroups.WithMetadata(map[string]string{
+			"bound_group_count": strconv.Itoa(count),
+		})
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err

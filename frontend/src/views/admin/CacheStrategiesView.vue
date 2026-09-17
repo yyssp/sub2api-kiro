@@ -1618,6 +1618,7 @@
             v-model="selectedGroupIds"
             :groups="groups"
             :label="t('admin.cacheStrategies.boundGroups')"
+            :disabled-group-ids="disabledGroupIds"
             searchable="auto"
           />
         </section>
@@ -1877,6 +1878,25 @@ const filteredItems = computed(() => {
   });
 });
 
+const editingStrategyId = computed(() => editing.value?.id ?? 0);
+
+const disabledGroupIds = computed(() =>
+  groups.value
+    .filter((group) => {
+      const strategyId = group.cache_strategy_id ?? null;
+      return strategyId !== null && strategyId !== editingStrategyId.value;
+    })
+    .map((group) => group.id),
+);
+
+async function loadGroups() {
+  try {
+    groups.value = await groupsAPI.getAllIncludingInactive();
+  } catch {
+    groups.value = [];
+  }
+}
+
 function defaults(kind: CacheStrategyConfig["kind"] = "prefix") {
   return createDefaultCacheStrategyConfig(kind);
 }
@@ -2132,7 +2152,7 @@ async function save() {
 
     closeEditor();
     appStore.showSuccess(t("admin.cacheStrategies.saveSuccess"));
-    await load();
+    await Promise.all([load(), loadGroups()]);
   } catch (e: any) {
     const message = extractI18nErrorMessage(
       e,
@@ -2213,16 +2233,6 @@ async function confirmRemove() {
 }
 
 onMounted(async () => {
-  await Promise.all([
-    load(),
-    groupsAPI
-      .getAllIncludingInactive()
-      .then((value) => {
-        groups.value = value;
-      })
-      .catch(() => {
-        groups.value = [];
-      }),
-  ]);
+  await Promise.all([load(), loadGroups()]);
 });
 </script>

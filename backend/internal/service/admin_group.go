@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -488,6 +489,34 @@ func normalizeUpdateGroupInputForSimpleMode(input *UpdateGroupInput) {
 	*input = UpdateGroupInput{Name: input.Name, Description: input.Description}
 }
 
+func normalizeCacheStrategyID(id *int64) *int64 {
+	if id == nil || *id <= 0 {
+		return nil
+	}
+	value := *id
+	return &value
+}
+
+func (s *adminServiceImpl) validateCacheStrategyID(ctx context.Context, id *int64) (*int64, error) {
+	normalized := normalizeCacheStrategyID(id)
+	if normalized == nil {
+		return nil, nil
+	}
+	if s.cacheStrategyLookup == nil {
+		return normalized, nil
+	}
+	strategy, err := s.cacheStrategyLookup.GetByID(ctx, *normalized)
+	if err != nil {
+		return nil, err
+	}
+	if strategy == nil {
+		return nil, ErrCacheStrategyNotFound.WithMetadata(map[string]string{
+			"cache_strategy_id": strconv.FormatInt(*normalized, 10),
+		})
+	}
+	return normalized, nil
+}
+
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && NormalizeGroupPlatform(input.Platform) == PlatformComposite {
 		return nil, infraerrors.BadRequest("SIMPLE_MODE_GROUP_NOT_BINDABLE", "composite groups are not supported in simple mode")
@@ -669,11 +698,16 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if err != nil {
 		return nil, err
 	}
+	cacheStrategyID, err := s.validateCacheStrategyID(ctx, input.CacheStrategyID)
+	if err != nil {
+		return nil, err
+	}
 
 	group := &Group{
 		Name:                            input.Name,
 		Description:                     input.Description,
 		Platform:                        platform,
+		CacheStrategyID:                 cacheStrategyID,
 		RateMultiplier:                  input.RateMultiplier,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
@@ -894,6 +928,17 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.Platform != "" {
 		group.Platform = input.Platform
+	}
+	if input.CacheStrategyIDSet {
+		cacheStrategyID, err := s.validateCacheStrategyID(ctx, input.CacheStrategyID)
+		if err != nil {
+			return nil, err
+		}
+		if cacheStrategyID != nil && group.CacheStrategyID != nil &&
+			*group.CacheStrategyID > 0 && *group.CacheStrategyID != *cacheStrategyID {
+			return nil, CacheStrategyGroupConflictForRepository(*group, *cacheStrategyID)
+		}
+		group.CacheStrategyID = cacheStrategyID
 	}
 	if input.RateMultiplier != nil {
 		if *input.RateMultiplier <= 0 {

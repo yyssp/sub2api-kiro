@@ -38,14 +38,21 @@ type cacheStrategyRepoStub struct {
 	listBoundGroupsErr  error
 	setGroupBindings    []int64
 	setGroupBindingsErr error
+	strategies          map[int64]*CacheStrategy
+	boundGroupCount     int
+	deleteCalls         int
+	deleteErr           error
 }
 
 func (s *cacheStrategyRepoStub) Create(context.Context, *CacheStrategy) error {
 	panic("unexpected Create call")
 }
 
-func (s *cacheStrategyRepoStub) GetByID(context.Context, int64) (*CacheStrategy, error) {
-	panic("unexpected GetByID call")
+func (s *cacheStrategyRepoStub) GetByID(_ context.Context, id int64) (*CacheStrategy, error) {
+	if s.strategies == nil {
+		panic("unexpected GetByID call")
+	}
+	return s.strategies[id], nil
 }
 
 func (s *cacheStrategyRepoStub) List(context.Context, string) ([]CacheStrategy, error) {
@@ -56,12 +63,13 @@ func (s *cacheStrategyRepoStub) Update(context.Context, *CacheStrategy) error {
 	panic("unexpected Update call")
 }
 
-func (s *cacheStrategyRepoStub) Delete(context.Context, int64) error {
-	panic("unexpected Delete call")
+func (s *cacheStrategyRepoStub) Delete(_ context.Context, _ int64) error {
+	s.deleteCalls++
+	return s.deleteErr
 }
 
 func (s *cacheStrategyRepoStub) CountBoundGroups(context.Context, int64) (int, error) {
-	return 0, nil
+	return s.boundGroupCount, nil
 }
 
 func (s *cacheStrategyRepoStub) ListBoundGroups(context.Context, int64) ([]Group, error) {
@@ -140,6 +148,19 @@ func TestCacheStrategyBindingAppliesToAnthropicMessagesProfile(t *testing.T) {
 	require.NotNil(t, second)
 	require.Equal(t, 1000, second.CacheReadInputTokens)
 	require.Zero(t, second.CacheCreationInputTokens)
+}
+
+func TestCacheStrategyDeleteRejectsBoundGroupsBeforeRepositoryDelete(t *testing.T) {
+	repo := &cacheStrategyRepoStub{boundGroupCount: 2}
+	svc := NewCacheStrategyService(repo)
+
+	err := svc.Delete(context.Background(), 7001)
+
+	require.Error(t, err)
+	require.Equal(t, 409, infraerrors.Code(err))
+	require.Equal(t, "CACHE_STRATEGY_BOUND_TO_GROUPS", infraerrors.Reason(err))
+	require.Equal(t, "2", infraerrors.FromError(err).Metadata["bound_group_count"])
+	require.Zero(t, repo.deleteCalls)
 }
 
 func TestCacheSessionKeyReadsClaudeCodeJSONMetadataUserID(t *testing.T) {

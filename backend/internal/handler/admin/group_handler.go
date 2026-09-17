@@ -46,6 +46,38 @@ type optionalLimitField struct {
 	value *float64
 }
 
+type optionalInt64Field struct {
+	set   bool
+	value *int64
+}
+
+func (f *optionalInt64Field) UnmarshalJSON(data []byte) error {
+	f.set = true
+	trimmed := bytes.TrimSpace(data)
+	if bytes.Equal(trimmed, []byte("null")) {
+		f.value = nil
+		return nil
+	}
+	var value int64
+	if err := json.Unmarshal(trimmed, &value); err != nil {
+		return fmt.Errorf("invalid integer value: %s", string(trimmed))
+	}
+	f.value = &value
+	return nil
+}
+
+func (f optionalInt64Field) IsSet() bool {
+	return f.set
+}
+
+func (f optionalInt64Field) ToServiceInput() *int64 {
+	if !f.set || f.value == nil || *f.value <= 0 {
+		return nil
+	}
+	value := *f.value
+	return &value
+}
+
 func (f *optionalLimitField) UnmarshalJSON(data []byte) error {
 	f.set = true
 
@@ -185,6 +217,7 @@ type CreateGroupRequest struct {
 	Name                      string                        `json:"name" binding:"required"`
 	Description               string                        `json:"description"`
 	Platform                  string                        `json:"platform" binding:"omitempty,platform_or_composite"`
+	CacheStrategyID           *int64                        `json:"cache_strategy_id"`
 	RateMultiplier            float64                       `json:"rate_multiplier"`
 	IsExclusive               bool                          `json:"is_exclusive"`
 	SubscriptionType          string                        `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
@@ -262,6 +295,7 @@ type UpdateGroupRequest struct {
 	Name                      string                         `json:"name"`
 	Description               *string                        `json:"description"`
 	Platform                  string                         `json:"platform" binding:"omitempty,platform_or_composite"`
+	CacheStrategyID           optionalInt64Field             `json:"cache_strategy_id"`
 	RateMultiplier            *float64                       `json:"rate_multiplier"`
 	IsExclusive               *bool                          `json:"is_exclusive"`
 	Status                    string                         `json:"status" binding:"omitempty,oneof=active inactive"`
@@ -689,6 +723,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		Name:                            req.Name,
 		Description:                     req.Description,
 		Platform:                        req.Platform,
+		CacheStrategyID:                 req.CacheStrategyID,
 		RateMultiplier:                  req.RateMultiplier,
 		IsExclusive:                     req.IsExclusive,
 		SubscriptionType:                req.SubscriptionType,
@@ -837,6 +872,8 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		Name:                            req.Name,
 		Description:                     req.Description,
 		Platform:                        req.Platform,
+		CacheStrategyID:                 req.CacheStrategyID.ToServiceInput(),
+		CacheStrategyIDSet:              req.CacheStrategyID.IsSet(),
 		RateMultiplier:                  req.RateMultiplier,
 		IsExclusive:                     req.IsExclusive,
 		Status:                          req.Status,

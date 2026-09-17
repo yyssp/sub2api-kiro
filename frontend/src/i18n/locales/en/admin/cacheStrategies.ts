@@ -36,6 +36,8 @@ export default {
     deleteFailed: "Failed to delete cache strategy",
     delete: "Delete cache strategy",
     deleteConfirm: "Delete “{name}”? Unbind its groups before deleting it.",
+    CACHE_STRATEGY_BOUND_TO_GROUPS:
+      "This cache strategy is still bound to {bound_group_count} group(s). Unbind the groups before deleting it.",
     CACHE_STRATEGY_GROUP_CONFLICT:
       "Group {group_name} (ID {group_id}) is already bound to cache strategy {current_strategy_id} and cannot be rebound to strategy {requested_strategy_id}. {reason}",
     descriptionLabel: "Description",

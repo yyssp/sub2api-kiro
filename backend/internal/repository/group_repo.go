@@ -334,7 +334,6 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
 		SetMaxReasoningEffortOverLimit(groupIn.MaxReasoningEffortOverLimit).
 		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).
-		SetNillableCacheStrategyID(groupIn.CacheStrategyID).
 		SetKiroAutoStickyEnabled(groupIn.KiroAutoStickyEnabled).
 		SetKiroStickySessionTTLSeconds(groupIn.KiroStickySessionTTLSeconds).
 		SetKiroEndpointMode(groupIn.KiroEndpointMode).
@@ -416,6 +415,11 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetAudioSttPricePerHour(*groupIn.AudioSTTPricePerHour)
 	} else {
 		builder = builder.ClearAudioSttPricePerHour()
+	}
+	if groupIn.CacheStrategyID != nil {
+		builder = builder.SetCacheStrategyID(*groupIn.CacheStrategyID)
+	} else {
+		builder = builder.ClearCacheStrategyID()
 	}
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置

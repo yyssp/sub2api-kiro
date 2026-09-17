@@ -239,6 +239,7 @@ type CreateGroupInput struct {
 	Name                      string
 	Description               string
 	Platform                  string
+	CacheStrategyID           *int64
 	RateMultiplier            float64
 	IsExclusive               bool
 	SubscriptionType          string   // standard/subscription
@@ -320,9 +321,13 @@ type CreateGroupInput struct {
 }
 
 type UpdateGroupInput struct {
-	Name                      string
-	Description               *string
-	Platform                  string
+	Name            string
+	Description     *string
+	Platform        string
+	CacheStrategyID *int64
+	// CacheStrategyIDSet distinguishes an omitted field from an explicit null
+	// so older clients do not accidentally clear an existing binding.
+	CacheStrategyIDSet        bool
 	RateMultiplier            *float64 // 使用指针以支持设置为0
 	IsExclusive               *bool
 	Status                    string
@@ -699,6 +704,7 @@ type adminServiceImpl struct {
 	cfg                  *config.Config
 	userRepo             UserRepository
 	groupRepo            GroupRepository
+	cacheStrategyLookup  CacheStrategyRepository
 	groupDuplicateRepo   GroupDuplicateRepository
 	emptyGroupDeleteRepo EmptyGroupDeleteRepository
 	accountRepo          AccountRepository
@@ -764,12 +770,14 @@ func NewAdminService(
 	affiliateService *AffiliateService,
 	compositeRouteRepo CompositeModelRouteRepository,
 	compositeResolver *CompositeRouteResolver,
+	cacheStrategyLookup CacheStrategyRepository,
 	channelCacheInvalidator ChannelCacheInvalidator,
 ) AdminService {
 	return &adminServiceImpl{
 		cfg:                  cfg,
 		userRepo:             userRepo,
 		groupRepo:            groupRepo,
+		cacheStrategyLookup:  cacheStrategyLookup,
 		groupDuplicateRepo:   groupRepo,
 		emptyGroupDeleteRepo: groupRepo,
 		accountRepo:          accountRepo,

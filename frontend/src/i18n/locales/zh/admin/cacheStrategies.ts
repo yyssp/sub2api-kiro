@@ -36,6 +36,8 @@ export default {
     deleteFailed: "删除缓存策略失败",
     delete: "删除缓存策略",
     deleteConfirm: "确定删除“{name}”吗？已绑定分组的策略需要先解绑。",
+    CACHE_STRATEGY_BOUND_TO_GROUPS:
+      "该缓存策略仍绑定 {bound_group_count} 个分组，请先解除分组绑定后再删除。",
     CACHE_STRATEGY_GROUP_CONFLICT:
       "分组 {group_name}（ID {group_id}）已经绑定缓存策略 {current_strategy_id}，不能再次绑定到策略 {requested_strategy_id}。请先解除原绑定，再重新绑定。",
     descriptionLabel: "描述",
