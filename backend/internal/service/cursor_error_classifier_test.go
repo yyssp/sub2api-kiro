@@ -106,6 +106,16 @@ func TestClassifyCursorError_QuotaMapsToCorrectBucket(t *testing.T) {
 	}
 }
 
+func TestClassifyCursorError_ClaudeToolQuotaMapsToOtherBucket(t *testing.T) {
+	got := classifyCursorErrorForRequest(
+		"claude-sonnet-4.5",
+		[]cursor.ToolDef{{Name: "Read", InputSchema: `{"type":"object"}`}},
+		"You are out of usage - Upgrade to a paid plan",
+	)
+	require.Equal(t, cursorErrorQuotaExhausted, got.Category)
+	require.Equal(t, cursor.QuotaBucketOther, got.QuotaBucket)
+}
+
 func TestCursorShouldDisableAccount_OnlyOnAuthFailure(t *testing.T) {
 	// ⚠️ 额度耗尽绝不停号：它只该把对应的桶标记为 exhausted，
 	// 账号对其它桶的模型仍然可调度。

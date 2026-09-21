@@ -35,11 +35,11 @@ const (
 )
 
 // 客户端版本/commit 必须是"真实存在"的版本, 否则上游走慢降级路径甚至 Update Required。
-// 默认取写死时的最新真实版本(3.15.6, 2026-08-06); 可用环境变量热调, 无需改代码重编:
+// Sand 客户端模式参考 Cursor 3.21.12；可用环境变量热调, 无需改代码重编:
 //
 //	CURSOR_CLIENT_VERSION / CURSOR_CLIENT_COMMIT / CURSOR_AGENT_BASE
 var (
-	clientVersion = envOr("CURSOR_CLIENT_VERSION", "3.15.6")
+	clientVersion = envOr("CURSOR_CLIENT_VERSION", "3.21.12")
 	clientCommit  = envOr("CURSOR_CLIENT_COMMIT", "a1f686545fd0ce8917bbd2449f733551a9bce420")
 	// 非 global 主机(agentn.api5)实测比 agentn.global.api5 稳定快 ~1.5s, 作默认。
 	agentBaseURL = envOr("CURSOR_AGENT_BASE", "https://agentn.api5.cursor.sh")
@@ -536,11 +536,53 @@ func (c *Client) ListModelsFull(a *Account) ([]ModelMeta, error) {
 	}
 	var r struct {
 		Models []struct {
-			Name             string `json:"name"`
-			SupportsImages   bool   `json:"supportsImages"`
-			SupportsThinking bool   `json:"supportsThinking"`
-			SupportsAgent    bool   `json:"supportsAgent"`
-			SupportsMaxMode  bool   `json:"supportsMaxMode"`
+			Name                 string   `json:"name"`
+			Aliases              []string `json:"idAliases"`
+			LegacySlugs          []string `json:"legacySlugs"`
+			SupportsImages       bool     `json:"supportsImages"`
+			SupportsThinking     bool     `json:"supportsThinking"`
+			SupportsAgent        bool     `json:"supportsAgent"`
+			SupportsMaxMode      bool     `json:"supportsMaxMode"`
+			ParameterDefinitions []struct {
+				ID            string `json:"id"`
+				ParameterType struct {
+					EnumParameter *struct {
+						Values []struct {
+							Value string `json:"value"`
+						} `json:"values"`
+					} `json:"enumParameter"`
+					BooleanParameter *struct {
+						Values []struct {
+							Value string `json:"value"`
+						} `json:"values"`
+					} `json:"booleanParameter"`
+				} `json:"parameterType"`
+			} `json:"parameterDefinitions"`
+			Defaults struct {
+				NonMax []struct {
+					ID    string `json:"id"`
+					Value string `json:"value"`
+				} `json:"nonMax"`
+				Max []struct {
+					ID    string `json:"id"`
+					Value string `json:"value"`
+				} `json:"max"`
+			} `json:"defaults"`
+			Variants []struct {
+				Slug                  string `json:"slug"`
+				LegacySlug            string `json:"legacySlug"`
+				IsMaxMode             bool   `json:"isMaxMode"`
+				IsDefaultNonMaxConfig bool   `json:"isDefaultNonMaxConfig"`
+				IsDefaultMaxConfig    bool   `json:"isDefaultMaxConfig"`
+				ParameterValues       []struct {
+					ID    string `json:"id"`
+					Value string `json:"value"`
+				} `json:"parameterValues"`
+				Parameters []struct {
+					ID    string `json:"id"`
+					Value string `json:"value"`
+				} `json:"parameters"`
+			} `json:"variants"`
 		} `json:"models"`
 	}
 	if err := json.Unmarshal(body, &r); err != nil {
@@ -551,11 +593,90 @@ func (c *Client) ListModelsFull(a *Account) ([]ModelMeta, error) {
 		if m.Name == "" {
 			continue
 		}
-		out = append(out, ModelMeta{
+		meta := ModelMeta{
 			ID: m.Name, Family: familyOf(m.Name),
 			Vision: m.SupportsImages, Tools: m.SupportsAgent,
 			Think: m.SupportsThinking, MaxMode: m.SupportsMaxMode,
-		})
+			Aliases: append(append([]string(nil), m.Aliases...), m.LegacySlugs...),
+		}
+		for _, definition := range m.ParameterDefinitions {
+			values := []string{}
+			if definition.ParameterType.EnumParameter != nil {
+				for _, value := range definition.ParameterType.EnumParameter.Values {
+					if strings.TrimSpace(value.Value) != "" {
+						values = append(values, value.Value)
+					}
+				}
+			}
+			if definition.ParameterType.BooleanParameter != nil {
+				for _, value := range definition.ParameterType.BooleanParameter.Values {
+					if strings.TrimSpace(value.Value) != "" {
+						values = append(values, value.Value)
+					}
+				}
+			}
+			if strings.TrimSpace(definition.ID) != "" && len(values) > 0 {
+				meta.Parameters = append(meta.Parameters, ModelParameterDefinition{
+					ID: definition.ID, Values: values,
+				})
+			}
+		}
+		for _, value := range m.Defaults.NonMax {
+			if strings.TrimSpace(value.ID) != "" {
+				meta.Defaults.NonMax = append(meta.Defaults.NonMax, ModelParameterValue{
+					ID: value.ID, Value: value.Value,
+				})
+			}
+		}
+		for _, value := range m.Defaults.Max {
+			if strings.TrimSpace(value.ID) != "" {
+				meta.Defaults.Max = append(meta.Defaults.Max, ModelParameterValue{
+					ID: value.ID, Value: value.Value,
+				})
+			}
+		}
+		var firstNonMax []ModelParameterValue
+		for _, variant := range m.Variants {
+			slug := strings.TrimSpace(variant.LegacySlug)
+			if slug == "" {
+				slug = strings.TrimSpace(variant.Slug)
+			}
+			if slug == "" {
+				continue
+			}
+			rawParameters := variant.ParameterValues
+			if len(rawParameters) == 0 {
+				rawParameters = variant.Parameters
+			}
+			parameters := make([]ModelParameterValue, 0, len(rawParameters))
+			for _, parameter := range rawParameters {
+				if strings.TrimSpace(parameter.ID) == "" {
+					continue
+				}
+				parameters = append(parameters, ModelParameterValue{
+					ID: parameter.ID, Value: parameter.Value,
+				})
+			}
+			if !variant.IsMaxMode && firstNonMax == nil {
+				firstNonMax = append([]ModelParameterValue(nil), parameters...)
+			}
+			if variant.IsDefaultNonMaxConfig {
+				meta.Defaults.NonMax = append([]ModelParameterValue(nil), parameters...)
+			}
+			if variant.IsDefaultMaxConfig {
+				meta.Defaults.Max = append([]ModelParameterValue(nil), parameters...)
+			}
+			meta.Variants = append(meta.Variants, ModelVariant{
+				Slug: slug, MaxMode: variant.IsMaxMode, Parameters: parameters,
+			})
+		}
+		if len(meta.Defaults.NonMax) == 0 && len(firstNonMax) > 0 {
+			meta.Defaults.NonMax = firstNonMax
+		}
+		if len(meta.Defaults.Max) == 0 {
+			meta.Defaults.Max = append([]ModelParameterValue(nil), meta.Defaults.NonMax...)
+		}
+		out = append(out, meta)
 	}
 	return out, nil
 }

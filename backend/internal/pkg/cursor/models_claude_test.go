@@ -302,6 +302,68 @@ func TestClaudeCodeAliasesRouteToSandWhenDynamicListOmitsClaude(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeCatalogModelsUseGrokBotQuotaWhenDynamicCatalogOmitsThem(t *testing.T) {
+	modelMu.Lock()
+	oldLive, oldSet, oldPath := liveModels, liveSet, livePath
+	modelMu.Unlock()
+	defer func() {
+		modelMu.Lock()
+		liveModels, liveSet, livePath = oldLive, oldSet, oldPath
+		modelMu.Unlock()
+	}()
+
+	// Startup and per-account model refreshes can temporarily contain no Claude
+	// entries. Claude Code names must still be recognized as Sand models from the
+	// static compatibility catalog so quota-aware scheduling does not fall back
+	// to the Other Models bucket.
+	ConfigureSandModels(nil)
+	t.Cleanup(func() { ConfigureSandModels(nil) })
+	SetLiveModels([]ModelMeta{
+		{ID: "cursor-grok-4.6-medium", Family: "grok"},
+		{ID: "gpt-5.6-sol-high", Family: "gpt"},
+	})
+
+	account := Account{
+		Membership:        "pro",
+		UsageAt:           time.Now(),
+		CursorModelsState: sandStateExhausted,
+		OtherModelsState:  sandStateExhausted,
+		GrokBotState:      sandStateAvailable,
+		GrokBotEnabled:    true,
+	}
+	for _, model := range []string{
+		"claude-opus-5",
+		"claude-opus-4-8",
+		"claude-opus-4-7",
+		"claude-opus-4-6",
+		"claude-opus-4-5",
+		"claude-fable-5-1",
+		"claude-fable-5",
+		"claude-sonnet-5",
+		"claude-sonnet-4-6",
+		"claude-sonnet-4-5",
+		"claude-sonnet-4",
+		"claude-haiku-4-5",
+		"fable-5-1",
+		"cursor/claude-fable-5-1",
+	} {
+		t.Run(model, func(t *testing.T) {
+			if !isClaudeCodeModelName(model) {
+				t.Fatalf("Claude Code model %q was not recognized without dynamic Claude entries", model)
+			}
+			if got := cursorClientTypeForModel(model); got != "sand" {
+				t.Fatalf("cursorClientTypeForModel(%q)=%q, want sand", model, got)
+			}
+			if got := ModelToQuotaBucket(model); got != QuotaBucketGrokBot {
+				t.Fatalf("ModelToQuotaBucket(%q)=%q, want %q", model, got, QuotaBucketGrokBot)
+			}
+			if !AccountUsableForModel(account, model) {
+				t.Fatalf("Claude Code model %q should remain schedulable with only GrokBot/Sand available", model)
+			}
+		})
+	}
+}
+
 func TestStripPrefix_ResolvesClaudeCodeModel(t *testing.T) {
 	modelMu.Lock()
 	oldLive, oldSet, oldPath := liveModels, liveSet, livePath

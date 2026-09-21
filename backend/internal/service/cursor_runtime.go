@@ -632,7 +632,7 @@ func (s *GatewayService) streamCursorMessages(
 	mergeAndCommitCachePlan(c, &usage, true)
 
 	if runErr != nil {
-		classified := classifyCursorRunError(mappedModel, runErr)
+		classified := classifyCursorRunErrorForRequest(mappedModel, agentReq.Tools, runErr)
 		s.recordCursorFailure(ctx, c, account, classified)
 
 		// ⚠️ 收尾方式按"是否已推出真实内容"分成两条，不能合并。
@@ -699,7 +699,7 @@ func (s *GatewayService) blockCursorMessages(
 		})
 
 	if runErr != nil {
-		classified := classifyCursorRunError(mappedModel, runErr)
+		classified := classifyCursorRunErrorForRequest(mappedModel, agentReq.Tools, runErr)
 		s.recordCursorFailure(ctx, c, account, classified)
 		// ⚠️ 这里绝不能自己写响应体。
 		//

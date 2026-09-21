@@ -147,8 +147,14 @@ func TestCursorAccountUsableForModel_SingleBucketExhaustionDoesNotDisableAccount
 
 	require.False(t, CursorAccountUsableForModel(acc, "auto"),
 		"cursor 桶已耗尽，auto 模型应不可用")
-	require.True(t, CursorAccountUsableForModel(acc, "claude-sonnet-4.5"),
-		"grokbot 桶可用时 Claude Code 模型必须仍可调度——单桶耗尽不得整号停摆")
+	for _, model := range []string{
+		"claude-sonnet-4.5",
+		"claude-fable-5-1",
+		"cursor/claude-fable-5-1",
+	} {
+		require.Truef(t, CursorAccountUsableForModel(acc, model),
+			"grokbot 桶可用时 Claude Code 模型 %s 必须仍可调度——单桶耗尽不得整号停摆", model)
+	}
 }
 
 func TestCursorAccountUsableForModel_NeverFetchedQuotaIsUsable(t *testing.T) {

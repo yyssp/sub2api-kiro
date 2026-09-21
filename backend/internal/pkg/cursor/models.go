@@ -10,7 +10,33 @@ import (
 	"sync"
 )
 
-// ModelMeta 模型元信息(供管理台模型页展示 / 路由判定)
+// ModelParameterValue 是 Cursor requested_model 中的一项已解析参数。
+// 参数保留原始字符串值；Cursor 会按模型目录定义校验 value。
+type ModelParameterValue struct {
+	ID    string `json:"id"`
+	Value string `json:"value"`
+}
+
+// ModelParameterDefinition 是 Cursor 模型目录声明的一个参数及其可选值。
+type ModelParameterDefinition struct {
+	ID     string   `json:"id"`
+	Values []string `json:"values"`
+}
+
+// ModelParameterDefaults 保存模型目录提供的非 Max/Max 默认参数。
+type ModelParameterDefaults struct {
+	NonMax []ModelParameterValue `json:"nonMax,omitempty"`
+	Max    []ModelParameterValue `json:"max,omitempty"`
+}
+
+// ModelVariant 是 Cursor 模型目录中的 legacy slug 变体。
+type ModelVariant struct {
+	Slug       string                `json:"slug"`
+	MaxMode    bool                  `json:"maxMode,omitempty"`
+	Parameters []ModelParameterValue `json:"parameters,omitempty"`
+}
+
+// ModelMeta 模型元信息(供管理台模型页展示 / 路由判定 / Sand requested_model)
 type ModelMeta struct {
 	ID      string `json:"id"`
 	Family  string `json:"family"`
@@ -18,6 +44,12 @@ type ModelMeta struct {
 	Tools   bool   `json:"tools"`
 	Think   bool   `json:"think"`
 	MaxMode bool   `json:"maxMode"`
+	// 以下字段来自 Cursor AvailableModels 的模型目录；旧缓存没有这些字段时
+	// 保持 nil，Sand 层再按 legacy slug 做兼容推导。
+	Aliases    []string                   `json:"aliases,omitempty"`
+	Parameters []ModelParameterDefinition `json:"parameters,omitempty"`
+	Defaults   ModelParameterDefaults     `json:"defaults,omitempty"`
+	Variants   []ModelVariant             `json:"variants,omitempty"`
 }
 
 // DefaultModels 静态兜底清单(仅在动态拉取失败/号池为空时使用)。
@@ -42,6 +74,7 @@ var DefaultModels = []ModelMeta{
 	{ID: "claude-4.5-sonnet-thinking", Family: "claude", Vision: true, MaxMode: true},
 	{ID: "claude-4.5-haiku", Family: "claude", Vision: true, MaxMode: false},
 	{ID: "claude-4.5-haiku-thinking", Family: "claude", Vision: true, Think: true, MaxMode: false},
+	{ID: "claude-fable-5-1", Family: "claude", Vision: true, Think: true, MaxMode: true},
 	// OpenAI
 	{ID: "gpt-5.6-terra-high", Family: "gpt", Vision: true, Think: true, MaxMode: true},
 	{ID: "gpt-5.6-sol-high", Family: "gpt", Vision: true, Think: true, MaxMode: true},
@@ -279,6 +312,7 @@ var claudeCodeModelSpecs = []claudeCodeModelSpec{
 	{ID: "claude-sonnet-4", Bases: []string{"claude-sonnet-4", "claude-4-sonnet"}, Fallback: "claude-sonnet-4"},
 	{ID: "claude-sonnet-4-0", Bases: []string{"claude-4-sonnet"}, Fallback: "claude-sonnet-4-0"},
 	{ID: "claude-haiku-4-5", Bases: []string{"claude-4-5-haiku"}, Fallback: "claude-haiku-4-5"},
+	{ID: "claude-fable-5-1", Alias: []string{"fable-5-1"}, Bases: []string{"claude-fable-5-1"}, Fallback: "claude-fable-5-1"},
 	{ID: "claude-fable-5", Bases: []string{"claude-fable-5"}, Fallback: "claude-fable-5"},
 }
 

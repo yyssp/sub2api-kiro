@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -25,7 +26,8 @@ const (
 // two wire formats must not be mixed.
 func buildSandInferenceRequest(model string, in AgentRequest, conversationID string) []byte {
 	resolvedModel := sandResolvedModel(model)
-	wireModel := sandCatalogModelID(resolvedModel)
+	selection := parseSandModelSelection(resolvedModel)
+	wireModel := selection.ModelID
 	conversationID = strings.TrimSpace(conversationID)
 	if conversationID == "" {
 		conversationID = genUUID()
@@ -46,7 +48,9 @@ func buildSandInferenceRequest(model string, in AgentRequest, conversationID str
 	// requestedModel.parameters；以字符串编码会被上游按错误 schema 拒绝。
 	// field 8 是 conversation_id；缺失时上游返回 invalid_argument。
 	body = append(body, protoString(8, conversationID)...)
-	body = append(body, protoMessage(7, buildSandRequestedModel(wireModel, resolvedModel, in.MaxMode))...)
+	body = append(body, protoMessage(7, buildSandRequestedModelWithParameters(
+		wireModel, selection.Parameters, selection.MaxMode || in.MaxMode,
+	))...)
 	return body
 }
 
@@ -66,11 +70,20 @@ type sandModelParameter struct {
 // 参数只从 Cursor 模型目录 ID 推导，不能把 Anthropic 生成参数伪装成 Cursor
 // requested_model 参数。即使没有参数，也必须发送该嵌套消息本身。
 func buildSandRequestedModel(modelID, parameterSource string, maxMode bool) []byte {
+	selection := parseSandModelSelection(parameterSource)
+	return buildSandRequestedModelWithParameters(
+		modelID, selection.Parameters, maxMode || selection.MaxMode,
+	)
+}
+
+func buildSandRequestedModelWithParameters(modelID string, parameters []sandModelParameter, maxMode bool) []byte {
 	requested := protoString(1, modelID)
-	if maxMode {
+	// Cursor 3.21.x 的显式 context 变体不允许同时声明 max_mode=true。
+	// 这同时覆盖 1m、200k、272k、300k 及未来目录新增的 context 值。
+	if maxMode && !sandHasParameterID(parameters, "context") {
 		requested = append(requested, protoBool(2, true)...)
 	}
-	for _, parameter := range sandRequestedModelParameters(parameterSource) {
+	for _, parameter := range parameters {
 		item := protoString(1, parameter.ID)
 		item = append(item, protoString(2, parameter.Value)...)
 		requested = append(requested, protoMessage(3, item)...)
@@ -78,32 +91,150 @@ func buildSandRequestedModel(modelID, parameterSource string, maxMode bool) []by
 	return requested
 }
 
+type sandModelSelection struct {
+	ModelID    string
+	Parameters []sandModelParameter
+	MaxMode    bool
+}
+
+var sandModelBracketRE = regexp.MustCompile(`^(.+?)\[([^\]]*)\]$`)
+
+// parseSandModelSelection accepts both legacy slugs
+// (claude-opus-5-thinking-high) and bracket spelling
+// (claude-opus-5[effort=high,context=1m]).
+func parseSandModelSelection(model string) sandModelSelection {
+	raw := strings.TrimSpace(model)
+	if raw == "" {
+		return sandModelSelection{}
+	}
+	var explicit []sandModelParameter
+	if match := sandModelBracketRE.FindStringSubmatch(raw); len(match) == 3 {
+		raw = strings.TrimSpace(match[1])
+		for _, item := range strings.Split(match[2], ",") {
+			parts := strings.SplitN(strings.TrimSpace(item), "=", 2)
+			if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+				continue
+			}
+			explicit = append(explicit, sandModelParameter{
+				ID: strings.TrimSpace(parts[0]), Value: strings.TrimSpace(parts[1]),
+			})
+		}
+	}
+	parameters := explicit
+	catalogMaxMode := false
+	if len(parameters) == 0 {
+		parameters, catalogMaxMode = sandModelCatalogSelection(raw)
+	}
+	if len(parameters) == 0 {
+		parameters = sandRequestedModelParameters(raw)
+	}
+	return sandModelSelection{
+		ModelID:    sandCatalogModelID(raw),
+		Parameters: parameters,
+		MaxMode: catalogMaxMode ||
+			sandHasParameter(parameters, "effort", "max") ||
+			sandHasParameter(parameters, "reasoning", "max"),
+	}
+}
+
+func sandHasParameter(parameters []sandModelParameter, id, value string) bool {
+	for _, parameter := range parameters {
+		if strings.EqualFold(strings.TrimSpace(parameter.ID), id) &&
+			strings.EqualFold(strings.TrimSpace(parameter.Value), value) {
+			return true
+		}
+	}
+	return false
+}
+
+func sandHasParameterID(parameters []sandModelParameter, id string) bool {
+	for _, parameter := range parameters {
+		if strings.EqualFold(strings.TrimSpace(parameter.ID), id) {
+			return true
+		}
+	}
+	return false
+}
+
+func sandModelCatalogParameters(model string) []sandModelParameter {
+	parameters, _ := sandModelCatalogSelection(model)
+	return parameters
+}
+
+func sandModelCatalogSelection(model string) ([]sandModelParameter, bool) {
+	if strings.TrimSpace(model) == "" {
+		return nil, false
+	}
+	for _, meta := range claudeResolutionModels() {
+		for _, alias := range meta.Aliases {
+			if strings.EqualFold(alias, model) {
+				return modelParameterValuesToSand(meta.Defaults.NonMax), false
+			}
+		}
+		if strings.EqualFold(meta.ID, model) && len(meta.Defaults.NonMax) > 0 {
+			return modelParameterValuesToSand(meta.Defaults.NonMax), false
+		}
+		for _, variant := range meta.Variants {
+			if strings.EqualFold(variant.Slug, model) {
+				return modelParameterValuesToSand(variant.Parameters), variant.MaxMode
+			}
+		}
+	}
+	return nil, false
+}
+
+func modelParameterValuesToSand(values []ModelParameterValue) []sandModelParameter {
+	out := make([]sandModelParameter, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value.ID) == "" {
+			continue
+		}
+		out = append(out, sandModelParameter{ID: value.ID, Value: value.Value})
+	}
+	return out
+}
+
 func sandRequestedModelParameters(model string) []sandModelParameter {
 	lower := strings.ToLower(strings.TrimSpace(model))
 	var parameters []sandModelParameter
-	if strings.Contains(lower, "thinking") {
+	normalized := strings.NewReplacer("_", "-", " ", "-").Replace(lower)
+	if strings.Contains(normalized, "nothinking") {
+		parameters = append(parameters, sandModelParameter{ID: "thinking", Value: "false"})
+	} else if strings.Contains(normalized, "thinking") {
 		parameters = append(parameters, sandModelParameter{ID: "thinking", Value: "true"})
 	}
 
 	effort := ""
 	switch {
-	case strings.Contains(lower, "-xhigh") || strings.HasSuffix(lower, "xhigh"):
+	case strings.Contains(normalized, "extra-high") || strings.Contains(normalized, "extrahigh"):
 		effort = "xhigh"
-	case strings.Contains(lower, "-max") || strings.HasSuffix(lower, "-max") || strings.Contains(lower, "thinking-max"):
+	case strings.Contains(normalized, "-xhigh") || strings.HasSuffix(normalized, "xhigh"):
+		effort = "xhigh"
+	case strings.Contains(normalized, "-max") || strings.HasSuffix(normalized, "-max") || strings.Contains(normalized, "thinking-max"):
 		effort = "max"
-	case strings.Contains(lower, "-high") || strings.HasSuffix(lower, "-high"):
+	case strings.Contains(normalized, "-high") || strings.HasSuffix(normalized, "-high"):
 		effort = "high"
-	case strings.Contains(lower, "-medium") || strings.HasSuffix(lower, "-medium"):
+	case strings.Contains(normalized, "-medium") || strings.HasSuffix(normalized, "-medium"):
 		effort = "medium"
-	case strings.Contains(lower, "-low") || strings.HasSuffix(lower, "-low"):
+	case strings.Contains(normalized, "-low") || strings.HasSuffix(normalized, "-low"):
 		effort = "low"
-	case strings.Contains(lower, "-fast"):
+	case strings.Contains(normalized, "-minimal") || strings.HasSuffix(normalized, "minimal"):
+		effort = "minimal"
+	case strings.Contains(normalized, "-none") || strings.HasSuffix(normalized, "none"):
+		effort = "none"
+	case strings.Contains(normalized, "-fast") || strings.HasSuffix(normalized, "fast"):
 		effort = "fast"
 	}
 	if effort != "" {
 		parameters = append(parameters, sandModelParameter{ID: "effort", Value: effort})
 	}
-	if strings.Contains(lower, "fable") || strings.Contains(lower, "[1m]") {
+	for _, context := range []string{"300k", "272k", "200k", "1m"} {
+		if strings.Contains(normalized, context) {
+			parameters = append(parameters, sandModelParameter{ID: "context", Value: context})
+			break
+		}
+	}
+	if strings.Contains(normalized, "fable") && !sandHasParameter(parameters, "context", "1m") {
 		parameters = append(parameters, sandModelParameter{ID: "context", Value: "1m"})
 	}
 	return parameters
@@ -150,6 +281,18 @@ func sandResolvedModel(model string) string {
 
 func sandCatalogModelID(model string) string {
 	model = strings.TrimSpace(model)
+	for _, meta := range claudeResolutionModels() {
+		for _, alias := range meta.Aliases {
+			if strings.EqualFold(alias, model) {
+				return meta.ID
+			}
+		}
+		for _, variant := range meta.Variants {
+			if strings.EqualFold(variant.Slug, model) {
+				return meta.ID
+			}
+		}
+	}
 	if familyOf(model) != "claude" {
 		return model
 	}
@@ -168,10 +311,12 @@ func sandCatalogModelID(model string) string {
 		"-max-thinking",
 		"-thinking",
 		"-xhigh",
+		"-minimal",
 		"-medium",
 		"-high",
 		"-low",
 		"-max",
+		"-none",
 	} {
 		if strings.HasSuffix(fastStripped, suffix) {
 			return model[:len(model)-(len(lower)-len(strings.TrimSuffix(fastStripped, suffix)))]
@@ -333,6 +478,7 @@ func (c *Client) runSandStream(ctx context.Context, agentHTTP *http.Client, a *A
 	}
 	req.Header = c.buildHeadersWithType(a, "application/connect+proto", "sand")
 	req.Header.Set("Accept", "application/connect+proto")
+	req.Header.Set("x-cursor-streaming", "true")
 	applyCursorProxyAuth(req)
 	resp, err := agentHTTP.Do(req)
 	if err != nil {

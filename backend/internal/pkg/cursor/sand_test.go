@@ -17,6 +17,69 @@ import (
 
 //   - TestSandSchemaErrorIsTerminalProtocolError（依赖未移植符号 protocolErrorCode）
 
+func TestListModelsFullPreservesSandCatalogParameters(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != modelsURL {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"models":[{
+				"name":"claude-opus-5-medium",
+				"idAliases":["opus"],
+				"legacySlugs":["claude-opus-5-medium"],
+				"supportsImages":true,
+				"supportsThinking":true,
+				"supportsAgent":true,
+				"supportsMaxMode":true,
+				"parameterDefinitions":[{
+					"id":"effort",
+					"parameterType":{"enumParameter":{"values":[{"value":"medium"},{"value":"high"}]}}
+				},{
+					"id":"context",
+					"parameterType":{"enumParameter":{"values":[{"value":"1m"}]}}
+				}],
+				"variants":[{
+					"legacySlug":"claude-opus-5-thinking-high",
+					"isMaxMode":true,
+					"parameterValues":[
+						{"id":"thinking","value":"true"},
+						{"id":"effort","value":"high"}
+					]
+				}]
+			}]
+		}`))
+	}))
+	t.Cleanup(server.Close)
+	ConfigureUpstream(server.URL, "")
+	t.Cleanup(func() { ConfigureUpstream("", "") })
+
+	client := NewClient()
+	client.shared = server.Client()
+	models, err := client.ListModelsFull(&Account{AccessToken: "test-token"})
+	if err != nil {
+		t.Fatalf("ListModelsFull: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("models=%d, want 1", len(models))
+	}
+	meta := models[0]
+	if len(meta.Aliases) != 2 || meta.Aliases[0] != "opus" ||
+		meta.Aliases[1] != "claude-opus-5-medium" {
+		t.Fatalf("aliases=%v", meta.Aliases)
+	}
+	if len(meta.Parameters) != 2 || meta.Parameters[0].ID != "effort" ||
+		strings.Join(meta.Parameters[0].Values, ",") != "medium,high" {
+		t.Fatalf("parameter definitions=%+v", meta.Parameters)
+	}
+	if len(meta.Variants) != 1 || meta.Variants[0].Slug != "claude-opus-5-thinking-high" ||
+		len(meta.Variants[0].Parameters) != 2 ||
+		meta.Variants[0].Parameters[1].Value != "high" {
+		t.Fatalf("variants=%+v", meta.Variants)
+	}
+}
+
 func TestBuildSandInferenceRequestMatchesInferenceServiceSchema(t *testing.T) {
 	SetLiveModels(nil)
 	t.Cleanup(func() { SetLiveModels(nil) })
@@ -171,6 +234,138 @@ func TestSandRequestedModelCarriesCursorParameters(t *testing.T) {
 	}
 	if got["thinking"] != "true" || got["effort"] != "max" || got["context"] != "1m" {
 		t.Fatalf("thinking parameters=%v, want thinking=true effort=max context=1m", got)
+	}
+}
+
+func TestSandRequestedModelAcceptsBracketParametersAndDisablesMaxForOneMillionContext(t *testing.T) {
+	SetLiveModels(nil)
+	t.Cleanup(func() { SetLiveModels(nil) })
+
+	body := buildSandInferenceRequest(
+		"claude-opus-5[effort=high,context=1m]",
+		AgentRequest{Message: "check", MaxMode: true},
+		"conversation-bracket",
+	)
+	parts, err := pbParse(body)
+	if err != nil {
+		t.Fatalf("parse bracket Sand request: %v", err)
+	}
+	requested, ok := pbFirst(parts, 7)
+	if !ok {
+		t.Fatal("bracket requested_model missing")
+	}
+	requestedParts, err := pbParse(requested.Data)
+	if err != nil {
+		t.Fatalf("parse bracket requested_model: %v", err)
+	}
+	modelID, ok := pbFirst(requestedParts, 1)
+	if !ok || string(modelID.Data) != "claude-opus-5" {
+		t.Fatalf("bracket model_id=%q, want claude-opus-5", modelID.Data)
+	}
+	if _, ok := pbFirst(requestedParts, 2); ok {
+		t.Fatal("context=1m request must not also set max_mode")
+	}
+	got := map[string]string{}
+	for _, part := range requestedParts {
+		if part.Num != 3 {
+			continue
+		}
+		parameter, parseErr := pbParse(part.Data)
+		if parseErr != nil {
+			t.Fatalf("parse bracket parameter: %v", parseErr)
+		}
+		id, idOK := pbFirst(parameter, 1)
+		value, valueOK := pbFirst(parameter, 2)
+		if idOK && valueOK {
+			got[string(id.Data)] = string(value.Data)
+		}
+	}
+	if got["effort"] != "high" || got["context"] != "1m" {
+		t.Fatalf("bracket parameters=%v, want effort=high context=1m", got)
+	}
+}
+
+func TestSandRequestedModelAnyExplicitContextDisablesMaxMode(t *testing.T) {
+	for _, contextValue := range []string{"200k", "272k", "300k"} {
+		t.Run(contextValue, func(t *testing.T) {
+			requested := buildSandRequestedModelWithParameters(
+				"gpt-5.6-sol",
+				[]sandModelParameter{
+					{ID: "effort", Value: "high"},
+					{ID: "context", Value: contextValue},
+				},
+				true,
+			)
+			parts, err := pbParse(requested)
+			if err != nil {
+				t.Fatalf("parse requested model: %v", err)
+			}
+			if _, ok := pbFirst(parts, 2); ok {
+				t.Fatalf("context=%s must suppress max_mode", contextValue)
+			}
+		})
+	}
+}
+
+func TestSandCatalogVariantNormalizesToParentAndKeepsMaxMode(t *testing.T) {
+	SetLiveModels([]ModelMeta{{
+		ID:     "gpt-5.6-sol",
+		Family: "gpt",
+		Variants: []ModelVariant{{
+			Slug:    "gpt-5.6-sol-extra-high",
+			MaxMode: true,
+			Parameters: []ModelParameterValue{
+				{ID: "effort", Value: "xhigh"},
+			},
+		}},
+	}})
+	t.Cleanup(func() { SetLiveModels(nil) })
+
+	selection := parseSandModelSelection("gpt-5.6-sol-extra-high")
+	if selection.ModelID != "gpt-5.6-sol" {
+		t.Fatalf("catalog model=%q, want gpt-5.6-sol", selection.ModelID)
+	}
+	if !selection.MaxMode {
+		t.Fatal("max-mode catalog variant must preserve max mode")
+	}
+	if len(selection.Parameters) != 1 ||
+		selection.Parameters[0].ID != "effort" ||
+		selection.Parameters[0].Value != "xhigh" {
+		t.Fatalf("variant parameters=%+v", selection.Parameters)
+	}
+}
+
+func TestSandCatalogModelKeepsExplicitGrokVariantID(t *testing.T) {
+	if got := sandCatalogModelID("cursor-grok-4.5-medium"); got != "cursor-grok-4.5-medium" {
+		t.Fatalf("grok catalog model=%q, want explicit variant ID", got)
+	}
+}
+
+func TestSandRequestedModelNormalizesCurrentTierSpellings(t *testing.T) {
+	tests := []struct {
+		model string
+		id    string
+		value string
+	}{
+		{"gpt-5.5-extra-high", "effort", "xhigh"},
+		{"claude-sonnet-5-nothinking-high", "thinking", "false"},
+		{"claude-sonnet-5-nothinking-high", "effort", "high"},
+		{"gpt-5.6-sol-300k", "context", "300k"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model+"/"+tt.id, func(t *testing.T) {
+			parameters := sandRequestedModelParameters(tt.model)
+			found := false
+			for _, parameter := range parameters {
+				if parameter.ID == tt.id && parameter.Value == tt.value {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("parameters=%+v, missing %s=%s", parameters, tt.id, tt.value)
+			}
+		})
 	}
 }
 
@@ -349,6 +544,11 @@ func TestSandSurfaceUsesInferenceStream(t *testing.T) {
 		if got := r.Header.Get("Accept"); got != "application/connect+proto" {
 			report(fmt.Errorf("accept=%q, want application/connect+proto", got))
 			http.Error(w, "missing streaming header", http.StatusBadRequest)
+			return
+		}
+		if got := r.Header.Get("x-cursor-streaming"); got != "true" {
+			report(fmt.Errorf("x-cursor-streaming=%q, want true", got))
+			http.Error(w, "missing x-cursor-streaming header", http.StatusBadRequest)
 			return
 		}
 

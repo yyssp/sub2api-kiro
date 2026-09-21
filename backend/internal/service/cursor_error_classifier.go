@@ -54,6 +54,10 @@ type cursorErrorClassification struct {
 //   - 状态码也该是 502（网关侧协议问题）而不是 503（上游暂时不可用）；
 //   - 原始错误串带帧级内部细节（branch=/native=/wire=），不能直接回给客户端。
 func classifyCursorRunError(model string, err error) cursorErrorClassification {
+	return classifyCursorRunErrorForRequest(model, nil, err)
+}
+
+func classifyCursorRunErrorForRequest(model string, tools []cursor.ToolDef, err error) cursorErrorClassification {
 	if err == nil {
 		return cursorErrorClassification{}
 	}
@@ -71,7 +75,7 @@ func classifyCursorRunError(model string, err error) cursorErrorClassification {
 			Terminal: true,
 		}
 	}
-	return classifyCursorError(model, err.Error())
+	return classifyCursorErrorForRequest(model, tools, err.Error())
 }
 
 // classifyCursorError 把上游错误文本归类。
@@ -88,6 +92,10 @@ func classifyCursorRunError(model string, err error) cursorErrorClassification {
 // 原样透出等于把密钥回显给调用方。判定仍用未脱敏文本——脱敏只改写敏感参数值，
 // 但没必要让归类规则依赖脱敏后的形状。
 func classifyCursorError(model, text string) cursorErrorClassification {
+	return classifyCursorErrorForRequest(model, nil, text)
+}
+
+func classifyCursorErrorForRequest(model string, tools []cursor.ToolDef, text string) cursorErrorClassification {
 	raw := strings.TrimSpace(text)
 	trimmed := sanitizeUpstreamErrorMessage(raw)
 
@@ -122,7 +130,7 @@ func classifyCursorError(model, text string) cursorErrorClassification {
 			ErrorType:   "rate_limit_error",
 			Message:     trimmed,
 			Kind:        kind,
-			QuotaBucket: cursor.ModelToQuotaBucket(cursor.StripPrefix(model)),
+			QuotaBucket: cursor.RequestToQuotaBucket(cursor.StripPrefix(model), tools),
 		}
 	case cursor.ErrAuth:
 		return cursorErrorClassification{
