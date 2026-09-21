@@ -40,10 +40,10 @@ func loadCapturedSession(t *testing.T) []capturedTurn {
 	t.Helper()
 	f, err := os.Open("testdata/real_session_jinnyapi12.json.gz")
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	zr, err := gzip.NewReader(f)
 	require.NoError(t, err)
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	var doc struct {
 		Turns []capturedTurn `json:"turns"`
 	}

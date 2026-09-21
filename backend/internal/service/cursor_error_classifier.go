@@ -53,6 +53,8 @@ type cursorErrorClassification struct {
 //     单个坏请求烧穿整个号池；
 //   - 状态码也该是 502（网关侧协议问题）而不是 503（上游暂时不可用）；
 //   - 原始错误串带帧级内部细节（branch=/native=/wire=），不能直接回给客户端。
+//
+//nolint:unused // compatibility wrapper used by package-level protocol tests.
 func classifyCursorRunError(model string, err error) cursorErrorClassification {
 	return classifyCursorRunErrorForRequest(model, nil, err)
 }

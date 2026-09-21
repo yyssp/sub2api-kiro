@@ -156,6 +156,7 @@ func sandHasParameterID(parameters []sandModelParameter, id string) bool {
 	return false
 }
 
+//nolint:unused // compatibility wrapper for callers of the former model catalog API.
 func sandModelCatalogParameters(model string) []sandModelParameter {
 	parameters, _ := sandModelCatalogSelection(model)
 	return parameters
@@ -189,7 +190,7 @@ func modelParameterValuesToSand(values []ModelParameterValue) []sandModelParamet
 		if strings.TrimSpace(value.ID) == "" {
 			continue
 		}
-		out = append(out, sandModelParameter{ID: value.ID, Value: value.Value})
+		out = append(out, sandModelParameter(value))
 	}
 	return out
 }

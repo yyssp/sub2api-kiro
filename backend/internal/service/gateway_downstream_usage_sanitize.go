@@ -127,9 +127,9 @@ func escapeGJSONPathKey(key string) string {
 	for _, r := range key {
 		switch r {
 		case '.', '*', '?', '\\':
-			b.WriteByte('\\')
+			_ = b.WriteByte('\\')
 		}
-		b.WriteRune(r)
+		_, _ = b.WriteRune(r)
 	}
 	return b.String()
 }

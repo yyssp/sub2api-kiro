@@ -1270,7 +1270,24 @@ func TestForwardAsRawChatCompletions_RestoresMappedResponseModel(t *testing.T) {
 					result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
 					require.NoError(t, err)
 					require.Equal(t, expectedUpstream, gjson.GetBytes(upstream.lastBody, "model").String())
-					require.Contains(t, rec.Body.String(), strings.Replace(payload, `"model":"`+returned+`"`, `"model":"`+expectedModel+`"`, 1))
+
+					// The response pipeline may enrich usage with derived fields such as
+					// total_tokens, so validate protocol fields instead of serialized JSON.
+					responsePayload := rec.Body.String()
+					if stream {
+						for _, line := range strings.Split(responsePayload, "\n") {
+							line = strings.TrimSpace(line)
+							if strings.HasPrefix(line, "data: ") && strings.TrimSpace(strings.TrimPrefix(line, "data: ")) != "[DONE]" {
+								responsePayload = strings.TrimPrefix(line, "data: ")
+								break
+							}
+						}
+					}
+					require.True(t, gjson.Valid(responsePayload), "forwarded payload must remain valid JSON: %s", responsePayload)
+					require.Equal(t, expectedModel, gjson.Get(responsePayload, "model").String())
+					require.Equal(t, "keep alias", gjson.Get(responsePayload, "choices.0.delta.content").String())
+					require.Equal(t, float64(1), gjson.Get(responsePayload, "usage.prompt_tokens").Float())
+					require.Equal(t, float64(1), gjson.Get(responsePayload, "usage.completion_tokens").Float())
 					require.Equal(t, returned, result.UpstreamResponseModel)
 				})
 			}
