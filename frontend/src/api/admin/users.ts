@@ -330,27 +330,12 @@ export async function bindUserAuthIdentity(
 /**
  * Platform quota types
  */
-/**
- * 允许设置 user × platform 配额的平台。
- *
- * 必须与后端 internal/service/domain_constants.go 的 AllowedQuotaPlatforms
- * 一致（后端是单一权威来源，还有 ent schema 的 Validate 与 SQL CHECK 约束）。
- * 这里漏项的失败模式是 fail-open：管理台根本列不出该平台的配额行，
- * 于是那个平台**不受限额**，而不是报错。
- */
-export type PlatformQuotaPlatform =
-  | 'anthropic'
-  | 'openai'
-  | 'gemini'
-  | 'antigravity'
-  | 'kiro'
-  | 'cursor'
-  | 'grok'
-  | 'kimi'
-  | 'zhipu'
-  | 'deepseek'
-  | 'minimax'
-  | 'opencode_go'
+// Keep aligned with backend/internal/service/domain_constants.go AllowedQuotaPlatforms.
+export const PLATFORM_QUOTA_PLATFORMS = [
+  'anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'cursor',
+  'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go',
+] as const
+export type PlatformQuotaPlatform = typeof PLATFORM_QUOTA_PLATFORMS[number]
 export type PlatformQuotaWindow = 'daily' | 'weekly' | 'monthly'
 
 export interface PlatformQuotaItem {
