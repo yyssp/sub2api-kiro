@@ -858,6 +858,12 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+func ProvideClaudeCodeVersionSyncService(repo SettingRepository, settings *SettingService, github GitHubReleaseClient) *ClaudeCodeVersionSyncService {
+	svc := NewClaudeCodeVersionSyncService(repo, settings, github, claudeCodeVersionSyncInterval)
+	svc.Start()
+	return svc
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -925,6 +931,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAccountTestService,
 	ProvideUpstreamBillingProbeService,
 	ProvideOllamaCloudUsageService,
+	ProvideOpenCodeGoUsageService,
 	ProvideSettingService,
 	NewDataManagementService,
 	ProvideBackupService,
@@ -956,6 +963,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(GrokOAuthReconciler), new(*TokenRefreshService)),
 	ProvideAccountExpiryService,
 	ProvideOpenAICodexVersionSyncService,
+	ProvideClaudeCodeVersionSyncService,
 	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,
 	ProvideTimingWheelService,
