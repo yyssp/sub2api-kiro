@@ -32,6 +32,10 @@ func encodeAnthropicThinking(block AnthropicContentBlock) string {
 // Responses API response. This is the reverse of ResponsesToAnthropic and
 // enables Anthropic upstream responses to be returned in OpenAI Responses format.
 func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
+	return AnthropicToResponsesResponseWithCustomTools(resp, nil)
+}
+
+func AnthropicToResponsesResponseWithCustomTools(resp *AnthropicResponse, customTools map[string]bool) *ResponsesResponse {
 	id := resp.ID
 	if id == "" {
 		id = generateResponsesID()
@@ -179,7 +183,8 @@ type AnthropicEventToResponsesState struct {
 	// Current output tracking
 	OutputIndex     int
 	CurrentItemID   string
-	CurrentItemType string // "message" | "function_call" | "reasoning"
+	CurrentItemType string // "message" | "function_call" | "custom_tool_call" | "reasoning"
+	CustomTools     map[string]bool
 
 	// For message output: accumulate text parts
 	ContentIndex int
