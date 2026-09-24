@@ -3,8 +3,10 @@
 package service
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/tidwall/gjson"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,97 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
-
-func TestForwardAsResponsesKiroDirectUsesResponsesCacheProfile(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	resetCacheTracker()
-
-	account := &Account{
-		ID:          301,
-		Name:        "kiro-responses-cache",
-		Platform:    PlatformKiro,
-		Type:        AccountTypeOAuth,
-		Status:      StatusActive,
-		Schedulable: true,
-		Concurrency: 1,
-		Credentials: map[string]any{
-			"access_token": "kiro-access-token",
-			"profile_arn":  "arn:aws:codewhisperer:us-east-1:123456789012:profile/RESPONSECACHE",
-		},
-	}
-	group := cacheGroup(1)
-	body := kiroResponsesCacheRequestBody("gateway", "workspace-gateway", "resp-gateway")
-	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "responses")
-	require.NoError(t, err)
-	parsed.Group = group
-
-	upstream := &queuedHTTPUpstream{responses: []*http.Response{
-		kiroResponsesCacheUpstreamResponse(t, 5),
-		kiroResponsesCacheUpstreamResponse(t, 7),
-	}}
-	svc := &GatewayService{
-		cfg: &config.Config{Gateway: config.GatewayConfig{
-			StreamDataIntervalTimeout: 0,
-			MaxLineSize:               defaultMaxLineSize,
-		}},
-		httpUpstream:        upstream,
-		kiroCooldownStore:   &stubKiroCooldownStore{},
-		tlsFPProfileService: &TLSFingerprintProfileService{},
-		rateLimitService:    &RateLimitService{},
-	}
-
-	firstCtx, firstRec := newResponsesGatewayTestContext()
-	firstResult, err := svc.ForwardAsResponses(firstCtx.Request.Context(), firstCtx, account, body, parsed)
-	require.NoError(t, err)
-	require.Equal(t, 0, firstResult.Usage.CacheReadInputTokens)
-	require.Greater(t, firstResult.Usage.CacheCreationInputTokens, 0)
-	require.Equal(t, firstResult.Usage.CacheCreationInputTokens, int(gjson.Get(firstRec.Body.String(), "usage.cache_creation_input_tokens").Int()))
-	require.False(t, gjson.Get(firstRec.Body.String(), "usage.input_tokens_details.cached_tokens").Exists())
-
-	secondCtx, secondRec := newResponsesGatewayTestContext()
-	secondResult, err := svc.ForwardAsResponses(secondCtx.Request.Context(), secondCtx, account, body, parsed)
-	require.NoError(t, err)
-	require.Greater(t, secondResult.Usage.CacheReadInputTokens, 0)
-	require.Equal(t, 0, secondResult.Usage.CacheCreationInputTokens)
-	require.Equal(t, secondResult.Usage.CacheReadInputTokens, int(gjson.Get(secondRec.Body.String(), "usage.input_tokens_details.cached_tokens").Int()))
-	require.Equal(t, 0, int(gjson.Get(secondRec.Body.String(), "usage.cache_creation_input_tokens").Int()))
-	require.Len(t, upstream.requests, 2)
-}
-
-func newResponsesGatewayTestContext() (*gin.Context, *httptest.ResponseRecorder) {
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	return c, rec
-}
-
-func kiroResponsesCacheUpstreamResponse(t *testing.T, outputTokens int) *http.Response {
-	t.Helper()
-	var upstreamBody bytes.Buffer
-	_, _ = upstreamBody.Write(buildKiroEventStreamFrame(t, "assistantResponseEvent", map[string]any{
-		"assistantResponseEvent": map[string]any{"content": "hello"},
-	}))
-	_, _ = upstreamBody.Write(buildKiroEventStreamFrame(t, "messageMetadataEvent", map[string]any{
-		"messageMetadataEvent": map[string]any{
-			"tokenUsage": map[string]any{
-				"uncachedInputTokens": 99,
-				"outputTokens":        outputTokens,
-			},
-		},
-	}))
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/vnd.amazon.eventstream"}},
-		Body:       io.NopCloser(&upstreamBody),
-	}
-}
 
 func TestAdaptResponsesClientToolsForAnthropic_FlattensNamespace(t *testing.T) {
 	t.Parallel()
@@ -160,59 +75,6 @@ func TestAdaptResponsesClientToolsForAnthropic_LiftsAdditionalTools(t *testing.T
 	input := request["input"].([]any)
 	require.Len(t, input, 1)
 	require.Equal(t, "message", input[0].(map[string]any)["type"])
-}
-
-func TestAdaptResponsesClientToolsForAnthropic_NormalizesBareNamespaceHistoryForKiro(t *testing.T) {
-	requestBody := map[string]any{
-		"model": "gpt-5.6-sol",
-		"input": []any{
-			map[string]any{
-				"type": "additional_tools", "role": "developer",
-				"tools": []any{map[string]any{
-					"type": "namespace", "name": "functions",
-					"tools": []any{map[string]any{"type": "custom", "name": "exec", "description": "Run JavaScript"}},
-				}},
-			},
-			map[string]any{"type": "custom_tool_call", "name": "exec", "call_id": "custom_1", "input": "run()"},
-			map[string]any{"type": "custom_tool_call_output", "call_id": "custom_1", "output": "ok"},
-			map[string]any{"type": "function_call", "name": "exec", "call_id": "legacy_1", "arguments": "{\"input\":\"legacy()\"}"},
-			map[string]any{"type": "function_call_output", "call_id": "legacy_1", "output": "legacy ok"},
-			map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": "continue"}}},
-		},
-	}
-	body, err := json.Marshal(requestBody)
-	require.NoError(t, err)
-
-	adapted, mapping, err := adaptResponsesClientToolsForAnthropic(body)
-	require.NoError(t, err)
-	require.True(t, mapping.CustomTools["functions__exec"])
-	require.Equal(t, apicompat.ResponsesNamespaceName{Namespace: "functions", Name: "exec"}, mapping.NamespaceTools["functions__exec"])
-
-	var request apicompat.ResponsesRequest
-	require.NoError(t, json.Unmarshal(adapted, &request))
-	require.Len(t, request.Tools, 1)
-	require.Equal(t, "function", request.Tools[0].Type)
-	require.Equal(t, "functions__exec", request.Tools[0].Name)
-
-	anthropicRequest, err := apicompat.ResponsesToAnthropicRequest(&request)
-	require.NoError(t, err)
-	anthropicBody, err := json.Marshal(anthropicRequest)
-	require.NoError(t, err)
-	kiroBuildResult, err := kiro.BuildKiroPayloadWithContext(anthropicBody, "gpt-5.6-sol", "", "AI_EDITOR", nil)
-	require.NoError(t, err)
-
-	tools := gjson.GetBytes(kiroBuildResult.Payload, "conversationState.currentMessage.userInputMessage.userInputMessageContext.tools").Array()
-	require.Len(t, tools, 1, "裸 exec 历史不得触发额外占位工具")
-	require.Equal(t, "functions__exec", tools[0].Get("toolSpecification.name").String())
-
-	history := gjson.GetBytes(kiroBuildResult.Payload, "conversationState.history").Array()
-	var toolUseNames []string
-	for _, message := range history {
-		for _, toolUse := range message.Get("assistantResponseMessage.toolUses").Array() {
-			toolUseNames = append(toolUseNames, toolUse.Get("name").String())
-		}
-	}
-	require.Equal(t, []string{"functions__exec", "functions__exec"}, toolUseNames)
 }
 
 // Codex 的 codex_app 工具（如 automation_update）把 parameters 根节点声明成对象
@@ -589,4 +451,75 @@ func TestHandleResponsesStreamingResponse_CompactSSEFormat(t *testing.T) {
 	require.Equal(t, 15, result.Usage.InputTokens)
 	require.Equal(t, 6, result.Usage.OutputTokens)
 	require.Contains(t, rec.Body.String(), `response.completed`)
+}
+
+func TestOpus55ResponsesSignedThinkingBufferedAndStreamed(t *testing.T) {
+	payload := strings.Join([]string{
+		"event: message_start\n" + `data: {"type":"message_start","message":{"id":"msg_1","model":"claude-opus-5-5","content":[],"usage":{"input_tokens":10}}}`,
+		"event: content_block_start\n" + `data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`,
+		"event: content_block_delta\n" + `data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"signed"}}`,
+		"event: content_block_stop\n" + `data: {"type":"content_block_stop","index":0}`,
+		"event: content_block_start\n" + `data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}`,
+		"event: content_block_delta\n" + `data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ok"}}`,
+		"event: content_block_stop\n" + `data: {"type":"content_block_stop","index":1}`,
+		"event: message_delta\n" + `data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}`,
+		"event: message_stop\n" + `data: {"type":"message_stop"}`,
+	}, "\n\n") + "\n\n"
+	for _, stream := range []bool{false, true} {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+		resp := &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(payload))}
+		svc := &GatewayService{}
+		var err error
+		if stream {
+			_, err = svc.handleResponsesStreamingResponse(resp, c, "public-opus", "claude-opus-5-5", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+		} else {
+			_, err = svc.handleResponsesBufferedStreamingResponse(resp, c, "public-opus", "claude-opus-5-5", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+		}
+		require.NoError(t, err)
+		require.Contains(t, rec.Body.String(), "anthropic-thinking-v1:")
+		require.Contains(t, rec.Body.String(), "public-opus")
+		require.Contains(t, rec.Body.String(), `"text":"ok"`)
+	}
+}
+
+func TestOpus55BridgeUsesMappedModelBeforeThinkingConversion(t *testing.T) {
+	for _, chat := range []bool{false, true} {
+		for _, forced := range []bool{false, true} {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			body := `{"model":"public-opus","input":"hello","reasoning":{"effort":"xhigh"}}`
+			if chat {
+				body = `{"model":"public-opus","messages":[{"role":"user","content":"hello"}],"reasoning_effort":"xhigh"}`
+			}
+			if forced {
+				body = body[:len(body)-1] + `,"tool_choice":"required","tools":[{"type":"function","name":"lookup","function":{"name":"lookup"}}]}`
+			}
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+			upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(namespaceToolAnthropicStream()))}}
+			svc := &GatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+			account := &Account{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "fixture-key", "model_mapping": map[string]any{"public-opus": "claude-opus-5-5"}}}
+			var err error
+			var result *ForwardResult
+			if chat {
+				result, err = svc.ForwardAsChatCompletions(context.Background(), c, account, []byte(body), nil)
+			} else {
+				result, err = svc.ForwardAsResponses(context.Background(), c, account, []byte(body), nil)
+			}
+			if forced {
+				require.Error(t, err)
+				require.Equal(t, 400, rec.Code)
+				require.Nil(t, upstream.lastReq)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.NotNil(t, upstream.lastReq)
+				require.Equal(t, "claude-opus-5-5", gjson.GetBytes(upstream.lastBody, "model").String())
+				require.Equal(t, "adaptive", gjson.GetBytes(upstream.lastBody, "thinking.type").String())
+				require.Equal(t, "xhigh", gjson.GetBytes(upstream.lastBody, "output_config.effort").String())
+				require.False(t, gjson.GetBytes(upstream.lastBody, "thinking.budget_tokens").Exists())
+			}
+		}
+	}
 }

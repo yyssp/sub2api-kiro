@@ -50,22 +50,9 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 	}
 
-	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(responsesReq)
-	if err != nil {
-		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
-	}
-
-	// 3. Force upstream streaming
-	anthropicReq.Stream = true
-	reqStream := true
-
-	// 4. Model mapping
+	// Resolve the final upstream model before model-specific conversion.
 	mappedModel := originalModel
-	if account.Platform == PlatformKiro {
-		if next := account.GetMappedModel(originalModel); next != "" {
-			mappedModel = next
-		}
-	} else if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
+	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
 		mappedModel = account.GetMappedModel(originalModel)
 	}
 	if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
@@ -79,7 +66,22 @@ func (s *GatewayService) ForwardAsChatCompletions(
 			mappedModel = normalized
 		}
 	}
-	anthropicReq.Model = mappedModel
+	if err := validateClaudeOpus55Request(body, mappedModel); err != nil {
+		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
+	responsesReq.Model = mappedModel
+	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(responsesReq)
+	if err != nil {
+		if claude.IsOpus55(mappedModel) {
+			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		}
+		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
+	}
+
+	// 3. Force upstream streaming
+	anthropicReq.Stream = true
+	reqStream := true
 
 	logger.L().Debug("gateway forward_as_chat_completions: model mapping applied",
 		zap.Int64("account_id", account.ID),
@@ -94,23 +96,13 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		return nil, fmt.Errorf("marshal anthropic request: %w", err)
 	}
 
-	var group *Group
-	if parsed != nil {
-		group = parsed.Group
-	}
-	cachePlan := prepareCachePlanForContext(
-		ctx, c, account, group, body, mappedModel, "openai_chat_completions",
-		estimateOpenAIChatCompletionsInputTokens(ctx, body),
-	)
-
 	// 6. Apply Claude Code mimicry for OAuth accounts.
 	// Chat Completions 协议进来的请求永远不是 Claude Code 客户端，所以对 OAuth 账号
 	// 必须完整执行 /v1/messages 主路径上的伪装链路（system 重写 + normalize + metadata 注入），
 	// 否则会被 Anthropic 判为第三方应用并扣 extra usage。
-	// 见 applyClaudeCodeOAuthMimicryToBody 与 shouldMimicClaudeCodeForAccount 的 godoc
-	// （后者说明了 Kiro 为何必须排除）。
+	// 见 applyClaudeCodeOAuthMimicryToBody 的 godoc。
 	isClaudeCode := false
-	shouldMimicClaudeCode := shouldMimicClaudeCodeForAccount(account, isClaudeCode)
+	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
 
 	if shouldMimicClaudeCode {
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
@@ -119,69 +111,39 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	// 7. Enforce cache_control block limit
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
 
-	var resp *http.Response
-	var reasoningEffort *string
-	if isKiroDirectModeAccount(account) {
-		// Kiro's direct path does not build a generic Anthropic request, so use
-		// the final converted request body as the billing source instead.
-		reasoningEffort = NormalizeClaudeOutputEffort(gjson.GetBytes(anthropicBody, "output_config.effort").String())
-		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, anthropicBody, mappedModel)
-		resp, _, err = s.openKiroAnthropicStreamResponse(ctx, account, parsed, anthropicBody, mappedModel, originalModel, c.Request.Header, group, cachePlan)
-		if err != nil {
-			// behavior=reject 时请求没发出去，不能报成上游故障。见 respondKiroPayloadTooLarge。
-			if weight, limit, ok := kiroPayloadTooLargeDetail(err); ok {
-				writeGatewayCCError(c, http.StatusRequestEntityTooLarge, "invalid_request_error",
-					kiroPayloadTooLargeMessage(weight, limit))
-				return nil, err
-			}
-			safeErr := sanitizeUpstreamErrorMessage(err.Error())
-			setOpsUpstreamError(c, 0, safeErr, "")
-			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-				Platform:           account.Platform,
-				AccountID:          account.ID,
-				AccountName:        account.Name,
-				UpstreamStatusCode: 0,
-				Kind:               "request_error",
-				Message:            safeErr,
-			})
-			writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Upstream request failed")
-			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
-		}
-	} else {
-		// 8. Get access token
-		token, tokenType, err := s.GetAccessToken(ctx, account)
-		if err != nil {
-			return nil, fmt.Errorf("get access token: %w", err)
-		}
+	// 8. Get access token
+	token, tokenType, err := s.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("get access token: %w", err)
+	}
 
-		// 9. Get proxy URL
-		proxyURL := ""
-		if account.ProxyID != nil && account.Proxy != nil {
-			proxyURL = account.Proxy.URL()
-		}
+	// 9. Get proxy URL
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
 
-		// 10. Build upstream request
-		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
-		upstreamReq, forwardedBody, err := s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
-		releaseUpstreamCtx()
-		if err != nil {
-			return nil, fmt.Errorf("build upstream request: %w", err)
-		}
-		// Bill the final Anthropic effort after conversion and account
-		// normalization (for example, xhigh becomes max upstream).
-		reasoningEffort = NormalizeClaudeOutputEffort(gjson.GetBytes(forwardedBody, "output_config.effort").String())
-		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, mappedModel)
+	// 10. Build upstream request
+	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
+	upstreamReq, forwardedBody, err := s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
+	releaseUpstreamCtx()
+	if err != nil {
+		return nil, fmt.Errorf("build upstream request: %w", err)
+	}
+	// Bill the final Anthropic effort after conversion and account normalization.
+	// For example, OpenAI xhigh is forwarded as output_config.effort=max.
+	reasoningEffort := NormalizeClaudeOutputEffort(gjson.GetBytes(forwardedBody, "output_config.effort").String())
+	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, mappedModel)
 
-		// 11. Send request
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
-		if err != nil {
-			if resp != nil && resp.Body != nil {
-				_ = resp.Body.Close()
-			}
-			return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
-				UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
-			})
+	// 11. Send request
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
 		}
+		return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
+			UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
+		})
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -277,7 +239,6 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
-	sawTerminalEvent := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -311,16 +272,9 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 			if event.Usage != nil {
 				mergeAnthropicUsage(&usage, *event.Usage)
 			}
-			mergeKiroSignalsFromAnthropicPayload(&usage, payload)
-			if event.Delta != nil && event.Delta.StopReason != "" {
-				sawTerminalEvent = true
-				if finalResp != nil {
-					finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
-				}
+			if event.Delta != nil && event.Delta.StopReason != "" && finalResp != nil {
+				finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
 			}
-		}
-		if event.Type == "message_stop" {
-			sawTerminalEvent = true
 		}
 		if event.Type == "content_block_start" && event.ContentBlock != nil && finalResp != nil {
 			finalResp.Content = append(finalResp.Content, *event.ContentBlock)
@@ -353,25 +307,15 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
 		return nil, fmt.Errorf("upstream stream ended without response")
 	}
-	if !sawTerminalEvent {
-		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without terminal event")
-		return nil, fmt.Errorf("stream usage incomplete: missing terminal event")
-	}
 
-	// Update usage from accumulated delta. 无条件赋值：纯缓存命中的响应
-	// （input/output 均为 0 但 cache read/write 非 0）不能被整体丢弃。
-	finalResp.Usage = apicompat.AnthropicUsage{
-		InputTokens:              usage.InputTokens,
-		OutputTokens:             usage.OutputTokens,
-		CacheCreationInputTokens: usage.CacheCreationInputTokens,
-		CacheReadInputTokens:     usage.CacheReadInputTokens,
-	}
-	mergeAndCommitCachePlan(c, &usage, true)
-	finalResp.Usage = apicompat.AnthropicUsage{
-		InputTokens:              usage.InputTokens,
-		OutputTokens:             usage.OutputTokens,
-		CacheCreationInputTokens: usage.CacheCreationInputTokens,
-		CacheReadInputTokens:     usage.CacheReadInputTokens,
+	// Update usage from accumulated delta
+	if usage.InputTokens > 0 || usage.OutputTokens > 0 {
+		finalResp.Usage = apicompat.AnthropicUsage{
+			InputTokens:              usage.InputTokens,
+			OutputTokens:             usage.OutputTokens,
+			CacheCreationInputTokens: usage.CacheCreationInputTokens,
+			CacheReadInputTokens:     usage.CacheReadInputTokens,
+		}
 	}
 
 	// Chain: Anthropic → Responses → Chat Completions
@@ -440,8 +384,6 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
-	sawTerminalEvent := false
-	clientDisconnected := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -473,7 +415,6 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		// c 可能持有请求侧注入的 ToolNameRewrite；无则仅做静态前缀还原。
 		out := string(reverseToolNamesIfPresent(c, []byte(sse)))
 		if _, err := fmt.Fprint(c.Writer, out); err != nil {
-			clientDisconnected = true
 			return true // client disconnected
 		}
 		return false
@@ -498,15 +439,6 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		// Extract usage from message_delta
 		if event.Type == "message_delta" && event.Usage != nil {
 			mergeAnthropicUsage(&usage, *event.Usage)
-		}
-		if event.Type == "message_stop" ||
-			(event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason != "") {
-			sawTerminalEvent = true
-			mergeAndCommitCachePlan(c, &usage, false)
-			anthState.InputTokens = usage.InputTokens
-			anthState.CacheReadInputTokens = usage.CacheReadInputTokens
-			anthState.CacheCreationInputTokens = usage.CacheCreationInputTokens
-			anthState.OutputTokens = usage.OutputTokens
 		}
 		// Also capture usage from message_start (carries cache fields)
 		if event.Type == "message_start" && event.Message != nil {
@@ -546,7 +478,6 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
 		}
-		mergeKiroSignalsFromAnthropicPayload(&usage, payload)
 
 		if processAnthropicEvent(&event) {
 			return resultWithUsage(), nil
@@ -560,12 +491,6 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 				zap.String("request_id", requestID),
 			)
 		}
-	}
-	if !sawTerminalEvent {
-		return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
-	}
-	if !clientDisconnected {
-		commitCachePlan(c)
 	}
 
 	// Finalize both state machines

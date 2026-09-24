@@ -60,22 +60,9 @@ func (s *GatewayService) ForwardAsResponses(
 	clientStream := responsesReq.Stream
 
 	// 3. Convert Responses → Anthropic
-	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
-	if err != nil {
-		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
-	}
-
-	// 3. Force upstream streaming (Anthropic works best with streaming)
-	anthropicReq.Stream = true
-	reqStream := true
-
-	// 4. Model mapping
+	// Resolve the final upstream model before model-specific conversion.
 	mappedModel := originalModel
-	if account.Platform == PlatformKiro {
-		if next := account.GetMappedModel(originalModel); next != "" {
-			mappedModel = next
-		}
-	} else if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
+	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
 		mappedModel = account.GetMappedModel(originalModel)
 	}
 	if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
@@ -89,37 +76,28 @@ func (s *GatewayService) ForwardAsResponses(
 			mappedModel = normalized
 		}
 	}
-	// 4b. Codex remote compaction v2：input 里带 compaction_trigger 的请求不是普通
-	// 轮次，而是"把前文压缩成摘要"。Anthropic 协议族没有原生 compact 端点，转换器
-	// 已把触发器降级成摘要指令（见 apicompat.CompactionSummaryPrompt），这里只需把
-	// 请求参数调成适合产出摘要的形态。
-	isCompact := apicompat.HasCompactionTrigger(&responsesReq)
-	if isCompact {
-		// 压缩专用模型映射：账号未配 compact_model_mapping 时沿用普通映射结果。
-		if next, matched := account.ResolveCompactMappedModel(originalModel); matched {
-			if trimmed := strings.TrimSpace(next); trimmed != "" {
-				mappedModel = trimmed
-			}
-		}
-		// 摘要轮次不允许调用工具。tools 必须保留：历史里的 tool_use 块引用了工具
-		// 定义，删掉会让上游校验失败；tool_choice=none 已足够抑制调用。
-		anthropicReq.ToolChoice = json.RawMessage(`{"type":"none"}`)
-		// 摘要不需要思考块，省 token 也避免 thinking 与 tool_choice 的组合限制。
-		anthropicReq.Thinking = nil
-		// Codex 的 compact 请求不带 max_output_tokens，会落到转换器的 8192 默认值；
-		// 对覆盖数十万 token 前文的结构化摘要偏紧，容易被截断。
-		if anthropicReq.MaxTokens < compactionMinMaxTokens {
-			anthropicReq.MaxTokens = compactionMinMaxTokens
-		}
+	if err := validateClaudeOpus55Request(body, mappedModel); err != nil {
+		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
 	}
-	anthropicReq.Model = mappedModel
+	responsesReq.Model = mappedModel
+	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
+	if err != nil {
+		if claude.IsOpus55(mappedModel) {
+			writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		}
+		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
+	}
+
+	// 3. Force upstream streaming (Anthropic works best with streaming)
+	anthropicReq.Stream = true
+	reqStream := true
 
 	logger.L().Debug("gateway forward_as_responses: model mapping applied",
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
 		zap.String("mapped_model", mappedModel),
 		zap.Bool("client_stream", clientStream),
-		zap.Bool("compaction", isCompact),
 	)
 
 	// 5. Marshal Anthropic request body
@@ -128,95 +106,54 @@ func (s *GatewayService) ForwardAsResponses(
 		return nil, fmt.Errorf("marshal anthropic request: %w", err)
 	}
 
-	var group *Group
-	if parsed != nil {
-		group = parsed.Group
-	}
-	cachePlan := prepareCachePlanForContext(
-		ctx, c, account, group, body, mappedModel, "openai_responses",
-		estimateOpenAIResponsesInputTokens(ctx, body),
-	)
-
 	// 6. Apply Claude Code mimicry for OAuth accounts (non-Claude-Code endpoints).
 	// OpenAI Responses 协议进来的请求永远不是 Claude Code 客户端，所以对 OAuth 账号
 	// 必须完整执行 /v1/messages 主路径上的伪装链路（system 重写 + normalize + metadata 注入），
 	// 否则会被 Anthropic 判为第三方应用并扣 extra usage。
-	// 见 applyClaudeCodeOAuthMimicryToBody 与 shouldMimicClaudeCodeForAccount 的 godoc
-	// （后者说明了 Kiro 为何必须排除）。
+	// 见 applyClaudeCodeOAuthMimicryToBody 的 godoc。
 	isClaudeCode := false
-	shouldMimicClaudeCode := shouldMimicClaudeCodeForAccount(account, isClaudeCode)
+	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
 
 	if shouldMimicClaudeCode {
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
-		clientToolMapping.CustomTools = responsesCustomToolsWithRewriteAliases(clientToolMapping.CustomTools, toolNameRewriteFromContext(c))
 	}
 
 	// 7. Enforce cache_control block limit
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
 
-	var resp *http.Response
-	var reasoningEffort *string
-	if isKiroDirectModeAccount(account) {
-		// Kiro's direct path does not build a generic Anthropic request, so use
-		// the final converted request body as the billing source instead.
-		reasoningEffort = NormalizeClaudeOutputEffort(gjson.GetBytes(anthropicBody, "output_config.effort").String())
-		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, anthropicBody, mappedModel)
-		resp, _, err = s.openKiroAnthropicStreamResponse(ctx, account, parsed, anthropicBody, mappedModel, originalModel, c.Request.Header, group, cachePlan)
-		if err != nil {
-			// behavior=reject 时请求没发出去，不能报成上游故障。见 respondKiroPayloadTooLarge。
-			if weight, limit, ok := kiroPayloadTooLargeDetail(err); ok {
-				writeResponsesError(c, http.StatusRequestEntityTooLarge, "invalid_request_error",
-					kiroPayloadTooLargeMessage(weight, limit))
-				return nil, err
-			}
-			safeErr := sanitizeUpstreamErrorMessage(err.Error())
-			setOpsUpstreamError(c, 0, safeErr, "")
-			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-				Platform:           account.Platform,
-				AccountID:          account.ID,
-				AccountName:        account.Name,
-				UpstreamStatusCode: 0,
-				Kind:               "request_error",
-				Message:            safeErr,
-			})
-			writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream request failed")
-			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
-		}
-	} else {
-		// 8. Get access token
-		token, tokenType, err := s.GetAccessToken(ctx, account)
-		if err != nil {
-			return nil, fmt.Errorf("get access token: %w", err)
-		}
+	// 8. Get access token
+	token, tokenType, err := s.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("get access token: %w", err)
+	}
 
-		// 9. Get proxy URL
-		proxyURL := ""
-		if account.ProxyID != nil && account.Proxy != nil {
-			proxyURL = account.Proxy.URL()
-		}
+	// 9. Get proxy URL
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
 
-		// 10. Build upstream request
-		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
-		upstreamReq, forwardedBody, err := s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
-		releaseUpstreamCtx()
-		if err != nil {
-			return nil, fmt.Errorf("build upstream request: %w", err)
-		}
-		// Bill the final Anthropic effort after conversion and account
-		// normalization (for example, xhigh becomes max upstream).
-		reasoningEffort = NormalizeClaudeOutputEffort(gjson.GetBytes(forwardedBody, "output_config.effort").String())
-		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, mappedModel)
+	// 10. Build upstream request
+	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
+	upstreamReq, forwardedBody, err := s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
+	releaseUpstreamCtx()
+	if err != nil {
+		return nil, fmt.Errorf("build upstream request: %w", err)
+	}
+	// Bill the final Anthropic effort after conversion and account normalization.
+	// For example, OpenAI xhigh is forwarded as output_config.effort=max.
+	reasoningEffort := NormalizeClaudeOutputEffort(gjson.GetBytes(forwardedBody, "output_config.effort").String())
+	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, mappedModel)
 
-		// 11. Send request
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
-		if err != nil {
-			if resp != nil && resp.Body != nil {
-				_ = resp.Body.Close()
-			}
-			return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
-				UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
-			})
+	// 11. Send request
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
 		}
+		return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
+			UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
+		})
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -260,15 +197,12 @@ func (s *GatewayService) ForwardAsResponses(
 	// 13. Handle normal response (convert Anthropic → Responses)
 	var result *ForwardResult
 	var handleErr error
-	if isCompact {
-		// compact 请求必须缓冲：要拿到完整摘要文本才能合成 Codex 要求的单个
-		// compaction item，逐事件透传做不到。
-		result, handleErr = s.handleResponsesCompactionResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientStream)
-	} else if clientStream {
+	if clientStream {
 		result, handleErr = s.handleResponsesStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
 	} else {
 		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
 	}
+
 	return result, handleErr
 }
 
@@ -327,30 +261,6 @@ func liftResponsesAdditionalTools(requestBody map[string]any) (bool, error) {
 	requestBody["tools"] = tools
 	requestBody["input"] = kept
 	return true, nil
-}
-
-func responsesCustomToolsWithRewriteAliases(customTools map[string]bool, rw *ToolNameRewrite) map[string]bool {
-	if len(customTools) == 0 || rw == nil || len(rw.Forward) == 0 {
-		return customTools
-	}
-
-	var out map[string]bool
-	for original, rewritten := range rw.Forward {
-		if !customTools[original] || strings.TrimSpace(rewritten) == "" {
-			continue
-		}
-		if out == nil {
-			out = make(map[string]bool, len(customTools)+1)
-			for name, ok := range customTools {
-				out[name] = ok
-			}
-		}
-		out[rewritten] = true
-	}
-	if out == nil {
-		return customTools
-	}
-	return out
 }
 
 // ExtractResponsesReasoningEffortFromBody reads Responses API reasoning.effort
@@ -417,32 +327,6 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 	}
 }
 
-// mergeKiroSignalsFromAnthropicPayload 从 Anthropic 形态的 payload 里取两个 Kiro 侧信号：
-// 积分消耗，以及「这份 usage 是不是计费口径」（见 upstreamUsageIsBillingScale）。
-// 两者都藏在同一个 usage 对象里，分开解析等于把同一段 JSON 走两遍。
-func mergeKiroSignalsFromAnthropicPayload(dst *ClaudeUsage, payload string) {
-	if dst == nil || payload == "" || !gjson.Valid(payload) {
-		return
-	}
-	creditsFound := false
-	for _, path := range []string{"usage", "message.usage"} {
-		usage := gjson.Get(payload, path)
-		if !usage.Exists() {
-			continue
-		}
-		if !creditsFound {
-			if credits := kiroCreditsFromUsageGJSON(usage); credits > 0 {
-				dst.KiroCredits = credits
-				creditsFound = true
-			}
-		}
-		// 只置位、不清零：带 kiro_* 字段的往往只有其中一帧。
-		if upstreamUsageIsBillingScale(usage) {
-			dst.UpstreamBillingScale = true
-		}
-	}
-}
-
 // parseAnthropicSSEField parses an SSE field line in the form "field:value" or "field: value".
 // According to the SSE spec (https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation),
 // the space after the colon is optional. This function handles both formats.
@@ -467,27 +351,8 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	clientToolMapping apicompat.ResponsesClientToolMapping,
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
-	finalResp, usage := s.collectAnthropicResponseFromSSE(resp.Body, requestID, nil)
 
-	if finalResp == nil {
-		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
-		return nil, fmt.Errorf("upstream stream ended without response")
-	}
-	return s.writeResponsesBufferedResult(
-		c, resp, finalResp, usage, requestID,
-		originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping,
-	)
-}
-
-// collectAnthropicResponseFromSSE 读完上游 Anthropic SSE 流并聚合成一个完整的
-// Anthropic 响应。onEvent 在每个事件解析成功后被调用（可为 nil），供调用方挂载
-// 心跳一类的副作用——compact 请求会借此在漫长的摘要生成期间向下游发送保活字节。
-func (s *GatewayService) collectAnthropicResponseFromSSE(
-	body io.Reader,
-	requestID string,
-	onEvent func(),
-) (*apicompat.AnthropicResponse, ClaudeUsage) {
-	scanner := bufio.NewScanner(body)
+	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
 		maxLineSize = s.cfg.Gateway.MaxLineSize
@@ -497,7 +362,6 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 	// Accumulate the final Anthropic response from streaming events
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
-	sawTerminalEvent := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -525,9 +389,6 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 			)
 			continue
 		}
-		if onEvent != nil {
-			onEvent()
-		}
 
 		// message_start carries the initial response structure
 		if event.Type == "message_start" && event.Message != nil {
@@ -540,16 +401,9 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 			if event.Usage != nil {
 				mergeAnthropicUsage(&usage, *event.Usage)
 			}
-			mergeKiroSignalsFromAnthropicPayload(&usage, payload)
-			if event.Delta != nil && event.Delta.StopReason != "" {
-				sawTerminalEvent = true
-				if finalResp != nil {
-					finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
-				}
+			if event.Delta != nil && event.Delta.StopReason != "" && finalResp != nil {
+				finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
 			}
-		}
-		if event.Type == "message_stop" {
-			sawTerminalEvent = true
 		}
 
 		// Accumulate content blocks
@@ -564,6 +418,8 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 					finalResp.Content[idx].Text += event.Delta.Text
 				case "thinking_delta":
 					finalResp.Content[idx].Thinking += event.Delta.Thinking
+				case "signature_delta":
+					finalResp.Content[idx].Signature += event.Delta.Signature
 				case "input_json_delta":
 					finalResp.Content[idx].Input = appendRawJSON(finalResp.Content[idx].Input, event.Delta.PartialJSON)
 				}
@@ -579,43 +435,27 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 			)
 		}
 	}
-	if !sawTerminalEvent {
-		return nil, usage
-	}
-	return finalResp, usage
-}
 
-// writeResponsesBufferedResult 把聚合好的 Anthropic 响应转成 Responses JSON 写回。
-func (s *GatewayService) writeResponsesBufferedResult(
-	c *gin.Context,
-	resp *http.Response,
-	finalResp *apicompat.AnthropicResponse,
-	usage ClaudeUsage,
-	requestID string,
-	originalModel string,
-	mappedModel string,
-	reasoningEffort *string,
-	startTime time.Time,
-	clientToolMapping apicompat.ResponsesClientToolMapping,
-) (*ForwardResult, error) {
-	// Update usage from accumulated delta. 无条件赋值：纯缓存命中的响应
-	// （input/output 均为 0 但 cache read/write 非 0）不能被整体丢弃。
-	finalResp.Usage = apicompat.AnthropicUsage{
-		InputTokens:              usage.InputTokens,
-		OutputTokens:             usage.OutputTokens,
-		CacheCreationInputTokens: usage.CacheCreationInputTokens,
-		CacheReadInputTokens:     usage.CacheReadInputTokens,
+	if finalResp == nil {
+		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
+		return nil, fmt.Errorf("upstream stream ended without response")
 	}
-	mergeAndCommitCachePlan(c, &usage, true)
-	finalResp.Usage = apicompat.AnthropicUsage{
-		InputTokens:              usage.InputTokens,
-		OutputTokens:             usage.OutputTokens,
-		CacheCreationInputTokens: usage.CacheCreationInputTokens,
-		CacheReadInputTokens:     usage.CacheReadInputTokens,
+
+	// Update usage from accumulated delta
+	if usage.InputTokens > 0 || usage.OutputTokens > 0 {
+		finalResp.Usage = apicompat.AnthropicUsage{
+			InputTokens:              usage.InputTokens,
+			OutputTokens:             usage.OutputTokens,
+			CacheCreationInputTokens: usage.CacheCreationInputTokens,
+			CacheReadInputTokens:     usage.CacheReadInputTokens,
+		}
 	}
 
 	// Convert to Responses format
-	responsesResp := apicompat.AnthropicToResponsesResponseWithCustomTools(finalResp, clientToolMapping.CustomTools)
+	if claude.IsOpus55(mappedModel) {
+		finalResp.Model = mappedModel
+	}
+	responsesResp := apicompat.AnthropicToResponsesResponse(finalResp)
 	responsesResp.Model = originalModel // Use original model name
 
 	if s.responseHeaderFilter != nil {
@@ -674,13 +514,11 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 	state := apicompat.NewAnthropicEventToResponsesState()
 	state.Model = originalModel
-	state.CustomTools = clientToolMapping.CustomTools
+	state.PreserveThinkingSignatures = claude.IsOpus55(mappedModel)
 	clientToolRestorer := apicompat.NewResponsesClientToolStreamRestorer(clientToolMapping)
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
-	sawTerminalEvent := false
-	clientDisconnected := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -719,17 +557,6 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
-		if event.Type == "message_stop" ||
-			(event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason != "") {
-			sawTerminalEvent = true
-			// Populate the converter state before it emits response.completed so
-			// synthetic cache buckets appear in the terminal Responses usage.
-			mergeAndCommitCachePlan(c, &usage, false)
-			state.InputTokens = usage.InputTokens
-			state.CacheReadInputTokens = usage.CacheReadInputTokens
-			state.CacheCreationInputTokens = usage.CacheCreationInputTokens
-			state.OutputTokens = usage.OutputTokens
-		}
 
 		// Convert to Responses events
 		events := apicompat.AnthropicEventToResponsesEvents(event, state)
@@ -757,7 +584,6 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 					logger.L().Info("forward_as_responses stream: client disconnected",
 						zap.String("request_id", requestID),
 					)
-					clientDisconnected = true
 					return true // client disconnected
 				}
 			}
@@ -769,12 +595,6 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	}
 
 	finalizeStream := func() (*ForwardResult, error) {
-		if !sawTerminalEvent {
-			return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
-		}
-		if !clientDisconnected {
-			commitCachePlan(c)
-		}
 		if finalEvents := apicompat.FinalizeAnthropicResponsesStream(state); len(finalEvents) > 0 {
 			for _, evt := range finalEvents {
 				sse, err := apicompat.ResponsesEventToSSE(evt)
@@ -817,8 +637,6 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			continue
 		}
 
-		mergeKiroSignalsFromAnthropicPayload(&usage, payload)
-
 		if processEvent(&event) {
 			return resultWithUsage(), nil
 		}
@@ -836,42 +654,17 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	return finalizeStream()
 }
 
-// appendRawJSON 累积 tool_use 块的 input_json_delta 分片。
-//
-// Anthropic 协议里 content_block_start 会带一个空对象占位（"input": {}），真实参数
-// 随后由 input_json_delta.partial_json 分片流出，消费方必须忽略这个占位。buffered
-// 路径把整个 ContentBlock 直接追加进 finalResp.Content，Input 因此已是 "{}"，若按
-// 普通分片往后拼就会得到 `{}{"command":"ls"}` 这种非法 JSON——Input 是
-// json.RawMessage，不做校验，会原样出到客户端。
-//
-// 因此把"占位空对象"与"空值"同等对待，让第一个真实分片直接替换它。真流式路径靠
-// content_block_start 时 CurrentArgs.Reset() 达到同一效果（见
-// anthropic_to_responses_response.go 的状态机），这里是它在 buffered 路径上的对应。
-//
-// 上游只发占位、不发任何 delta 时（无参工具），existing 保持 "{}" 不变，正是应有的
-// 语义——不能退化成空串，否则 Input 的 omitempty 会让 input 字段整个消失。
+// appendRawJSON appends a JSON fragment string to existing raw JSON.
 func appendRawJSON(existing json.RawMessage, fragment string) json.RawMessage {
-	if len(existing) == 0 || isEmptyJSONObject(existing) {
+	// Anthropic initializes tool_use.input to {} in content_block_start, then
+	// streams the actual input through input_json_delta events. Treat that empty
+	// object as a placeholder instead of prefixing it to the streamed JSON.
+	var existingObject map[string]json.RawMessage
+	isEmptyObject := json.Unmarshal(existing, &existingObject) == nil && existingObject != nil && len(existingObject) == 0
+	if len(existing) == 0 || isEmptyObject {
 		return json.RawMessage(fragment)
 	}
 	return json.RawMessage(string(existing) + fragment)
-}
-
-// isEmptyJSONObject 判断 raw 是否只是一个空 JSON 对象（允许任意位置的空白）。
-//
-// 只匹配闭合的空对象：分片过程中的中间态是 "{" 或 "{\"cmd" 这类不闭合前缀，不会
-// 命中；真正把 {} 拆成 "{" + "}" 两片发的上游，第一片后 existing 是 "{"，同样不
-// 命中。所以命中场景只有两种——content_block_start 的占位，或一个完整的空对象
-// 分片，两者都应被后续分片替换而非拼接。
-//
-// 不走 json.Unmarshal：该判断在每个分片上都要做一次，长参数的工具会被调用很多次。
-// 这里对真实载荷是 O(1) 退出——内层 TrimSpace 从左侧遇到第一个非空白字符就停。
-func isEmptyJSONObject(raw json.RawMessage) bool {
-	trimmed := bytes.TrimSpace(raw)
-	if len(trimmed) < 2 || trimmed[0] != '{' || trimmed[len(trimmed)-1] != '}' {
-		return false
-	}
-	return len(bytes.TrimSpace(trimmed[1:len(trimmed)-1])) == 0
 }
 
 // writeResponsesError writes an error response in OpenAI Responses API format.

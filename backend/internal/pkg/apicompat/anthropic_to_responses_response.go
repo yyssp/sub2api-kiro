@@ -2,28 +2,36 @@ package apicompat
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 )
 
 // ---------------------------------------------------------------------------
 // Non-streaming: AnthropicResponse → ResponsesResponse
 // ---------------------------------------------------------------------------
 
+const anthropicThinkingEnvelopePrefix = "anthropic-thinking-v1:"
+
+func encodeAnthropicThinking(block AnthropicContentBlock) string {
+	// Only fields belonging to the signed thinking block are retained.
+	payload, _ := json.Marshal(struct {
+		Type      string `json:"type"`
+		Thinking  string `json:"thinking"`
+		Signature string `json:"signature,omitempty"`
+		Data      string `json:"data,omitempty"`
+	}{block.Type, block.Thinking, block.Signature, block.Data})
+	return anthropicThinkingEnvelopePrefix + base64.RawStdEncoding.EncodeToString(payload)
+}
+
 // AnthropicToResponsesResponse converts an Anthropic Messages response into a
 // Responses API response. This is the reverse of ResponsesToAnthropic and
 // enables Anthropic upstream responses to be returned in OpenAI Responses format.
 func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
-	return AnthropicToResponsesResponseWithCustomTools(resp, nil)
-}
-
-// AnthropicToResponsesResponseWithCustomTools converts Anthropic tool_use blocks
-// back to custom_tool_call outputs for tool names that were originally declared
-// as Responses custom/freeform tools.
-func AnthropicToResponsesResponseWithCustomTools(resp *AnthropicResponse, customTools map[string]bool) *ResponsesResponse {
 	id := resp.ID
 	if id == "" {
 		id = generateResponsesID()
@@ -43,7 +51,15 @@ func AnthropicToResponsesResponseWithCustomTools(resp *AnthropicResponse, custom
 
 	for _, block := range resp.Content {
 		switch block.Type {
-		case "thinking":
+		case "thinking", "redacted_thinking":
+			if claude.IsOpus55(resp.Model) && (block.Signature != "" || block.Data != "") {
+				item := ResponsesOutput{Type: "reasoning", ID: generateItemID(), EncryptedContent: encodeAnthropicThinking(block)}
+				if block.Thinking != "" {
+					item.Summary = []ResponsesSummary{{Type: "summary_text", Text: block.Thinking}}
+				}
+				outputs = append(outputs, item)
+				continue
+			}
 			if block.Thinking != "" {
 				outputs = append(outputs, ResponsesOutput{
 					Type: "reasoning",
@@ -55,6 +71,10 @@ func AnthropicToResponsesResponseWithCustomTools(resp *AnthropicResponse, custom
 				})
 			}
 		case "text":
+			if claude.IsOpus55(resp.Model) && block.Text != "" {
+				outputs = append(outputs, ResponsesOutput{Type: "message", ID: generateItemID(), Role: "assistant", Status: "completed", Content: []ResponsesContentPart{{Type: "output_text", Text: block.Text}}})
+				continue
+			}
 			if block.Text != "" {
 				msgParts = append(msgParts, ResponsesContentPart{
 					Type: "output_text",
@@ -66,22 +86,10 @@ func AnthropicToResponsesResponseWithCustomTools(resp *AnthropicResponse, custom
 			if len(block.Input) > 0 {
 				args = string(block.Input)
 			}
-			callID := toResponsesCallID(block.ID)
-			if customTools[block.Name] {
-				outputs = append(outputs, ResponsesOutput{
-					Type:   "custom_tool_call",
-					ID:     generateItemID(),
-					CallID: callID,
-					Name:   block.Name,
-					Input:  extractCustomToolCallInput(args),
-					Status: "completed",
-				})
-				continue
-			}
 			outputs = append(outputs, ResponsesOutput{
 				Type:      "function_call",
 				ID:        generateItemID(),
-				CallID:    callID,
+				CallID:    toResponsesCallID(block.ID),
 				Name:      block.Name,
 				Arguments: args,
 				Status:    "completed",
@@ -171,11 +179,7 @@ type AnthropicEventToResponsesState struct {
 	// Current output tracking
 	OutputIndex     int
 	CurrentItemID   string
-	CurrentItemType string // "message" | "function_call" | "custom_tool_call" | "reasoning"
-
-	// CustomTools marks Responses custom/freeform tool names so Anthropic tool_use
-	// blocks can be restored to custom_tool_call events for Codex routing.
-	CustomTools map[string]bool
+	CurrentItemType string // "message" | "function_call" | "reasoning"
 
 	// For message output: accumulate text parts
 	ContentIndex int
@@ -186,16 +190,13 @@ type AnthropicEventToResponsesState struct {
 	// For function_call: track per-output info
 	CurrentCallID string
 	CurrentName   string
-	// CurrentArgs accumulates input_json_delta fragments for the currently
-	// open function_call. Codex treats function_call_arguments.done and
-	// output_item.done as authoritative for tool execution, so the full
-	// arguments must be carried on both terminal events — the streamed
-	// deltas alone are not enough.
-	CurrentArgs strings.Builder
 
 	// Content of the currently open item, folded into Outputs when it closes.
-	CurrentContent []ResponsesContentPart // message
-	CurrentSummary string                 // reasoning
+	CurrentContent             []ResponsesContentPart // message
+	CurrentArgs                string                 // function_call
+	CurrentSummary             string                 // reasoning
+	CurrentThinking            AnthropicContentBlock
+	PreserveThinkingSignatures bool
 
 	// Outputs accumulates every closed output item so that response.completed
 	// can carry the full output list. The OpenAI SDK's get_final_response()
@@ -277,6 +278,7 @@ func ResponsesEventToSSE(evt ResponsesStreamEvent) (string, error) {
 func anthToResHandleMessageStart(evt *AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
 	if evt.Message != nil {
 		state.ResponseID = evt.Message.ID
+		state.PreserveThinkingSignatures = state.PreserveThinkingSignatures || claude.IsOpus55(evt.Message.Model)
 		if state.Model == "" {
 			state.Model = evt.Message.Model
 		}
@@ -308,7 +310,7 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 	var events []ResponsesStreamEvent
 
 	switch evt.ContentBlock.Type {
-	case "thinking":
+	case "thinking", "redacted_thinking":
 		// 开新 item 前必须先关掉在开的那个，与下面的 tool_use 分支一致。
 		// 一个 message item 在它的 text 块 content_block_stop 时是刻意保持打开的
 		// （同一 item 里可能还有后续 text 块），所以 thinking 块到来时它仍然开着：
@@ -321,6 +323,8 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 
 		state.CurrentItemID = generateItemID()
 		state.CurrentItemType = "reasoning"
+		state.CurrentThinking = *evt.ContentBlock
+		state.CurrentSummary = evt.ContentBlock.Thinking
 		state.ContentIndex = 0
 
 		events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
@@ -376,17 +380,13 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 
 		state.CurrentItemID = generateItemID()
 		state.CurrentItemType = "function_call"
-		if state.CustomTools[evt.ContentBlock.Name] {
-			state.CurrentItemType = "custom_tool_call"
-		}
 		state.CurrentCallID = toResponsesCallID(evt.ContentBlock.ID)
 		state.CurrentName = evt.ContentBlock.Name
-		state.CurrentArgs.Reset()
 
 		events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
 			OutputIndex: state.OutputIndex,
 			Item: &ResponsesOutput{
-				Type:   state.CurrentItemType,
+				Type:   "function_call",
 				ID:     state.CurrentItemID,
 				CallID: state.CurrentCallID,
 				Name:   state.CurrentName,
@@ -432,11 +432,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.PartialJSON == "" {
 			return nil
 		}
-		// Accumulate the fragment so terminal events can carry the full tool input.
-		_, _ = state.CurrentArgs.WriteString(evt.Delta.PartialJSON)
-		if state.CurrentItemType == "custom_tool_call" {
-			return nil
-		}
+		state.CurrentArgs += evt.Delta.PartialJSON
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
 			OutputIndex: state.OutputIndex,
 			Delta:       evt.Delta.PartialJSON,
@@ -446,7 +442,10 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		})}
 
 	case "signature_delta":
-		// Anthropic signature deltas have no Responses equivalent; skip
+		// Keep signatures in the opaque bridge envelope, never in visible text.
+		if state.PreserveThinkingSignatures {
+			state.CurrentThinking.Signature += evt.Delta.Signature
+		}
 		return nil
 	}
 
@@ -468,38 +467,21 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 		return events
 
 	case "function_call":
-		// Emit function_call_arguments.done + output item done. Codex needs the
-		// full arguments on both terminal events to deserialize and execute the
-		// call, so carry the accumulated buffer (defaulting to "{}").
+		// Emit function_call_arguments.done + output item done.
+		// arguments must repeat exactly what the deltas already streamed for this
+		// item: clients reconcile the done event against the accumulated
+		// function_call_arguments.delta payloads and reject the call as
+		// inconsistent_tool_call when the two disagree. Omitting the field left it
+		// empty while the deltas carried the whole JSON.
 		events := []ResponsesStreamEvent{
 			makeResponsesEvent(state, "response.function_call_arguments.done", &ResponsesStreamEvent{
 				OutputIndex: state.OutputIndex,
 				ItemID:      state.CurrentItemID,
 				CallID:      state.CurrentCallID,
 				Name:        state.CurrentName,
-				Arguments:   normalizeResponsesFunctionArgs(state.CurrentArgs.String()),
+				Arguments:   state.CurrentArgs,
 			}),
 		}
-		events = append(events, closeCurrentResponsesItem(state)...)
-		return events
-
-	case "custom_tool_call":
-		input := extractCustomToolCallInput(normalizeResponsesFunctionArgs(state.CurrentArgs.String()))
-		events := []ResponsesStreamEvent{}
-		if input != "" {
-			events = append(events, makeResponsesEvent(state, "response.custom_tool_call_input.delta", &ResponsesStreamEvent{
-				OutputIndex: state.OutputIndex,
-				ItemID:      state.CurrentItemID,
-				Delta:       input,
-			}))
-		}
-		events = append(events, makeResponsesEvent(state, "response.custom_tool_call_input.done", &ResponsesStreamEvent{
-			OutputIndex: state.OutputIndex,
-			ItemID:      state.CurrentItemID,
-			CallID:      state.CurrentCallID,
-			Name:        state.CurrentName,
-			Input:       input,
-		}))
 		events = append(events, closeCurrentResponsesItem(state)...)
 		return events
 
@@ -585,72 +567,54 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 		return nil
 	}
 
-	itemType := state.CurrentItemType
-	itemID := state.CurrentItemID
-	// Capture the function_call identity/arguments before the reset below so
-	// the terminal output_item.done can carry them — Codex materializes the
-	// tool call from this item, and empty call_id/name/arguments make it
-	// unroutable (observed as "only chat, no tool calls").
-	callID := state.CurrentCallID
-	name := state.CurrentName
-	args := state.CurrentArgs.String()
-	content := state.CurrentContent
-	summary := state.CurrentSummary
+	// Assemble the full item: both output_item.done and response.completed must
+	// carry its content. Emitting only {type,id,status} makes SDK-side
+	// accumulation produce an empty output.
+	item := ResponsesOutput{
+		Type:   state.CurrentItemType,
+		ID:     state.CurrentItemID,
+		Status: "completed",
+	}
+	switch state.CurrentItemType {
+	case "message":
+		item.Role = "assistant"
+		item.Content = state.CurrentContent
+	case "function_call":
+		item.CallID = state.CurrentCallID
+		item.Name = state.CurrentName
+		args := state.CurrentArgs
+		if args == "" {
+			args = "{}"
+		}
+		item.Arguments = args
+	case "reasoning":
+		if state.PreserveThinkingSignatures && (state.CurrentThinking.Signature != "" || state.CurrentThinking.Data != "") {
+			state.CurrentThinking.Thinking = state.CurrentSummary
+			item.EncryptedContent = encodeAnthropicThinking(state.CurrentThinking)
+		}
+		if state.CurrentSummary != "" {
+			item.Summary = []ResponsesSummary{{Type: "summary_text", Text: state.CurrentSummary}}
+		}
+	}
+	state.Outputs = append(state.Outputs, item)
 
 	// Reset
 	state.CurrentItemType = ""
 	state.CurrentItemID = ""
 	state.CurrentCallID = ""
 	state.CurrentName = ""
-	state.CurrentArgs.Reset()
 	state.CurrentContent = nil
+	state.CurrentArgs = ""
 	state.CurrentSummary = ""
+	state.CurrentThinking = AnthropicContentBlock{}
 	state.TextAccum = ""
 	state.OutputIndex++
 	state.ContentIndex = 0
-
-	// Assemble the full item: both output_item.done and response.completed must
-	// carry its content. Emitting only {type,id,status} makes SDK-side
-	// accumulation produce an empty output.
-	item := ResponsesOutput{
-		Type:   itemType,
-		ID:     itemID,
-		Status: "completed",
-	}
-	switch itemType {
-	case "message":
-		item.Role = "assistant"
-		item.Content = content
-	case "function_call":
-		item.CallID = callID
-		item.Name = name
-		item.Arguments = normalizeResponsesFunctionArgs(args)
-	case "custom_tool_call":
-		item.CallID = callID
-		item.Name = name
-		item.Input = extractCustomToolCallInput(normalizeResponsesFunctionArgs(args))
-	case "reasoning":
-		if summary != "" {
-			item.Summary = []ResponsesSummary{{Type: "summary_text", Text: summary}}
-		}
-	}
-	state.Outputs = append(state.Outputs, item)
 
 	return []ResponsesStreamEvent{makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
 		OutputIndex: state.OutputIndex - 1, // Use the index before increment
 		Item:        &item,
 	})}
-}
-
-// normalizeResponsesFunctionArgs returns a JSON object string for function_call
-// arguments, defaulting empty input to "{}" so strict clients (Codex CLI) can
-// always deserialize the call. Mirrors the non-streaming path in
-// AnthropicToResponsesResponse.
-func normalizeResponsesFunctionArgs(args string) string {
-	if strings.TrimSpace(args) == "" {
-		return "{}"
-	}
-	return args
 }
 
 func makeResponsesCreatedEvent(state *AnthropicEventToResponsesState) ResponsesStreamEvent {
