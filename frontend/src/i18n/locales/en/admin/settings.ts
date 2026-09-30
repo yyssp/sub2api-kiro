@@ -84,6 +84,8 @@ export default {
           enabledHint: 'When off, the admin sidebar entry is hidden and gateway moderation is skipped.',
           cyberSessionBlock: 'Cyber session auto-block',
           cyberSessionBlockHint: 'When enabled, sessions hit by upstream cyber_policy are blocked locally for the TTL and no longer forwarded. Only the offending session is blocked; other sessions on the same key are unaffected.',
+          riskControlUserAllowlist: 'Risk control allowlist',
+          riskControlUserAllowlistHint: 'Enter any email keyword to search for matching users. Allowlisted users will not trigger account bans or local blocking, but upstream restrictions still apply. This feature is typically used for trusted downstream relays.',
           cyberSessionBlockTTL: 'Block TTL (seconds)',
         },
         affiliate: {
@@ -628,6 +630,17 @@ export default {
         testResultTitle: 'Search Results',
         testResultProvider: 'Provider',
         testNoResults: 'No results found',
+      },
+      kiroPayloadGuard: {
+        title: 'Kiro Payload Size Guard',
+        description: 'Protect Kiro requests from exceeding the upstream payload limit by compressing or rejecting oversized conversations.',
+        behavior: 'Oversize request behavior',
+        behaviorHint: 'Choose whether to compress and trim immediately, retry compression after an upstream 400, or reject before forwarding.',
+        behaviorCompressThenTrim: 'Compress then trim',
+        behaviorOnUpstream400: 'Compress after upstream 400',
+        behaviorReject: 'Reject oversized request',
+        threshold: 'Payload size threshold (bytes)',
+        thresholdHint: 'Requests above this threshold are handled according to the selected behavior. Valid range: 10,000–5,000,000 bytes.',
       },
       site: {
         title: 'Site Settings',

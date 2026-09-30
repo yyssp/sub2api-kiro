@@ -84,6 +84,8 @@ export default {
           enabledHint: '关闭后管理员侧边栏入口隐藏，网关内容审计不会执行。',
           cyberSessionBlock: 'cyber 会话自动屏蔽',
           cyberSessionBlockHint: '开启后,被上游网络安全策略(cyber_policy)拦截的会话将在 TTL 内被本地屏蔽,不再发往上游。仅屏蔽该会话,不影响同 Key 其他会话。',
+          riskControlUserAllowlist: '风控白名单',
+          riskControlUserAllowlistHint: '输入任意邮箱关键词进行模糊搜索。 白名单中的用户不会触发封号或本地屏蔽，但仍然无法突破上游拦截。该功能通常用于可信的下游中转站。',
           cyberSessionBlockTTL: '屏蔽时长(秒)',
         },
         affiliate: {
@@ -621,6 +623,17 @@ export default {
         testResultTitle: '搜索结果',
         testResultProvider: '服务商',
         testNoResults: '无搜索结果',
+      },
+      kiroPayloadGuard: {
+        title: 'Kiro 请求体积守卫',
+        description: '通过压缩或拒绝超大对话，避免 Kiro 请求超过上游请求体限制。',
+        behavior: '超大请求处理方式',
+        behaviorHint: '选择立即压缩并裁剪、上游返回 400 后再压缩重试，或在转发前直接拒绝。',
+        behaviorCompressThenTrim: '压缩后裁剪',
+        behaviorOnUpstream400: '上游 400 后压缩',
+        behaviorReject: '拒绝超大请求',
+        threshold: '请求体积阈值（字节）',
+        thresholdHint: '超过该阈值的请求将按所选策略处理。有效范围：10,000–5,000,000 字节。',
       },
       site: {
         title: '站点设置',

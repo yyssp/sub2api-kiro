@@ -264,17 +264,19 @@ describe('admin BackupView', () => {
 
   it('归档删除需要单独确认，有限归档不会显示永不过期', async () => {
     listBackups.mockResolvedValue({ items: [{ ...baseRecord('archived'), monthly_archive: { dates: ['2026-09-01', '2026-09-15'], retain_count: 12 } }] })
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const wrapper = mountBackupView()
     await flushPromises()
     expect(wrapper.text()).toContain('admin.backup.archive.badge')
     expect(wrapper.get('tbody tr td:nth-child(6)').text()).toBe('admin.backup.archive.retainLatest')
     const button = wrapper.findAll('button').find(button => button.text() === 'common.delete')!
     await button.trigger('click')
-    expect(confirm).toHaveBeenCalledWith('admin.backup.archive.deleteConfirm')
     expect(deleteBackup).not.toHaveBeenCalled()
-    confirm.mockReturnValue(true)
-    await button.trigger('click')
+    expect(document.body.textContent).toContain('admin.backup.archive.deleteConfirm')
+    const confirmButton = Array.from(document.body.querySelectorAll('button')).find(
+      candidate => candidate.textContent?.trim() === 'common.delete' && candidate !== button.element,
+    )
+    expect(confirmButton).toBeDefined()
+    confirmButton?.click()
     await flushPromises()
     expect(deleteBackup).toHaveBeenCalledWith('archived', true)
   })

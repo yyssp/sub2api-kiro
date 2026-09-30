@@ -59,16 +59,6 @@ func (s *GatewayService) ForwardAsResponses(
 	originalModel := responsesReq.Model
 	clientStream := responsesReq.Stream
 
-	// 3. Convert Responses → Anthropic
-	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
-	if err != nil {
-		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
-	}
-
-	// 3. Force upstream streaming (Anthropic works best with streaming)
-	anthropicReq.Stream = true
-	reqStream := true
-
 	// 4. Model mapping
 	mappedModel := originalModel
 	if account.Platform == PlatformKiro {
@@ -101,6 +91,21 @@ func (s *GatewayService) ForwardAsResponses(
 				mappedModel = trimmed
 			}
 		}
+	}
+	if err := validateClaude55Request(body, mappedModel); err != nil {
+		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
+	responsesReq.Model = mappedModel
+	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
+	if err != nil {
+		if isClaude55SignedThinkingModel(mappedModel) {
+			writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		}
+		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
+	}
+
+	if isCompact {
 		// 摘要轮次不允许调用工具。tools 必须保留：历史里的 tool_use 块引用了工具
 		// 定义，删掉会让上游校验失败；tool_choice=none 已足够抑制调用。
 		anthropicReq.ToolChoice = json.RawMessage(`{"type":"none"}`)
@@ -112,6 +117,9 @@ func (s *GatewayService) ForwardAsResponses(
 			anthropicReq.MaxTokens = compactionMinMaxTokens
 		}
 	}
+	// Force upstream streaming (Anthropic works best with streaming).
+	anthropicReq.Stream = true
+	reqStream := true
 	anthropicReq.Model = mappedModel
 
 	logger.L().Debug("gateway forward_as_responses: model mapping applied",
@@ -376,22 +384,22 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 		return
 	}
 
+	cacheReadTokens := src.CacheReadInputTokens
+	if cacheReadTokens == 0 && src.CachedTokens > 0 {
+		cacheReadTokens = src.CachedTokens
+	}
+	if cacheReadTokens == 0 && src.PromptTokensDetails != nil && src.PromptTokensDetails.CachedTokens > 0 {
+		cacheReadTokens = src.PromptTokensDetails.CachedTokens
+	}
+	if cacheReadTokens == 0 && src.PromptCacheHitTokens != nil {
+		cacheReadTokens = max(*src.PromptCacheHitTokens, 0)
+	}
+
 	// Some Anthropic-compatible providers retain OpenAI-style prompt/cache
 	// fields. Prefer those authoritative totals or hit/miss buckets over the
 	// overloaded input_tokens field. This covers Kimi's changing stream
 	// semantics as well as GLM/DeepSeek cache aliases.
 	if src.PromptTokens > 0 || src.PromptCacheHitTokens != nil || src.PromptCacheMissTokens != nil {
-		cacheReadTokens := src.CacheReadInputTokens
-		if cacheReadTokens == 0 && src.CachedTokens > 0 {
-			cacheReadTokens = src.CachedTokens
-		}
-		if cacheReadTokens == 0 && src.PromptTokensDetails != nil && src.PromptTokensDetails.CachedTokens > 0 {
-			cacheReadTokens = src.PromptTokensDetails.CachedTokens
-		}
-		if cacheReadTokens == 0 && src.PromptCacheHitTokens != nil {
-			cacheReadTokens = max(*src.PromptCacheHitTokens, 0)
-		}
-
 		if src.PromptCacheMissTokens != nil {
 			dst.InputTokens = max(*src.PromptCacheMissTokens, 0)
 		} else {
@@ -400,13 +408,16 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 		dst.CacheReadInputTokens = cacheReadTokens
 		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
 	} else {
+		// Without an authoritative prompt total or miss bucket, input_tokens is
+		// provider-specific: it may already be the uncached bucket, or it may be
+		// a total from an earlier event. Do not infer a subtraction merely because
+		// a later event contains cache buckets; that would corrupt providers whose
+		// stream uses independent input and cache fields.
 		if src.InputTokens > 0 {
 			dst.InputTokens = src.InputTokens
 		}
-		if src.CacheReadInputTokens > 0 {
-			dst.CacheReadInputTokens = src.CacheReadInputTokens
-		} else if src.CachedTokens > 0 {
-			dst.CacheReadInputTokens = src.CachedTokens
+		if cacheReadTokens > 0 {
+			dst.CacheReadInputTokens = cacheReadTokens
 		}
 		if src.CacheCreationInputTokens > 0 {
 			dst.CacheCreationInputTokens = src.CacheCreationInputTokens
@@ -440,6 +451,29 @@ func mergeKiroSignalsFromAnthropicPayload(dst *ClaudeUsage, payload string) {
 		if upstreamUsageIsBillingScale(usage) {
 			dst.UpstreamBillingScale = true
 		}
+	}
+}
+
+func syncAnthropicResponsesUsage(state *apicompat.AnthropicEventToResponsesState, usage ClaudeUsage) {
+	state.InputTokens = usage.InputTokens
+	state.OutputTokens = usage.OutputTokens
+	state.CacheReadInputTokens = usage.CacheReadInputTokens
+	state.CacheCreationInputTokens = usage.CacheCreationInputTokens
+}
+
+func normalizeAnthropicEventUsageForResponses(event *apicompat.AnthropicStreamEvent, usage ClaudeUsage) {
+	normalize := func(dst *apicompat.AnthropicUsage) {
+		if dst == nil {
+			return
+		}
+		dst.InputTokens = usage.InputTokens
+		dst.OutputTokens = usage.OutputTokens
+		dst.CacheReadInputTokens = usage.CacheReadInputTokens
+		dst.CacheCreationInputTokens = usage.CacheCreationInputTokens
+	}
+	normalize(event.Usage)
+	if event.Message != nil {
+		normalize(&event.Message.Usage)
 	}
 }
 
@@ -564,6 +598,8 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 					finalResp.Content[idx].Text += event.Delta.Text
 				case "thinking_delta":
 					finalResp.Content[idx].Thinking += event.Delta.Thinking
+				case "signature_delta":
+					finalResp.Content[idx].Signature += event.Delta.Signature
 				case "input_json_delta":
 					finalResp.Content[idx].Input = appendRawJSON(finalResp.Content[idx].Input, event.Delta.PartialJSON)
 				}
@@ -615,6 +651,9 @@ func (s *GatewayService) writeResponsesBufferedResult(
 	}
 
 	// Convert to Responses format
+	if isClaude55SignedThinkingModel(mappedModel) {
+		finalResp.Model = mappedModel
+	}
 	responsesResp := apicompat.AnthropicToResponsesResponseWithCustomTools(finalResp, clientToolMapping.CustomTools)
 	responsesResp.Model = originalModel // Use original model name
 
@@ -675,6 +714,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	state := apicompat.NewAnthropicEventToResponsesState()
 	state.Model = originalModel
 	state.CustomTools = clientToolMapping.CustomTools
+	state.PreserveThinkingSignatures = isClaude55SignedThinkingModel(mappedModel)
 	clientToolRestorer := apicompat.NewResponsesClientToolStreamRestorer(clientToolMapping)
 	var usage ClaudeUsage
 	var firstTokenMs *int
@@ -730,6 +770,12 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			state.CacheCreationInputTokens = usage.CacheCreationInputTokens
 			state.OutputTokens = usage.OutputTokens
 		}
+
+		// Keep the terminal Responses usage aligned with the normalized billing
+		// buckets. Normalize the converter input too, so message handlers cannot
+		// restore the provider's overlapping raw input total.
+		syncAnthropicResponsesUsage(state, usage)
+		normalizeAnthropicEventUsageForResponses(event, usage)
 
 		// Convert to Responses events
 		events := apicompat.AnthropicEventToResponsesEvents(event, state)

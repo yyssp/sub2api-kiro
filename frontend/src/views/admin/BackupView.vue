@@ -410,6 +410,35 @@
         </div>
       </transition>
     </teleport>
+    <ConfirmDialog
+      :show="restoreDialogId !== ''"
+      :title="t('admin.backup.actions.restore')"
+      :message="t('admin.backup.actions.restoreConfirm')"
+      :confirm-text="t('admin.backup.actions.restore')"
+      @confirm="confirmRestoreBackup"
+      @cancel="closeRestoreDialog"
+    >
+      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+        {{ t('admin.backup.actions.restorePasswordPrompt') }}
+        <input
+          v-model="restorePassword"
+          type="password"
+          autocomplete="current-password"
+          class="input mt-2 w-full"
+          data-testid="backup-restore-password"
+          @keyup.enter="confirmRestoreBackup"
+        />
+      </label>
+    </ConfirmDialog>
+    <ConfirmDialog
+      :show="deleteDialogId !== ''"
+      :title="t('common.delete')"
+      :message="deleteDialogArchived ? t('admin.backup.archive.deleteConfirm') : t('admin.backup.actions.deleteConfirm')"
+      :confirm-text="t('common.delete')"
+      danger
+      @confirm="confirmRemoveBackup"
+      @cancel="closeDeleteDialog"
+    />
     <TotpStepUpDialog :controller="backupStepUp" />
 </template>
 
@@ -428,6 +457,7 @@ import type {
 } from '@/api/admin/backup'
 import { useStepUp, isStepUpBlocked, isStepUpCancelled, stepUpBlockReason } from '@/composables/useStepUp'
 import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import BackupArchiveSettings from '@/components/admin/BackupArchiveSettings.vue'
 
 const { t } = useI18n()
@@ -529,6 +559,10 @@ const backups = ref<BackupRecord[]>([])
 const loadingBackups = ref(false)
 const creatingBackup = ref(false)
 const restoringId = ref('')
+const restoreDialogId = ref('')
+const restorePassword = ref('')
+const deleteDialogId = ref('')
+const deleteDialogArchived = ref(false)
 const manualExpireDays = ref(14)
 const downloadParts = ref<BackupDownloadPart[]>([])
 const downloadPartsModalOpen = ref(false)
@@ -851,10 +885,24 @@ function closeDownloadParts() {
   downloadParts.value = []
 }
 
-async function restoreBackup(id: string) {
-  if (!window.confirm(t('admin.backup.actions.restoreConfirm'))) return
-  const password = window.prompt(t('admin.backup.actions.restorePasswordPrompt'))
-  if (!password) return
+function restoreBackup(id: string) {
+  restoreDialogId.value = id
+  restorePassword.value = ''
+}
+
+function closeRestoreDialog() {
+  restoreDialogId.value = ''
+  restorePassword.value = ''
+}
+
+async function confirmRestoreBackup() {
+  const id = restoreDialogId.value
+  const password = restorePassword.value.trim()
+  if (!id || !password) {
+    appStore.showError(t('admin.backup.actions.restorePasswordPrompt'))
+    return
+  }
+  closeRestoreDialog()
   restoringId.value = id
   try {
     const record = await backupStepUp.run(() => adminAPI.backup.restoreBackup(id, password))
@@ -873,9 +921,22 @@ async function restoreBackup(id: string) {
   }
 }
 
-async function removeBackup(id: string) {
+function removeBackup(id: string) {
   const archived = !!backups.value.find(record => record.id === id)?.monthly_archive
-  if (!window.confirm(t(archived ? 'admin.backup.archive.deleteConfirm' : 'admin.backup.actions.deleteConfirm'))) return
+  deleteDialogId.value = id
+  deleteDialogArchived.value = archived
+}
+
+function closeDeleteDialog() {
+  deleteDialogId.value = ''
+  deleteDialogArchived.value = false
+}
+
+async function confirmRemoveBackup() {
+  const id = deleteDialogId.value
+  if (!id) return
+  const archived = deleteDialogArchived.value
+  closeDeleteDialog()
   try {
     await adminAPI.backup.deleteBackup(id, archived)
     appStore.showSuccess(t('admin.backup.actions.deleted'))
