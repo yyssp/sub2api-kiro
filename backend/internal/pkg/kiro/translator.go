@@ -2817,16 +2817,46 @@ func buildUserMessageStruct(msg gjson.Result, modelID, origin string, keepImages
 				if resultContent.IsArray() {
 					textContents = textContents[:0]
 					for _, item := range resultContent.Array() {
+						switch t := item.Get("type").String(); {
 						// codex 经 responses->anthropic 后, tool_result.content 用 Responses 的
 						// "input_text" 而非 Anthropic 的 "text"; 两者都需提取, 否则工具结果被丢成空。
-						if t := item.Get("type").String(); t == "text" || t == "input_text" {
+						case t == "text" || t == "input_text":
 							textContents = append(textContents, KiroTextContent{Text: compactKiroToolResultText(item.Get("text").String(), status == "error")})
-						} else if item.Type == gjson.String {
+						case item.Type == gjson.String:
 							textContents = append(textContents, KiroTextContent{Text: compactKiroToolResultText(item.String(), status == "error")})
+						case t == "image":
+							// Kiro 的 toolResult 只承载文本；图片挂到同一条 user 消息的 images 上，
+							// 否则 Claude Code 用 Read 读图时模型看不到图，会编造内容。
+							image, ok := buildKiroImage(item.Get("source.media_type").String(), item.Get("source.data").String())
+							if !ok {
+								image, ok = buildKiroImageFromURL(item.Get("source.url").String())
+							}
+							switch {
+							case ok && keepImages:
+								images = append(images, image)
+								textContents = append(textContents, KiroTextContent{Text: kiroToolResultImageAttached})
+							case ok:
+								omittedImageCount++
+								textContents = append(textContents, KiroTextContent{Text: kiroToolResultImageOmitted})
+							default:
+								textContents = append(textContents, KiroTextContent{Text: kiroToolResultImageUnsupported})
+							}
+						case t == "document":
+							if text := buildDocumentTextFallback(item); text != "" {
+								textContents = append(textContents, KiroTextContent{Text: compactKiroToolResultText(text, status == "error")})
+							}
+						case t == "search_result":
+							if text := renderKiroSearchResultText(item); text != "" {
+								textContents = append(textContents, KiroTextContent{Text: compactKiroToolResultText(text, status == "error")})
+							}
 						}
 					}
 				} else if resultContent.Type == gjson.String {
 					textContents = []KiroTextContent{{Text: compactKiroToolResultText(resultContent.String(), status == "error")}}
+				}
+				if !hasNonEmptyKiroText(textContents) {
+					// 空文本的 toolResult 会被上游拒绝，且模型无法区分"无输出"与"丢失"。
+					textContents = []KiroTextContent{{Text: kiroEmptyToolResultPlaceholder}}
 				}
 				toolResults = append(toolResults, KiroToolResult{
 					ToolUseID: toolUseID,
@@ -2863,6 +2893,48 @@ func buildUserMessageStruct(msg gjson.Result, modelID, origin string, keepImages
 	return userMsg, toolResults
 }
 
+const (
+	kiroToolResultImageAttached    = "[Image returned by the tool is attached to this message]"
+	kiroToolResultImageOmitted     = "[Image returned by the tool was omitted from older history]"
+	kiroToolResultImageUnsupported = "[Image returned by the tool could not be forwarded: unsupported format]"
+	kiroEmptyToolResultPlaceholder = "(empty tool result)"
+)
+
+func hasNonEmptyKiroText(contents []KiroTextContent) bool {
+	for _, c := range contents {
+		if strings.TrimSpace(c.Text) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// renderKiroSearchResultText 把 Anthropic search_result 块渲染为带来源的纯文本。
+func renderKiroSearchResultText(block gjson.Result) string {
+	var sb strings.Builder
+	if title := strings.TrimSpace(block.Get("title").String()); title != "" {
+		_, _ = sb.WriteString(title)
+		_, _ = sb.WriteString("\n")
+	}
+	if source := strings.TrimSpace(block.Get("source").String()); source != "" {
+		_, _ = sb.WriteString("Source: ")
+		_, _ = sb.WriteString(source)
+		_, _ = sb.WriteString("\n")
+	}
+	content := block.Get("content")
+	if content.IsArray() {
+		for _, item := range content.Array() {
+			if text := item.Get("text").String(); strings.TrimSpace(text) != "" {
+				_, _ = sb.WriteString(text)
+				_, _ = sb.WriteString("\n")
+			}
+		}
+	} else if text := content.String(); strings.TrimSpace(text) != "" {
+		_, _ = sb.WriteString(text)
+	}
+	return strings.TrimSpace(sb.String())
+}
+
 func buildKiroImage(mediaType, data string) (KiroImage, bool) {
 	if image, ok := buildKiroImageFromURL(data); ok {
 		return image, true
@@ -2873,13 +2945,57 @@ func buildKiroImage(mediaType, data string) (KiroImage, bool) {
 	}
 	format = normalizeKiroImageFormat(format)
 	data = strings.TrimSpace(data)
-	if format == "" || data == "" {
+	if data == "" {
+		return KiroImage{}, false
+	}
+	// 按文件头纠正声明的格式：客户端常把 PNG 截图标成 image/jpeg，
+	// 上游据声明格式解码会报 IMAGE_FORMAT_UNSUPPORTED 并拒掉整个请求。
+	if sniffed, decodable := sniffKiroBase64ImageFormat(data); !decodable {
+		return KiroImage{}, false
+	} else if sniffed != "" {
+		format = sniffed
+	}
+	if format == "" {
 		return KiroImage{}, false
 	}
 	return KiroImage{
 		Format: format,
 		Source: KiroImageSource{Bytes: data},
 	}, true
+}
+
+// sniffKiroBase64ImageFormat 只解码 base64 开头一小段，按 magic bytes 识别格式。
+// decodable=false 表示数据不是合法 base64，应当丢弃而不是原样发给上游；
+// 格式为空表示无法识别，调用方回退到声明的 media_type。
+func sniffKiroBase64ImageFormat(data string) (format string, decodable bool) {
+	const prefixChars = 32 // 解码后 24 字节，覆盖 WEBP 的 12 字节头
+	prefix := data
+	if len(prefix) > prefixChars {
+		prefix = prefix[:prefixChars]
+	}
+	head, err := base64.StdEncoding.DecodeString(prefix)
+	if err != nil {
+		trimmed := strings.TrimRight(prefix, "=")
+		head, err = base64.RawStdEncoding.DecodeString(trimmed)
+		if err != nil {
+			head, err = base64.RawURLEncoding.DecodeString(trimmed)
+			if err != nil {
+				return "", false
+			}
+		}
+	}
+	switch {
+	case bytes.HasPrefix(head, []byte("\x89PNG\r\n\x1a\n")):
+		return "png", true
+	case bytes.HasPrefix(head, []byte{0xFF, 0xD8, 0xFF}):
+		return "jpeg", true
+	case bytes.HasPrefix(head, []byte("GIF87a")), bytes.HasPrefix(head, []byte("GIF89a")):
+		return "gif", true
+	case len(head) >= 12 && bytes.Equal(head[0:4], []byte("RIFF")) && bytes.Equal(head[8:12], []byte("WEBP")):
+		return "webp", true
+	default:
+		return "", true
+	}
 }
 
 func buildKiroImageFromURL(url string) (KiroImage, bool) {

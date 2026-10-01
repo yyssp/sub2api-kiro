@@ -188,7 +188,7 @@ func TestBuildKiroPayloadOmitsImagesBeyondRecentHistory(t *testing.T) {
 			{"role":"assistant","content":"first answer"},
 			{"role":"user","content":[
 				{"type":"text","text":"stale image"},
-				{"type":"image","source":{"media_type":"image/png","data":"stale-image"}}
+				{"type":"image","source":{"media_type":"image/png","data":"iVBORw0KGgoAAAAAAAAAAAAAAAAAAAAA"}}
 			]},
 			{"role":"assistant","content":"second answer"},
 			{"role":"user","content":"middle"},
@@ -197,7 +197,7 @@ func TestBuildKiroPayloadOmitsImagesBeyondRecentHistory(t *testing.T) {
 			{"role":"tool","content":"ignored separator"},
 			{"role":"user","content":[
 				{"type":"text","text":"current image"},
-				{"type":"image","source":{"media_type":"image/jpeg","data":"current-image"}}
+				{"type":"image","source":{"media_type":"image/jpeg","data":"/9j/4AAAAAAAAAAAAAAAAAAAAAA="}}
 			]}
 		]
 	}`)
@@ -210,7 +210,7 @@ func TestBuildKiroPayloadOmitsImagesBeyondRecentHistory(t *testing.T) {
 	require.False(t, staleUser.Get("images").Exists())
 	require.Contains(t, staleUser.Get("content").String(), "stale image")
 	require.Contains(t, staleUser.Get("content").String(), "[This message contained 1 image(s), omitted from older conversation history.]")
-	require.Equal(t, "current-image", gjson.GetBytes(payload, "conversationState.currentMessage.userInputMessage.images.0.source.bytes").String())
+	require.Equal(t, "/9j/4AAAAAAAAAAAAAAAAAAAAAA=", gjson.GetBytes(payload, "conversationState.currentMessage.userInputMessage.images.0.source.bytes").String())
 }
 
 func TestBuildKiroPayloadKeepsImagesAtRecentHistoryBoundary(t *testing.T) {
@@ -221,7 +221,7 @@ func TestBuildKiroPayloadKeepsImagesAtRecentHistoryBoundary(t *testing.T) {
 			{"role":"assistant","content":"first answer"},
 			{"role":"user","content":[
 				{"type":"text","text":"boundary image"},
-				{"type":"image","source":{"media_type":"image/png","data":"boundary-image"}}
+				{"type":"image","source":{"media_type":"image/png","data":"iVBORw0KGgoBAQEBAQEBAQEBAQEBAQEB"}}
 			]},
 			{"role":"assistant","content":"second answer"},
 			{"role":"user","content":"middle"},
@@ -236,7 +236,7 @@ func TestBuildKiroPayloadKeepsImagesAtRecentHistoryBoundary(t *testing.T) {
 	payload := kiroBuildResult.Payload
 
 	boundaryUser := gjson.GetBytes(payload, "conversationState.history.4.userInputMessage")
-	require.Equal(t, "boundary-image", boundaryUser.Get("images.0.source.bytes").String())
+	require.Equal(t, "iVBORw0KGgoBAQEBAQEBAQEBAQEBAQEB", boundaryUser.Get("images.0.source.bytes").String())
 	require.NotContains(t, boundaryUser.Get("content").String(), "omitted from older conversation history")
 }
 
