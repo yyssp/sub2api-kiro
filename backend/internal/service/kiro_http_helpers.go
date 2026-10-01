@@ -115,6 +115,36 @@ func firstKiroCredential(account *Account, keys ...string) string {
 	return ""
 }
 
+// ensureKiroMachineIDCredential 在凭证里固化当前生效的 machine_id。
+//
+// machine_id 未落库时由 refresh_token 派生；refresh 若轮换了 refresh_token，
+// 设备指纹会随之漂移——同一账号像是换了一台设备，正是上游风控要找的模式。
+// 必须在写入新凭证**之前**用旧凭证计算，保证固化的就是此前一直在用的指纹。
+// 幂等：已有合法值时原样返回。
+func ensureKiroMachineIDCredential(account *Account, creds map[string]any) map[string]any {
+	if creds == nil {
+		creds = make(map[string]any, 1)
+	}
+	for _, key := range []string{"machine_id", "machineId"} {
+		if value, ok := creds[key].(string); ok {
+			if _, valid := kiropkg.NormalizeMachineID(value); valid {
+				return creds
+			}
+		}
+	}
+	creds["machine_id"] = buildKiroMachineID(account)
+	return creds
+}
+
+// prepareKiroMachineIDForCreate 在建号时固化 Kiro 设备指纹。非 Kiro 平台原样返回。
+func prepareKiroMachineIDForCreate(platform, accountType string, credentials map[string]any) map[string]any {
+	if platform != PlatformKiro {
+		return credentials
+	}
+	draft := &Account{Platform: platform, Type: accountType, Credentials: credentials}
+	return ensureKiroMachineIDCredential(draft, credentials)
+}
+
 func buildKiroMachineIDFallbackKey(account *Account) string {
 	if account == nil {
 		return "account:nil"
@@ -320,4 +350,12 @@ func newKiroJSONRequest(ctx context.Context, endpointURL string, payload []byte,
 	}
 	applyKiroConditionalHeaders(req, account)
 	return req, nil
+}
+
+func cloneKiroCredentials(creds map[string]any) map[string]any {
+	out := make(map[string]any, len(creds)+1)
+	for k, v := range creds {
+		out[k] = v
+	}
+	return out
 }

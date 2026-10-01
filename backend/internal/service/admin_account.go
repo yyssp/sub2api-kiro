@@ -431,6 +431,8 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	// 铸造一次并落库、此后恒定。与 Codex 指纹种子同理，区别只在于它属于凭证
 	// （credentials）而非 extra。
 	credentials := prepareCursorMachineIDForCreate(input.Platform, input.Credentials)
+	// Kiro 同理：建号时固化派生出的设备指纹，避免日后 refresh_token 轮换导致指纹漂移。
+	credentials = prepareKiroMachineIDForCreate(input.Platform, input.Type, credentials)
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),

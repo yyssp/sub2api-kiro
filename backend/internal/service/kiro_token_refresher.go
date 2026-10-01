@@ -47,5 +47,7 @@ func (r *KiroTokenRefresher) Refresh(ctx context.Context, account *Account) (map
 	}
 
 	newCredentials := r.kiroOAuthService.BuildAccountCredentials(tokenInfo)
-	return MergeCredentials(account.Credentials, newCredentials), nil
+	// 在新 refresh_token 覆盖旧值之前固化设备指纹。
+	oldCredentials := ensureKiroMachineIDCredential(account, cloneKiroCredentials(account.Credentials))
+	return MergeCredentials(oldCredentials, newCredentials), nil
 }

@@ -186,7 +186,8 @@ func (p *KiroTokenProvider) ForceRefreshAccessToken(ctx context.Context, account
 		return "", err
 	}
 
-	newCredentials := MergeCredentials(account.Credentials, p.kiroOAuthService.BuildAccountCredentials(tokenInfo))
+	oldCredentials := ensureKiroMachineIDCredential(account, cloneKiroCredentials(account.Credentials))
+	newCredentials := MergeCredentials(oldCredentials, p.kiroOAuthService.BuildAccountCredentials(tokenInfo))
 	newCredentials["_token_version"] = time.Now().UnixMilli()
 	if err := persistAccountCredentials(ctx, p.accountRepo, account, newCredentials); err != nil {
 		return "", err
