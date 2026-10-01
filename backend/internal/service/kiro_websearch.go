@@ -412,13 +412,13 @@ func (s *GatewayService) doKiroMCPJSONRequest(ctx context.Context, account *Acco
 			return nil, currentToken, err
 		}
 
-		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusLocked {
 			respBody, readErr := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
 			if readErr != nil {
 				return nil, currentToken, readErr
 			}
-			if resp.StatusCode == http.StatusForbidden && isKiroSuspendedBody(respBody) {
+			if isKiroAccountBlockedResponse(resp.StatusCode, respBody) {
 				if _, err := s.markKiroSuspended(ctx, accountKey); err != nil {
 					return nil, currentToken, err
 				}

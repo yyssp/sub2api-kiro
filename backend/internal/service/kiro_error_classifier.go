@@ -46,7 +46,7 @@ func classifyKiroHTTPError(statusCode int, body string) kiroErrorClassification 
 		return kiroErrorClassification{Category: kiroErrorAuthError, StatusCode: statusCode, Message: trimmed}
 	case statusCode == http.StatusPaymentRequired && looksLikeKiroMonthlyRequestCountError(trimmed):
 		return kiroErrorClassification{Category: kiroErrorMonthlyRequest, StatusCode: statusCode, Message: trimmed}
-	case statusCode == http.StatusForbidden && isKiroSuspendedBody([]byte(trimmed)):
+	case isKiroAccountBlockedResponse(statusCode, []byte(trimmed)):
 		return kiroErrorClassification{Category: kiroErrorSuspended, StatusCode: statusCode, Message: trimmed}
 	case looksLikeKiroProfileError(lower):
 		return kiroErrorClassification{Category: kiroErrorProfileError, StatusCode: statusCode, Message: trimmed}

@@ -585,14 +585,14 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 				}
 			}
 
-			if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusLocked {
 				respBody, readErr := io.ReadAll(resp.Body)
 				_ = resp.Body.Close()
 				if readErr != nil {
 					return nil, requestCtx, readErr
 				}
 
-				if resp.StatusCode == http.StatusForbidden && isKiroSuspendedBody(respBody) {
+				if isKiroAccountBlockedResponse(resp.StatusCode, respBody) {
 					if _, err := s.markKiroSuspended(ctx, accountKey); err != nil {
 						return nil, requestCtx, err
 					}
@@ -1166,7 +1166,7 @@ func (s *GatewayService) handleKiroHTTPError(ctx context.Context, resp *http.Res
 		}
 	}
 
-	if resp.StatusCode == http.StatusPaymentRequired || s.shouldFailoverUpstreamError(resp.StatusCode) {
+	if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusLocked || s.shouldFailoverUpstreamError(resp.StatusCode) {
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 			Platform:           account.Platform,
 			AccountID:          account.ID,

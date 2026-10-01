@@ -29,3 +29,23 @@ func TestIsKiroTokenErrorBody(t *testing.T) {
 		require.False(t, isKiroTokenErrorBody([]byte(body)), body)
 	}
 }
+
+func TestIsKiroAccountBlockedResponse(t *testing.T) {
+	blocked := []struct {
+		status int
+		body   string
+	}{
+		{403, `{"reason":"TEMPORARILY_SUSPENDED"}`},
+		{403, `{"__type":"AccountSuspendedException"}`},
+		{403, `{"message":"Your User ID is suspended"}`},
+		{403, `{"message":"We have locked your account"}`},
+		{423, `{}`},
+	}
+	for _, c := range blocked {
+		require.True(t, isKiroAccountBlockedResponse(c.status, []byte(c.body)), "%d %s", c.status, c.body)
+		require.Equal(t, kiroErrorSuspended, classifyKiroHTTPError(c.status, c.body).Category)
+	}
+	require.False(t, isKiroAccountBlockedResponse(403, []byte(`{"message":"User is not authorized to make this call."}`)))
+	// 封禁措辞只对 403 生效：429 的风控提示按普通限流冷却，与 2ue_kiro.rs 默认行为一致。
+	require.False(t, isKiroAccountBlockedResponse(429, []byte(`{"message":"suspicious activity, temporarily suspended"}`)))
+}

@@ -146,9 +146,44 @@ func buildKiroRequestID(resp *http.Response) string {
 	return strings.TrimSpace(resp.Header.Get("x-amz-request-id"))
 }
 
+// isKiroSuspendedBody 识别账号被封禁/锁定的响应体（临时封禁、永久封禁、锁号）。
+//
+// 上游的措辞不止大写枚举 SUSPENDED：还有 AccountSuspendedException、
+// "user is suspended"、"account locked" 等，漏判会让被封账号按普通 403
+// 反复参与调度。参考 2ue_kiro.rs provider.rs detect_risk_control_error。
 func isKiroSuspendedBody(respBody []byte) bool {
 	body := string(respBody)
-	return strings.Contains(body, "SUSPENDED") || strings.Contains(body, "TEMPORARILY_SUSPENDED")
+	if strings.Contains(body, "SUSPENDED") || strings.Contains(body, "AccountSuspendedException") {
+		return true
+	}
+	lower := strings.ToLower(body)
+	for _, phrase := range kiroSuspendedPhrases {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+var kiroSuspendedPhrases = [...]string{
+	"temporarily suspended",
+	"permanently suspended",
+	"account suspended",
+	"user is suspended",
+	"user id is suspended",
+	"account locked",
+	"user locked",
+	"locked account",
+	"locked your account",
+}
+
+// isKiroAccountBlockedResponse 判断响应是否表示账号被封禁或锁定。
+// 423 Locked 无论响应体如何都视为锁号。
+func isKiroAccountBlockedResponse(statusCode int, respBody []byte) bool {
+	if statusCode == http.StatusLocked {
+		return true
+	}
+	return statusCode == http.StatusForbidden && isKiroSuspendedBody(respBody)
 }
 
 // isKiroTokenErrorBody 判断 403 是否是 access token 失效，命中才触发强制刷新。
