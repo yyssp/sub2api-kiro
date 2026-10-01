@@ -80,6 +80,23 @@ redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[1]))
 return 1
 `)
 
+	// extendCooldownScript 只延长、不缩短：已有更晚的冷却（例如封禁）时保持原样。
+	extendCooldownScript = redis.NewScript(`
+local t = redis.call('TIME')
+local now_ms = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
+local target_ms = now_ms + tonumber(ARGV[1])
+local current_ms = tonumber(redis.call('HGET', KEYS[1], 'cooldown_until_ms') or '0')
+if current_ms >= target_ms then
+  return current_ms - now_ms
+end
+redis.call('HSET', KEYS[1],
+  'cooldown_until_ms', target_ms,
+  'cooldown_reason', ARGV[3]
+)
+redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[2]))
+return tonumber(ARGV[1])
+`)
+
 	markSuspendedScript = redis.NewScript(`
 local t = redis.call('TIME')
 local now_ms = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
@@ -218,6 +235,39 @@ func (s *Store) Mark429(ctx context.Context, tokenKey string) (time.Duration, er
 		return 0, fmt.Errorf("kiro cooldown mark 429: %w", err)
 	}
 	return time.Duration(cooldownMS) * time.Millisecond, nil
+}
+
+// ExtendCooldown 把 token 的冷却延长到至少 minCooldown（不缩短已有冷却），返回实际剩余时长。
+// 用于采信上游 Retry-After：它比本地指数退避更准确。
+func (s *Store) ExtendCooldown(ctx context.Context, tokenKey string, minCooldown time.Duration, reason string) (time.Duration, error) {
+	if err := s.validate(); err != nil {
+		return 0, err
+	}
+	if minCooldown <= 0 {
+		return 0, nil
+	}
+	cacheCtx, cancel := withRedisTimeout(ctx)
+	defer cancel()
+	ttl := stateTTL
+	if minCooldown > ttl {
+		ttl = minCooldown
+	}
+	result, err := extendCooldownScript.Run(
+		cacheCtx,
+		s.client,
+		[]string{RedisKey(tokenKey)},
+		minCooldown.Milliseconds(),
+		ttl.Milliseconds(),
+		reason,
+	).Result()
+	if err != nil {
+		return 0, fmt.Errorf("kiro cooldown extend: %w", err)
+	}
+	remainingMS, err := luaInt64(result)
+	if err != nil {
+		return 0, fmt.Errorf("kiro cooldown extend: %w", err)
+	}
+	return time.Duration(remainingMS) * time.Millisecond, nil
 }
 
 func (s *Store) MarkSuspended(ctx context.Context, tokenKey string) (time.Duration, error) {

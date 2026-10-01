@@ -73,13 +73,52 @@ func (s *GatewayService) markKiroSuccess(ctx context.Context, accountID int64, t
 // loop keeps re-picking it just to bounce off the Redis gate (asKiroCooldownFailoverError)
 // — burning failover slots and amplifying retry storms. accountID may be 0 for
 // callers that don't have it; we fall back to Redis-only.
+// kiroCooldownExtender 是可选能力：支持时才采信上游 Retry-After。
+// 不放进 KiroCooldownStore 接口，避免所有测试桩被迫实现。
+type kiroCooldownExtender interface {
+	ExtendCooldown(ctx context.Context, tokenKey string, minCooldown time.Duration, reason string) (time.Duration, error)
+}
+
+// kiroMaxRetryAfter 限制采信的 Retry-After 上限，防止异常值把账号冻结过久。
+const kiroMaxRetryAfter = time.Hour
+
+// kiroRetryAfter 解析 429 响应的 Retry-After（秒数或 HTTP 日期），无效或缺失返回 0。
+func kiroRetryAfter(headers http.Header, now time.Time) time.Duration {
+	resetAt := parseRetryAfterResetTime(headers, now)
+	if resetAt == nil {
+		return 0
+	}
+	wait := resetAt.Sub(now)
+	if wait <= 0 {
+		return 0
+	}
+	if wait > kiroMaxRetryAfter {
+		return kiroMaxRetryAfter
+	}
+	return wait
+}
+
 func (s *GatewayService) markKiro429(ctx context.Context, accountID int64, tokenKey string) (time.Duration, error) {
+	return s.markKiro429WithRetryAfter(ctx, accountID, tokenKey, nil)
+}
+
+// markKiro429WithRetryAfter 记录一次 429：本地指数退避打底，上游 Retry-After 更长时以它为准。
+func (s *GatewayService) markKiro429WithRetryAfter(ctx context.Context, accountID int64, tokenKey string, headers http.Header) (time.Duration, error) {
 	if s == nil || s.kiroCooldownStore == nil {
 		return 0, errKiroCooldownStoreUnavailable
 	}
 	cooldown, err := s.kiroCooldownStore.Mark429(ctx, tokenKey)
 	if err != nil {
 		return 0, err
+	}
+	if retryAfter := kiroRetryAfter(headers, time.Now()); retryAfter > cooldown {
+		if extender, ok := s.kiroCooldownStore.(kiroCooldownExtender); ok {
+			if extended, extErr := extender.ExtendCooldown(ctx, tokenKey, retryAfter, kirocooldown.CooldownReason429); extErr == nil {
+				cooldown = extended
+			} else {
+				logger.L().Warn("kiro.extend_cooldown_failed", zap.Int64("account_id", accountID), zap.Error(extErr))
+			}
+		}
 	}
 	if s.accountRepo != nil && accountID > 0 && cooldown > 0 {
 		resetAt := time.Now().Add(cooldown)

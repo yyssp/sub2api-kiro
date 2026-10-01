@@ -729,7 +729,7 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 			if resp.StatusCode == http.StatusTooManyRequests {
 				dumpKiro429ResponseForDebug(resp, account.ID, endpoint.URL, endpoint.Name)
 
-				cooldown, err := s.markKiro429(ctx, account.ID, accountKey)
+				cooldown, err := s.markKiro429WithRetryAfter(ctx, account.ID, accountKey, resp.Header)
 				if err != nil {
 					_ = resp.Body.Close()
 					return nil, requestCtx, err

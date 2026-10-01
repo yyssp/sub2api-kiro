@@ -3,7 +3,10 @@
 package service
 
 import (
+	"context"
+	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -34,4 +37,39 @@ func TestPrepareKiroMachineIDForCreate(t *testing.T) {
 
 	other := prepareKiroMachineIDForCreate(PlatformAnthropic, AccountTypeOAuth, map[string]any{"refresh_token": "rt"})
 	require.NotContains(t, other, "machine_id")
+}
+
+type extendingKiroCooldownStore struct {
+	stubKiroCooldownStore
+	extended time.Duration
+}
+
+func (s *extendingKiroCooldownStore) ExtendCooldown(_ context.Context, _ string, minCooldown time.Duration, _ string) (time.Duration, error) {
+	s.extended = minCooldown
+	return minCooldown, nil
+}
+
+func TestKiroRetryAfterParsing(t *testing.T) {
+	now := time.Now()
+	require.Equal(t, 120*time.Second, kiroRetryAfter(http.Header{"Retry-After": []string{"120"}}, now))
+	require.Equal(t, kiroMaxRetryAfter, kiroRetryAfter(http.Header{"Retry-After": []string{"999999"}}, now))
+	require.Zero(t, kiroRetryAfter(http.Header{"Retry-After": []string{"garbage"}}, now))
+	require.Zero(t, kiroRetryAfter(nil, now))
+}
+
+// 上游 Retry-After 比本地退避长时必须采信，否则账号会在上游仍限流时被提前放回调度。
+func TestMarkKiro429HonorsLongerRetryAfter(t *testing.T) {
+	store := &extendingKiroCooldownStore{stubKiroCooldownStore: stubKiroCooldownStore{mark429TTL: time.Minute}}
+	svc := &GatewayService{kiroCooldownStore: store}
+
+	cooldown, err := svc.markKiro429WithRetryAfter(context.Background(), 0, "tk", http.Header{"Retry-After": []string{"600"}})
+	require.NoError(t, err)
+	require.Equal(t, 10*time.Minute, cooldown)
+	require.Equal(t, 10*time.Minute, store.extended)
+
+	store.extended = 0
+	cooldown, err = svc.markKiro429WithRetryAfter(context.Background(), 0, "tk", http.Header{"Retry-After": []string{"5"}})
+	require.NoError(t, err)
+	require.Equal(t, time.Minute, cooldown, "更短的 Retry-After 不缩短本地退避")
+	require.Zero(t, store.extended)
 }
