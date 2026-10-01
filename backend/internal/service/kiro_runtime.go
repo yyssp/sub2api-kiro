@@ -836,6 +836,7 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 				}
 				classification := classifyKiroHTTPError(resp.StatusCode, string(respBody))
 				logKiroBadRequestClassification(classification, account, mappedModel, resp.Header, respBody)
+				logKiroBadRequestPayloadShape(classification, account, endpoint.Name, payload)
 
 				// on_upstream_400：上游明确说体积超限时，才做压缩+裁剪并重试一次。
 				// 这是"按上游真实判定缩减"而非"按我们猜的阈值预先缩减"，
@@ -1470,6 +1471,38 @@ func logKiroBadRequestClassification(classification kiroErrorClassification, acc
 		zap.String("request_id", headers.Get("x-request-id")),
 		zap.String("body_excerpt", truncateForLog(body, 512)),
 	)
+}
+
+// kiroBadRequestShapeLimiter 限制 400 结构诊断日志的频率：同一类别每分钟最多一条，
+// 防止一个坏客户端反复重放同一请求刷屏。
+var kiroBadRequestShapeLimiter sync.Map // map[string]time.Time
+
+const kiroBadRequestShapeLogInterval = time.Minute
+
+// logKiroBadRequestPayloadShape 在上游 400 时记录出站 payload 的结构计数（不含正文），
+// 让事后能判断是哪种请求结构触发了 400。体积超限与未知类最常需要这份信息。
+func logKiroBadRequestPayloadShape(classification kiroErrorClassification, account *Account, endpointName string, payload []byte) {
+	if classification.StatusCode != http.StatusBadRequest || len(payload) == 0 {
+		return
+	}
+	now := time.Now()
+	if last, ok := kiroBadRequestShapeLimiter.Load(classification.Category); ok {
+		if t, ok := last.(time.Time); ok && now.Sub(t) < kiroBadRequestShapeLogInterval {
+			return
+		}
+	}
+	kiroBadRequestShapeLimiter.Store(classification.Category, now)
+
+	d := kiropkg.DiagnosePayload(payload)
+	fields := []zap.Field{
+		zap.String("category", classification.Category),
+		zap.String("endpoint", endpointName),
+		zap.Any("payload_shape", d),
+	}
+	if account != nil {
+		fields = append(fields, zap.Int64("account_id", account.ID))
+	}
+	logger.L().Warn("kiro.bad_request_payload_shape", fields...)
 }
 
 // dumpKiro429ResponseForDebug captures the first 2KB of a Kiro 429 response body
