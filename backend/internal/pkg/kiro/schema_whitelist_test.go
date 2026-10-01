@@ -176,3 +176,80 @@ func TestKiroSchemaWhitelistConstDoesNotClobberEnum(t *testing.T) {
 	require.Equal(t, []any{"a", "b"}, x["enum"], "已有 enum 优先")
 	require.NotContains(t, x, "const")
 }
+
+func normalizedProperty(t *testing.T, in map[string]any, name string) map[string]any {
+	t.Helper()
+	out, ok := normalizeKiroJSONSchema(in).(map[string]any)
+	require.True(t, ok)
+	props, ok := out["properties"].(map[string]any)
+	require.True(t, ok)
+	prop, ok := props[name].(map[string]any)
+	require.True(t, ok, "property %s missing", name)
+	return prop
+}
+
+// Optional 字段的两种常见形状都不能被兜底成空 object，否则模型按对象传参。
+func TestKiroSchemaOptionalFieldsKeepScalarType(t *testing.T) {
+	in := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"typeArray": map[string]any{"type": []any{"string", "null"}, "description": "a"},
+			"anyOfNull": map[string]any{
+				"anyOf":       []any{map[string]any{"type": "integer"}, map[string]any{"type": "null"}},
+				"description": "b",
+			},
+			"nullFirst": map[string]any{
+				"oneOf": []any{map[string]any{"type": "null"}, map[string]any{"type": "array", "items": map[string]any{"type": "string"}}},
+			},
+		},
+	}
+
+	typeArray := normalizedProperty(t, in, "typeArray")
+	require.Equal(t, "string", typeArray["type"])
+	require.NotContains(t, typeArray, "properties")
+
+	anyOfNull := normalizedProperty(t, in, "anyOfNull")
+	require.Equal(t, "integer", anyOfNull["type"])
+	require.Equal(t, "b", anyOfNull["description"], "外层 description 优先")
+	require.NotContains(t, anyOfNull, "anyOf")
+	require.NotContains(t, anyOfNull, "properties")
+
+	nullFirst := normalizedProperty(t, in, "nullFirst")
+	require.Equal(t, "array", nullFirst["type"])
+	items, ok := nullFirst["items"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "string", items["type"])
+}
+
+func TestKiroSchemaAllOfMergesProperties(t *testing.T) {
+	in := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"cfg": map[string]any{
+				"allOf": []any{
+					map[string]any{"type": "object", "properties": map[string]any{"a": map[string]any{"type": "string"}}, "required": []any{"a"}},
+					map[string]any{"properties": map[string]any{"b": map[string]any{"type": "number"}}},
+				},
+			},
+		},
+	}
+	cfg := normalizedProperty(t, in, "cfg")
+	require.Equal(t, "object", cfg["type"])
+	props, ok := cfg["properties"].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, props, "a")
+	require.Contains(t, props, "b")
+	require.Equal(t, []any{"a"}, cfg["required"])
+}
+
+func TestKiroSchemaInfersTypeFromEnumAndItems(t *testing.T) {
+	in := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"mode": map[string]any{"enum": []any{"fast", "slow"}},
+			"list": map[string]any{"items": map[string]any{"type": "string"}},
+		},
+	}
+	require.Equal(t, "string", normalizedProperty(t, in, "mode")["type"])
+	require.Equal(t, "array", normalizedProperty(t, in, "list")["type"])
+}

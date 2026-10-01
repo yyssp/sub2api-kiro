@@ -2201,6 +2201,7 @@ func normalizeKiroJSONSchemaValue(schema any, enforceObjectKeywords bool) any {
 	if !ok || obj == nil {
 		return defaultKiroJSONSchema()
 	}
+	obj = flattenKiroSchemaComposition(obj, 0)
 	// 重建而非删键：保证任意嵌套深度（properties.*、items）都不残留超纲关键字。
 	normalized := make(map[string]any, len(obj)+4)
 	for key, value := range obj {
@@ -2213,7 +2214,10 @@ func normalizeKiroJSONSchemaValue(schema any, enforceObjectKeywords bool) any {
 		}
 		normalized[key] = normalizeSchemaChild(key, value)
 	}
-	if typ, ok := normalized["type"].(string); !ok || strings.TrimSpace(typ) == "" {
+	// 根 schema（enforceObjectKeywords）必须是 object，不做推断。
+	if typ := resolveKiroSchemaType(normalized, !enforceObjectKeywords); typ != "" {
+		normalized["type"] = typ
+	} else {
 		normalized["type"] = "object"
 	}
 	typ, _ := normalized["type"].(string)
@@ -2244,6 +2248,152 @@ func normalizeKiroJSONSchemaValue(schema any, enforceObjectKeywords bool) any {
 		// 不再主动补 additionalProperties —— 它不在 Smithy 接受的键集合里。
 	}
 	return normalized
+}
+
+// kiroSchemaCompositionMaxDepth 防御自引用式的超深组合嵌套。
+const kiroSchemaCompositionMaxDepth = 8
+
+// flattenKiroSchemaComposition 把 anyOf/oneOf/allOf 折叠成单一 schema。
+//
+// 白名单不含组合关键字，直接剔除会让 Optional 字段
+// （Pydantic/zod 生成的 anyOf:[{type:string},{type:null}]）丢掉类型，
+// 随后被兜底成 {type:object}，模型就会按对象传参。
+// anyOf/oneOf 取第一个非 null 分支；allOf 合并各分支的 properties 与 required。
+// 外层已有的键（description、title 等）优先于分支。
+func flattenKiroSchemaComposition(obj map[string]any, depth int) map[string]any {
+	if depth >= kiroSchemaCompositionMaxDepth {
+		return obj
+	}
+	hasComposition := false
+	for _, key := range [...]string{"anyOf", "oneOf", "allOf"} {
+		if _, ok := obj[key]; ok {
+			hasComposition = true
+			break
+		}
+	}
+	if !hasComposition {
+		return obj
+	}
+
+	out := make(map[string]any, len(obj))
+	for key, value := range obj {
+		if key != "anyOf" && key != "oneOf" && key != "allOf" {
+			out[key] = value
+		}
+	}
+	fillFrom := func(branch map[string]any) {
+		branch = flattenKiroSchemaComposition(branch, depth+1)
+		for key, value := range branch {
+			if _, exists := out[key]; !exists {
+				out[key] = value
+			}
+		}
+	}
+
+	if branches, ok := obj["allOf"].([]any); ok {
+		mergedProps := map[string]any{}
+		var mergedRequired []any
+		if props, ok := out["properties"].(map[string]any); ok {
+			for k, v := range props {
+				mergedProps[k] = v
+			}
+		}
+		if req, ok := out["required"].([]any); ok {
+			mergedRequired = append(mergedRequired, req...)
+		}
+		for _, raw := range branches {
+			branch, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			branch = flattenKiroSchemaComposition(branch, depth+1)
+			if props, ok := branch["properties"].(map[string]any); ok {
+				for k, v := range props {
+					if _, exists := mergedProps[k]; !exists {
+						mergedProps[k] = v
+					}
+				}
+			}
+			if req, ok := branch["required"].([]any); ok {
+				mergedRequired = append(mergedRequired, req...)
+			}
+			fillFrom(branch)
+		}
+		if len(mergedProps) > 0 {
+			out["properties"] = mergedProps
+		}
+		if len(mergedRequired) > 0 {
+			out["required"] = mergedRequired
+		}
+	}
+
+	for _, key := range [...]string{"anyOf", "oneOf"} {
+		branches, ok := obj[key].([]any)
+		if !ok {
+			continue
+		}
+		for _, raw := range branches {
+			branch, ok := raw.(map[string]any)
+			if !ok || isKiroNullSchema(branch) {
+				continue
+			}
+			fillFrom(branch)
+			break
+		}
+	}
+	return out
+}
+
+func isKiroNullSchema(schema map[string]any) bool {
+	typ, ok := schema["type"].(string)
+	return ok && typ == "null"
+}
+
+// resolveKiroSchemaType 求出单一的 type 字符串；无法确定时返回空串。
+//
+// type 为数组（["string","null"]）时取第一个非 null 值；缺省且 infer 为真时按
+// enum 首值或 items 推断，避免把枚举/数组字段兜底成 object。
+func resolveKiroSchemaType(schema map[string]any, infer bool) string {
+	switch typ := schema["type"].(type) {
+	case string:
+		if t := strings.TrimSpace(typ); t != "" {
+			return t
+		}
+	case []any:
+		first := ""
+		for _, item := range typ {
+			name, ok := item.(string)
+			if !ok || strings.TrimSpace(name) == "" {
+				continue
+			}
+			if first == "" {
+				first = name
+			}
+			if name != "null" {
+				return name
+			}
+		}
+		if first != "" {
+			return first
+		}
+	}
+	if !infer {
+		return ""
+	}
+	if values, ok := schema["enum"].([]any); ok && len(values) > 0 {
+		switch values[0].(type) {
+		case string:
+			return "string"
+		case bool:
+			return "boolean"
+		case float64, json.Number, int, int64:
+			return "number"
+		}
+	}
+	if _, ok := schema["items"]; ok {
+		return "array"
+	}
+	return ""
 }
 
 func hasSchemaKey(schema map[string]any, key string) bool {
