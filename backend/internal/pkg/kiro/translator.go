@@ -2494,35 +2494,61 @@ func processMessages(messages []gjson.Result, modelID, origin string, requestCtx
 	return history, currentUserMsg, currentToolResults
 }
 
+// validateToolPairing 按"紧邻上一轮"收敛 tool 配对。
+//
+// Kiro 校验的是相邻关系：每条 user 消息的 toolResult 只能回应紧挨着的上一条
+// assistant 的 toolUse（400："The number of toolResult blocks at messages.N.content
+// exceeds the number of toolUse blocks of previous turn"）。过去用全历史 ID 集合判断，
+// 引用更早轮次 toolUse 的结果会通过本地校验、到上游才 400。
+//
+// 处理：
+//   - history 中 user 消息的 toolResult 不属于上一条 assistant 时就地剔除；
+//   - 当前轮 toolResult 只接受 history 末条 assistant 的 toolUse；
+//   - 没有被紧邻下一轮回应的 toolUse 记为孤儿，由 removeOrphanedToolUses 清理。
 func validateToolPairing(history []KiroHistoryMessage, currentToolResults []KiroToolResult) ([]KiroToolResult, map[string]bool) {
-	allToolUseIDs := make(map[string]bool)
-	pairedToolUseIDs := make(map[string]bool)
-	for _, h := range history {
-		if h.AssistantResponseMessage != nil {
-			for _, tu := range h.AssistantResponseMessage.ToolUses {
-				allToolUseIDs[tu.ToolUseID] = true
-			}
+	orphaned := make(map[string]bool)
+	// pending 是上一条 assistant 发出、尚未被回应的 toolUse。
+	pending := map[string]bool{}
+	flushPending := func() {
+		for id := range pending {
+			orphaned[id] = true
 		}
-		if h.UserInputMessage != nil && h.UserInputMessage.UserInputMessageContext != nil {
-			for _, tr := range h.UserInputMessage.UserInputMessageContext.ToolResults {
-				pairedToolUseIDs[tr.ToolUseID] = true
+		pending = map[string]bool{}
+	}
+
+	for i := range history {
+		if msg := history[i].AssistantResponseMessage; msg != nil {
+			flushPending()
+			for _, tu := range msg.ToolUses {
+				pending[tu.ToolUseID] = true
 			}
+			continue
 		}
+		msg := history[i].UserInputMessage
+		if msg == nil {
+			continue
+		}
+		if msg.UserInputMessageContext != nil && len(msg.UserInputMessageContext.ToolResults) > 0 {
+			kept := msg.UserInputMessageContext.ToolResults[:0]
+			for _, tr := range msg.UserInputMessageContext.ToolResults {
+				if pending[tr.ToolUseID] {
+					kept = append(kept, tr)
+					delete(pending, tr.ToolUseID)
+				}
+			}
+			msg.UserInputMessageContext.ToolResults = kept
+		}
+		flushPending()
 	}
 
 	filtered := currentToolResults[:0]
 	for _, tr := range currentToolResults {
-		if allToolUseIDs[tr.ToolUseID] && !pairedToolUseIDs[tr.ToolUseID] {
+		if pending[tr.ToolUseID] {
 			filtered = append(filtered, tr)
-			pairedToolUseIDs[tr.ToolUseID] = true
+			delete(pending, tr.ToolUseID)
 		}
 	}
-	orphaned := make(map[string]bool)
-	for toolUseID := range allToolUseIDs {
-		if !pairedToolUseIDs[toolUseID] {
-			orphaned[toolUseID] = true
-		}
-	}
+	flushPending()
 	return filtered, orphaned
 }
 
