@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -27,6 +28,49 @@ type KiroTokenProvider struct {
 	refreshAPI       *OAuthRefreshAPI
 	executor         OAuthRefreshExecutor
 	refreshPolicy    ProviderRefreshPolicy
+	refreshFailures  kiroRefreshFailureCache
+}
+
+// 刷新失败的短期负缓存时长。窗口内同账号的强制刷新直接返回上次的错误，
+// 不再打 OIDC：上游 5xx/限流期间，每个 401/403 请求都去刷新会放大故障，
+// 还可能触发刷新接口自身的限流。不可重试错误（refresh_token 失效）窗口更长。
+const (
+	kiroRefreshFailureTTL             = 15 * time.Second
+	kiroRefreshNonRetryableFailureTTL = 5 * time.Minute
+)
+
+type kiroRefreshFailure struct {
+	err   error
+	until time.Time
+}
+
+type kiroRefreshFailureCache struct {
+	entries sync.Map // map[int64]kiroRefreshFailure
+}
+
+func (c *kiroRefreshFailureCache) recent(accountID int64, now time.Time) error {
+	v, ok := c.entries.Load(accountID)
+	if !ok {
+		return nil
+	}
+	failure, ok := v.(kiroRefreshFailure)
+	if !ok || !now.Before(failure.until) {
+		c.entries.Delete(accountID)
+		return nil
+	}
+	return failure.err
+}
+
+func (c *kiroRefreshFailureCache) record(accountID int64, err error, now time.Time) {
+	ttl := kiroRefreshFailureTTL
+	if isNonRetryableRefreshError(err) {
+		ttl = kiroRefreshNonRetryableFailureTTL
+	}
+	c.entries.Store(accountID, kiroRefreshFailure{err: err, until: now.Add(ttl)})
+}
+
+func (c *kiroRefreshFailureCache) clear(accountID int64) {
+	c.entries.Delete(accountID)
 }
 
 func NewKiroTokenProvider(
@@ -152,6 +196,10 @@ func (p *KiroTokenProvider) ForceRefreshAccessToken(ctx context.Context, account
 		return "", errors.New("kiro oauth service is nil")
 	}
 
+	if cached := p.refreshFailures.recent(account.ID, time.Now()); cached != nil {
+		return "", cached
+	}
+
 	cacheKey := KiroTokenCacheKey(account)
 	lockHeld := false
 	if p.tokenCache != nil {
@@ -183,8 +231,13 @@ func (p *KiroTokenProvider) ForceRefreshAccessToken(ctx context.Context, account
 			errorMsg := "Token refresh failed (non-retryable): " + err.Error()
 			_ = p.accountRepo.SetError(ctx, account.ID, errorMsg)
 		}
+		// 请求被取消不代表刷新失败，不能缓存。
+		if ctx.Err() == nil {
+			p.refreshFailures.record(account.ID, err, time.Now())
+		}
 		return "", err
 	}
+	p.refreshFailures.clear(account.ID)
 
 	oldCredentials := ensureKiroMachineIDCredential(account, cloneKiroCredentials(account.Credentials))
 	newCredentials := MergeCredentials(oldCredentials, p.kiroOAuthService.BuildAccountCredentials(tokenInfo))
