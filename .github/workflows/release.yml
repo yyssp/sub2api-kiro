@@ -382,15 +382,16 @@ jobs:
       contents: write
     env:
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_SYNC_BRANCH: 2ue
     steps:
-      - name: Checkout default branch
+      - name: Checkout release sync branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ env.RELEASE_SYNC_BRANCH }}
 
-      - name: Sync VERSION file to released tag
+      - name: Sync VERSION file to release base
         run: |
-          VERSION="$RELEASE_VERSION"
+          VERSION="${RELEASE_VERSION%%-*}"
 
           CURRENT_VERSION=$(tr -d '\r\n' < backend/cmd/server/VERSION || true)
           if [ "$CURRENT_VERSION" = "$VERSION" ]; then
@@ -404,4 +405,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add backend/cmd/server/VERSION
           git commit -m "chore: sync VERSION to ${VERSION} [skip ci]"
-          git push origin HEAD:${{ github.event.repository.default_branch }}
+          git push origin "HEAD:${RELEASE_SYNC_BRANCH}"
