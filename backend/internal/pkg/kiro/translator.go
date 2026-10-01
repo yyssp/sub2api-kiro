@@ -67,7 +67,7 @@ const (
 )
 
 var (
-	kiroRemoteImageHTTPClient = &http.Client{Timeout: kiroRemoteImageTimeout}
+	kiroRemoteImageHTTPClient = newKiroRemoteFetchClient(kiroRemoteImageTimeout)
 	requiredToolFields        = map[string][][]string{
 		"write":              {{"filePath", "file_path", "path"}, {"content"}},
 		"write_to_file":      {{"path"}, {"content"}},

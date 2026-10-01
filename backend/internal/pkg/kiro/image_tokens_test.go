@@ -14,6 +14,7 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -71,6 +72,7 @@ func TestEstimateImageTokensUsesDimensionsNotEncodedLength(t *testing.T) {
 
 func TestEstimateImageTokensRemoteURLCachesSuccess(t *testing.T) {
 	resetImageTokenEstimateStateForTest()
+	allowLoopbackRemoteFetchForTest(t)
 	var requests atomic.Int32
 	pngBody := encodeImageForTokenTest(t, "png", 200, 200)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -100,6 +102,7 @@ func TestEstimateImageTokensRemoteURLCachesSuccess(t *testing.T) {
 
 func TestEstimateImageTokensRemoteFailuresUseCachedFallback(t *testing.T) {
 	resetImageTokenEstimateStateForTest()
+	allowLoopbackRemoteFetchForTest(t)
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
@@ -122,6 +125,7 @@ func TestEstimateImageTokensRemoteFailuresUseCachedFallback(t *testing.T) {
 
 func TestEstimateImageTokensRemoteRespectsContext(t *testing.T) {
 	resetImageTokenEstimateStateForTest()
+	allowLoopbackRemoteFetchForTest(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 	}))
@@ -185,6 +189,15 @@ func writeUint24LE(dst []byte, value int) {
 	dst[0] = byte(value)
 	dst[1] = byte(value >> 8)
 	dst[2] = byte(value >> 16)
+}
+
+// allowLoopbackRemoteFetchForTest 放行 httptest 服务器所在的回环地址；
+// 生产路径的拦截由 remote_fetch_guard_test.go 单独覆盖。
+func allowLoopbackRemoteFetchForTest(t *testing.T) {
+	t.Helper()
+	previous := kiroRemoteAddressAllowed
+	kiroRemoteAddressAllowed = func(addr netip.Addr) bool { return addr.IsLoopback() || previous(addr) }
+	t.Cleanup(func() { kiroRemoteAddressAllowed = previous })
 }
 
 func resetImageTokenEstimateStateForTest() {
