@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -487,17 +488,23 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 	wrappedHeaders.Set("request-id", claudeReqID)
 	setKiroPayloadTrimHeaders(wrappedHeaders, requestCtx)
 
+	handoff := newKiroStreamHandoff()
 	go func() {
 		defer func() { _ = resp.Body.Close() }()
-		streamResult, streamErr := kiropkg.StreamEventStreamAsAnthropicWithContext(upstreamCtx, resp.Body, pw, requestModel, inputTokens, requestCtx)
-		if streamErr == nil {
-			logKiroMissingTerminalSignal(account, requestModel, true, streamResult.UpstreamTerminalSignal, streamResult.StopReason)
-		}
+		streamResult, streamErr := kiropkg.StreamEventStreamAsAnthropicWithContext(upstreamCtx, resp.Body, handoff.writer(pw), requestModel, inputTokens, requestCtx)
 		if streamErr != nil {
+			// 还没向客户端写过任何字节：把错误交回调用方去换号，而不是写 SSE error
+			// 让客户端拿到一个必失败的 200。
+			if handoff.failBeforeOutput(streamErr) {
+				_ = pw.CloseWithError(streamErr)
+				return
+			}
 			_, _ = io.WriteString(pw, kiroStreamErrorEvent(streamErr))
 			_ = pw.CloseWithError(streamErr)
 			return
 		}
+		handoff.markStreaming()
+		logKiroMissingTerminalSignal(account, requestModel, true, streamResult.UpstreamTerminalSignal, streamResult.StopReason)
 		// Cache prefixes are persisted only after the complete upstream stream
 		// has been transformed successfully. An HTTP 2xx alone is insufficient:
 		// a truncated stream or client cancellation must not poison the next
@@ -506,10 +513,132 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 		_ = pw.Close()
 	}()
 
+	if failErr := handoff.wait(ctx, kiroFirstOutputWait); failErr != nil {
+		return s.kiroPreOutputFailure(ctx, account, accountKeyForKiroAccount(account), failErr, inputTokens)
+	}
+
 	return &http.Response{
 		StatusCode: resp.StatusCode,
 		Header:     wrappedHeaders,
 		Body:       pr,
+	}, inputTokens, nil
+}
+
+// kiroFirstOutputWait 是交给 handler 前等待首个输出字节的上限。
+// 首块前的上游异常（限流、过载、瞬时失败）可以安全换号；但等太久会推迟
+// handler 的 keepalive ping 与响应头，超时后照常交出流，之后的错误走 SSE error。
+const kiroFirstOutputWait = 20 * time.Second
+
+const (
+	kiroHandoffPending int32 = iota
+	kiroHandoffStreaming
+	kiroHandoffFailed
+)
+
+// kiroStreamHandoff 协调翻译协程与调用方：首字节写出前出错时由调用方处理（换号/改写错误），
+// 写出后或等待超时后由客户端流承接。状态只从 pending 单向迁移一次。
+type kiroStreamHandoff struct {
+	state     atomic.Int32
+	started   chan struct{}
+	failed    chan error
+	startOnce sync.Once
+}
+
+func newKiroStreamHandoff() *kiroStreamHandoff {
+	return &kiroStreamHandoff{started: make(chan struct{}), failed: make(chan error, 1)}
+}
+
+func (h *kiroStreamHandoff) markStreaming() bool {
+	if h.state.CompareAndSwap(kiroHandoffPending, kiroHandoffStreaming) {
+		h.startOnce.Do(func() { close(h.started) })
+		return true
+	}
+	return h.state.Load() == kiroHandoffStreaming
+}
+
+// failBeforeOutput 在尚未交出流时把错误交给调用方；返回 false 表示流已交给客户端。
+func (h *kiroStreamHandoff) failBeforeOutput(err error) bool {
+	if !h.state.CompareAndSwap(kiroHandoffPending, kiroHandoffFailed) {
+		return false
+	}
+	h.failed <- err
+	return true
+}
+
+// wait 阻塞到首字节写出、翻译失败或超时。返回非 nil 表示首字节前失败。
+func (h *kiroStreamHandoff) wait(ctx context.Context, limit time.Duration) error {
+	timer := time.NewTimer(limit)
+	defer timer.Stop()
+	select {
+	case <-h.started:
+		return nil
+	case err := <-h.failed:
+		return err
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+	if h.markStreaming() {
+		return nil
+	}
+	return <-h.failed
+}
+
+func (h *kiroStreamHandoff) writer(w io.Writer) io.Writer {
+	return &kiroHandoffWriter{handoff: h, w: w}
+}
+
+type kiroHandoffWriter struct {
+	handoff *kiroStreamHandoff
+	w       io.Writer
+}
+
+func (w *kiroHandoffWriter) Write(p []byte) (int, error) {
+	// 必须在写 pipe 之前迁移状态：pipe 写会阻塞到有人读，而读端要等调用方拿到流才存在。
+	w.handoff.markStreaming()
+	return w.w.Write(p)
+}
+
+func accountKeyForKiroAccount(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	return buildKiroAccountKey(account)
+}
+
+// kiroPreOutputFailure 把首字节前的翻译失败映射成调用方可处理的结果：
+// 可恢复的上游异常与读失败返回 failover 错误换号；请求类异常合成上游错误响应，
+// 交给各入口既有的 4xx 处理（如 ContentLengthExceeded → prompt is too long）。
+func (s *GatewayService) kiroPreOutputFailure(ctx context.Context, account *Account, accountKey string, err error, inputTokens int) (*http.Response, int, error) {
+	if ctx.Err() != nil {
+		return nil, inputTokens, err
+	}
+	var streamErr *kiropkg.KiroStreamException
+	if !errors.As(err, &streamErr) {
+		logger.L().Warn("kiro.stream_failed_before_output", zap.Int64("account_id", account.ID), zap.Error(err))
+		return nil, inputTokens, &UpstreamFailoverError{StatusCode: http.StatusBadGateway, ResponseBody: []byte(sanitizeUpstreamErrorMessage(err.Error()))}
+	}
+	logger.L().Warn("kiro.stream_exception_before_output",
+		zap.Int64("account_id", account.ID),
+		zap.String("exception_type", streamErr.ExceptionType))
+	switch {
+	case streamErr.ExceptionType == "ThrottlingException":
+		if _, markErr := s.markKiro429(ctx, account.ID, accountKey); markErr != nil {
+			logger.L().Warn("kiro.mark_429_failed", zap.Int64("account_id", account.ID), zap.Error(markErr))
+		}
+		return nil, inputTokens, &UpstreamFailoverError{StatusCode: http.StatusTooManyRequests, ResponseBody: []byte(streamErr.Error())}
+	case kiroStreamExceptionRetryable(streamErr.ExceptionType):
+		return nil, inputTokens, &UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable, ResponseBody: []byte(streamErr.Error())}
+	}
+	message := streamErr.Message
+	if streamErr.ExceptionType == "ContentLengthExceededException" || message == "" {
+		// 无输出的长度超限只可能是输入过长；措辞需命中 looksLikeKiroOversizeError。
+		message = "Input is too long. " + streamErr.ExceptionType
+	}
+	body, _ := json.Marshal(map[string]string{"message": message})
+	return &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
 	}, inputTokens, nil
 }
 
