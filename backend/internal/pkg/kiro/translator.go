@@ -100,6 +100,8 @@ type StreamResult struct {
 	// UpstreamTerminalSignal 表示上游在 EOF 前给出过终态信号（stopReason / messageStopEvent）。
 	// 为假时 stop_reason 是本地兜底推断的，可能掩盖了上游静默截断。
 	UpstreamTerminalSignal bool
+	// EchoedPlaceholder 表示模型输出里出现了网关自己注入的占位文本，见 kiroEchoedPlaceholder。
+	EchoedPlaceholder string
 }
 
 type ParseResult struct {
@@ -107,6 +109,27 @@ type ParseResult struct {
 	Usage                  Usage
 	StopReason             string
 	UpstreamTerminalSignal bool
+	EchoedPlaceholder      string
+}
+
+// kiroInjectedPlaceholders 是网关为满足 Kiro 协议而注入、用户从未写过的文本。
+// "Continue" 是常见英文词，不在检测范围内，避免误报。
+var kiroInjectedPlaceholders = [...]string{
+	"Tool results provided.",
+	"I will follow these instructions.",
+	kiroEmptyToolResultPlaceholder,
+}
+
+// kiroEchoedPlaceholder 检测模型是否把注入的占位文本当成对话内容复述了出来。
+// 只做观测：2ue_kiro.rs 有完整的泄漏清洗器，但它针对的是其自身的转写格式；
+// 先确认本网关是否真的发生，再决定是否需要清洗。
+func kiroEchoedPlaceholder(output string) string {
+	for _, placeholder := range kiroInjectedPlaceholders {
+		if strings.Contains(output, placeholder) {
+			return placeholder
+		}
+	}
+	return ""
 }
 
 // kiroContextWindowFull 判断 contextUsageEvent 是否报告上下文已用满（≥100%）。
@@ -707,6 +730,7 @@ func ParseNonStreamingEventStreamWithContext(body io.Reader, model string, reque
 		Usage:                  usage,
 		StopReason:             finalStopReason,
 		UpstreamTerminalSignal: terminal,
+		EchoedPlaceholder:      kiroEchoedPlaceholder(content),
 	}, nil
 }
 
@@ -1538,6 +1562,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		Usage:                  usage,
 		StopReason:             stopReason,
 		UpstreamTerminalSignal: upstreamTerminalSignal,
+		EchoedPlaceholder:      kiroEchoedPlaceholder(outputTextBuf.String()),
 		FirstDeltaDur:          firstDelta,
 	}, nil
 }

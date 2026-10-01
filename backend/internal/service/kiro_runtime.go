@@ -364,6 +364,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 	}
 
 	logKiroMissingTerminalSignal(account, originalModel, false, parseResult.UpstreamTerminalSignal, parseResult.StopReason)
+	logKiroEchoedPlaceholder(account, originalModel, parseResult.EchoedPlaceholder)
 	usage := kiroUsageToClaude(parseResult.Usage, inputTokens)
 	// Apply the same group-bound usage projection used by the other
 	// Claude-Code-compatible protocol adapters. The Kiro translator only
@@ -505,6 +506,7 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 		}
 		handoff.markStreaming()
 		logKiroMissingTerminalSignal(account, requestModel, true, streamResult.UpstreamTerminalSignal, streamResult.StopReason)
+		logKiroEchoedPlaceholder(account, requestModel, streamResult.EchoedPlaceholder)
 		// Cache prefixes are persisted only after the complete upstream stream
 		// has been transformed successfully. An HTTP 2xx alone is insufficient:
 		// a truncated stream or client cancellation must not poison the next
@@ -1629,4 +1631,16 @@ func logKiroMissingTerminalSignal(account *Account, model string, stream, termin
 		fields = append(fields, zap.Int64("account_id", account.ID), zap.String("account_type", account.Type))
 	}
 	logger.L().Info("kiro.stream_missing_terminal_signal", fields...)
+}
+
+// logKiroEchoedPlaceholder 记录模型复述网关注入占位文本的响应，用于判断是否需要做输出清洗。
+func logKiroEchoedPlaceholder(account *Account, model, placeholder string) {
+	if placeholder == "" {
+		return
+	}
+	fields := []zap.Field{zap.String("model", model), zap.String("placeholder", placeholder)}
+	if account != nil {
+		fields = append(fields, zap.Int64("account_id", account.ID))
+	}
+	logger.L().Warn("kiro.response_echoed_placeholder", fields...)
 }

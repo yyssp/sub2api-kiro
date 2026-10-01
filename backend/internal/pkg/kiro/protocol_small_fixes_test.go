@@ -83,3 +83,16 @@ func TestSystemBlocksAreJoinedWithNewline(t *testing.T) {
 	already := gjson.Parse(`[{"type":"text","text":"a\n"},{"type":"text","text":"b"}]`)
 	require.Equal(t, "a\nb", extractTextFromContentBlocks(already))
 }
+
+func TestEchoedPlaceholderDetection(t *testing.T) {
+	require.Equal(t, "Tool results provided.", kiroEchoedPlaceholder("user Tool results provided.\n\nBash: ok"))
+	require.Empty(t, kiroEchoedPlaceholder("Continue with the plan."), "普通的 Continue 不算泄漏")
+
+	stream := bytes.NewBuffer(nil)
+	_, _ = stream.Write(textFrame(t, "I will follow these instructions. Sure."))
+	var out bytes.Buffer
+	result, err := StreamEventStreamAsAnthropicWithContext(context.Background(), stream, &out, "claude-sonnet-4-5", 9, KiroRequestContext{})
+	require.NoError(t, err)
+	require.Equal(t, "I will follow these instructions.", result.EchoedPlaceholder)
+	require.Contains(t, out.String(), "I will follow these instructions.", "只观测，不改写输出")
+}
