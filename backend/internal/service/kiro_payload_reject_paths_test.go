@@ -95,15 +95,15 @@ func TestOpenAICompatEntriesUseSameTooLargeDetail(t *testing.T) {
 
 	recCC := httptest.NewRecorder()
 	cCC, _ := gin.CreateTestContext(recCC)
-	writeGatewayCCError(cCC, http.StatusRequestEntityTooLarge, "invalid_request_error",
+	writeGatewayCCError(cCC, http.StatusBadRequest, "invalid_request_error",
 		kiroPayloadTooLargeMessage(weight, limit))
-	require.Equal(t, http.StatusRequestEntityTooLarge, recCC.Code)
+	require.Equal(t, http.StatusBadRequest, recCC.Code)
 	require.Contains(t, recCC.Body.String(), "777")
 
 	recR := httptest.NewRecorder()
 	cR, _ := gin.CreateTestContext(recR)
-	writeResponsesError(cR, http.StatusRequestEntityTooLarge, "invalid_request_error",
+	writeResponsesError(cR, http.StatusBadRequest, "invalid_request_error",
 		kiroPayloadTooLargeMessage(weight, limit))
-	require.Equal(t, http.StatusRequestEntityTooLarge, recR.Code)
+	require.Equal(t, http.StatusBadRequest, recR.Code)
 	require.Contains(t, recR.Body.String(), "777")
 }

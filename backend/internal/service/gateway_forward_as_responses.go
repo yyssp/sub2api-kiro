@@ -165,6 +165,7 @@ func (s *GatewayService) ForwardAsResponses(
 	var resp *http.Response
 	var reasoningEffort *string
 	if isKiroDirectModeAccount(account) {
+		ctx = withKiroAttemptBudget(ctx, c)
 		// Kiro's direct path does not build a generic Anthropic request, so use
 		// the final converted request body as the billing source instead.
 		reasoningEffort = NormalizeClaudeOutputEffort(gjson.GetBytes(anthropicBody, "output_config.effort").String())
@@ -173,7 +174,7 @@ func (s *GatewayService) ForwardAsResponses(
 		if err != nil {
 			// behavior=reject 时请求没发出去，不能报成上游故障。见 respondKiroPayloadTooLarge。
 			if weight, limit, ok := kiroPayloadTooLargeDetail(err); ok {
-				writeResponsesError(c, http.StatusRequestEntityTooLarge, "invalid_request_error",
+				writeResponsesError(c, http.StatusBadRequest, "invalid_request_error",
 					kiroPayloadTooLargeMessage(weight, limit))
 				return nil, err
 			}

@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
@@ -53,6 +54,59 @@ func kiroRetryBackoffDelay(attempt int) time.Duration {
 	return delay + time.Duration(mathrand.Int63n(int64(jitterMax)+1))
 }
 
+// kiroUpstreamAttemptBudget 是单个客户端请求允许发往 Kiro 上游的总次数，
+// 跨端点重试、token 刷新重试与 handler 换号共用。
+//
+// 过去三层各自计数（每端点 3 次 × 2 个端点 × 最多 15 次换号），一次请求在限流
+// 风暴下可扇出近百次上游调用，反过来加剧限流（2ue_kiro.rs 实测放大最高 30 倍）。
+const kiroUpstreamAttemptBudget = 10
+
+var errKiroAttemptBudgetExhausted = errors.New("kiro upstream attempt budget exhausted")
+
+type kiroAttemptBudget struct {
+	remaining atomic.Int32
+}
+
+func newKiroAttemptBudget(limit int) *kiroAttemptBudget {
+	b := &kiroAttemptBudget{}
+	b.remaining.Store(int32(limit))
+	return b
+}
+
+// take 在真正发出上游请求前扣减一次；预算耗尽返回 false。
+func (b *kiroAttemptBudget) take() bool {
+	if b == nil {
+		return true
+	}
+	return b.remaining.Add(-1) >= 0
+}
+
+type kiroAttemptBudgetKey struct{}
+
+const kiroAttemptBudgetGinKey = "kiro_upstream_attempt_budget"
+
+// withKiroAttemptBudget 取出（或创建）挂在 gin.Context 上的请求级预算并注入 ctx。
+// 存在 gin.Context 上是为了跨 handler 换号保持同一份计数：每次换号都会重新进入转发入口。
+func withKiroAttemptBudget(ctx context.Context, c *gin.Context) context.Context {
+	if c == nil {
+		return ctx
+	}
+	var budget *kiroAttemptBudget
+	if v, ok := c.Get(kiroAttemptBudgetGinKey); ok {
+		budget, _ = v.(*kiroAttemptBudget)
+	}
+	if budget == nil {
+		budget = newKiroAttemptBudget(kiroUpstreamAttemptBudget)
+		c.Set(kiroAttemptBudgetGinKey, budget)
+	}
+	return context.WithValue(ctx, kiroAttemptBudgetKey{}, budget)
+}
+
+func kiroAttemptBudgetFromContext(ctx context.Context) *kiroAttemptBudget {
+	budget, _ := ctx.Value(kiroAttemptBudgetKey{}).(*kiroAttemptBudget)
+	return budget
+}
+
 func sleepKiroRetry(ctx context.Context, attempt int) error {
 	return kiroRetrySleep(ctx, kiroRetryBackoffDelay(attempt))
 }
@@ -69,6 +123,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 	if account == nil || parsed == nil {
 		return nil, fmt.Errorf("kiro forward: missing account or request")
 	}
+	ctx = withKiroAttemptBudget(ctx, c)
 
 	originalModel := parsed.Model
 	mappedModel := originalModel
@@ -524,6 +579,13 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 				return nil, requestCtx, err
 			}
 
+			if !kiroAttemptBudgetFromContext(ctx).take() {
+				logger.L().Warn("kiro.upstream_attempt_budget_exhausted",
+					zap.Int64("account_id", account.ID),
+					zap.String("endpoint", endpoint.Name),
+					zap.Int("budget", kiroUpstreamAttemptBudget))
+				return nil, requestCtx, errKiroAttemptBudgetExhausted
+			}
 			resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
 			if err != nil {
 				if attempt < maxRetries {
