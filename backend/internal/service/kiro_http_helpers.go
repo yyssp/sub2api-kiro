@@ -151,12 +151,22 @@ func isKiroSuspendedBody(respBody []byte) bool {
 	return strings.Contains(body, "SUSPENDED") || strings.Contains(body, "TEMPORARILY_SUSPENDED")
 }
 
+// isKiroTokenErrorBody 判断 403 是否是 access token 失效，命中才触发强制刷新。
+//
+// 只匹配与 token 相关的措辞：过去任一出现 "invalid"/"expired"/"token" 即判失效，
+// 导致 profileArn 缺失（"User is not authorized to make this call"）、
+// "invalid profile" 等与 token 无关的 403 也去打 OIDC 刷新，白白消耗刷新配额。
 func isKiroTokenErrorBody(respBody []byte) bool {
 	lower := strings.ToLower(string(respBody))
-	return strings.Contains(lower, "token") ||
-		strings.Contains(lower, "expired") ||
-		strings.Contains(lower, "invalid") ||
-		strings.Contains(lower, "unauthorized")
+	if strings.Contains(lower, "bearer token") ||
+		strings.Contains(lower, "expiredtoken") ||
+		strings.Contains(lower, "invalidtoken") ||
+		strings.Contains(lower, "unauthorizedexception") ||
+		strings.Contains(lower, "unrecognizedclient") {
+		return true
+	}
+	return strings.Contains(lower, "token") &&
+		(strings.Contains(lower, "expired") || strings.Contains(lower, "invalid"))
 }
 
 func kiroProxyURL(account *Account) string {
