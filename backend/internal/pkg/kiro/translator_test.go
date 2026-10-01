@@ -3198,3 +3198,19 @@ func TestBuildKiroPayloadTrailingAssistantThenSystemStillAttachesTools(t *testin
 	require.Greater(t, gjson.GetBytes(payload, "conversationState.currentMessage.userInputMessage.userInputMessageContext.tools.#").Int(), int64(0))
 	require.Contains(t, gjson.GetBytes(payload, "conversationState.history.0.userInputMessage.content").String(), "TRAILING NOTE")
 }
+
+func TestBuildKiroPayloadExplicitThinkingDisabledIgnoresBetaHeader(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-sonnet-4-5",
+		"thinking":{"type":"disabled"},
+		"messages":[{"role":"user","content":"hello kiro"}]
+	}`)
+	headers := http.Header{}
+	headers.Set("Anthropic-Beta", "oauth-2025-04-20,interleaved-thinking-2025-05-14")
+
+	kiroBuildResult, err := BuildKiroPayloadWithContext(body, "claude-sonnet-4.5", "", "AI_EDITOR", headers)
+	require.NoError(t, err)
+	require.False(t, kiroBuildResult.Context.ThinkingEnabled)
+	systemContent := gjson.GetBytes(kiroBuildResult.Payload, "conversationState.history.0.userInputMessage.content").String()
+	require.NotContains(t, systemContent, "<thinking_mode>")
+}

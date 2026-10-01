@@ -1534,6 +1534,10 @@ func deriveThinkingDirective(body []byte, headers http.Header) *thinkingDirectiv
 			budget = 16000
 		}
 		return &thinkingDirective{Mode: "enabled", BudgetTokens: budget}
+	case "disabled":
+		// 客户端显式关闭时不得被下面的 beta 头 / reasoning_effort 兜底重新打开：
+		// Claude Code 的后台小模型调用（标题、摘要）也带 interleaved-thinking beta。
+		return nil
 	}
 	if headers != nil {
 		if beta := headers.Get("Anthropic-Beta"); strings.Contains(beta, "interleaved-thinking") {
