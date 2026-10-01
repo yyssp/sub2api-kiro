@@ -109,6 +109,44 @@ type ParseResult struct {
 	UpstreamTerminalSignal bool
 }
 
+// kiroContextWindowFull 判断 contextUsageEvent 是否报告上下文已用满（≥100%）。
+// 用满时上游会在没有任何异常的情况下停止输出，若按 end_turn 上报，
+// 客户端会把截断的回答当成完整回答。
+func kiroContextWindowFull(eventType string, event map[string]any) bool {
+	if eventType != "contextUsageEvent" {
+		return false
+	}
+	meta := nestedEvent(event, eventType)
+	if len(meta) == 0 {
+		meta = event
+	}
+	var percent float64
+	switch v := meta["contextUsagePercentage"].(type) {
+	case json.Number:
+		percent, _ = v.Float64()
+	case float64:
+		percent = v
+	default:
+		return false
+	}
+	return !math.IsNaN(percent) && !math.IsInf(percent, 0) && percent >= 100
+}
+
+// applyContextWindowStopReason 在上下文用满且没有更明确的终态时改写 stop_reason。
+// tool_use / max_tokens / stop_sequence 优先：它们本身就说明了停止原因。
+func applyContextWindowStopReason(stopReason string, contextFull, toolEmitted bool) string {
+	if !contextFull || toolEmitted {
+		return stopReason
+	}
+	// 上游原始值可能是 END_TURN 这类大写枚举。
+	switch strings.ToLower(strings.TrimSpace(stopReason)) {
+	case "", "end_turn":
+		return "model_context_window_exceeded"
+	default:
+		return stopReason
+	}
+}
+
 func isKiroTerminalEvent(eventType string) bool {
 	return eventType == "messageStopEvent" || eventType == "message_stop"
 }
@@ -689,6 +727,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	pendingLeadingWhitespace := ""
 	stopReason := ""
 	upstreamTerminalSignal := false
+	contextWindowFull := false
 	stopSequenceMatched := ""
 	stopSequencePendingText := ""
 	thinkingBuffer := ""
@@ -1384,6 +1423,9 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		if isKiroTerminalEvent(msg.EventType) || readStopReason(event) != "" || readStopReason(nestedEvent(event, msg.EventType)) != "" {
 			upstreamTerminalSignal = true
 		}
+		if kiroContextWindowFull(msg.EventType, event) {
+			contextWindowFull = true
+		}
 		semanticEvents := extractSemanticEvents(msg.EventType, event, &lastContentFragment)
 		for i := range semanticEvents {
 			if kiroUpstreamTraceEnabled {
@@ -1451,6 +1493,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			stopReason = "end_turn"
 		}
 	}
+	stopReason = applyContextWindowStopReason(stopReason, contextWindowFull, toolBlockEmitted)
 	if err := ensureMessageStart(); err != nil {
 		return nil, err
 	}
@@ -3591,6 +3634,7 @@ func blockToMap(block gjson.Result) map[string]any {
 
 func parseEventStreamWithTerminal(body io.Reader) (string, []KiroToolUse, Usage, string, bool, error) {
 	upstreamTerminalSignal := false
+	contextWindowFull := false
 	reader := bufio.NewReader(body)
 	var content strings.Builder
 	var toolUses []KiroToolUse
@@ -3642,6 +3686,9 @@ func parseEventStreamWithTerminal(body io.Reader) (string, []KiroToolUse, Usage,
 		}
 		if isKiroTerminalEvent(msg.EventType) || stopReason != "" || readStopReason(nestedEvent(event, msg.EventType)) != "" {
 			upstreamTerminalSignal = true
+		}
+		if kiroContextWindowFull(msg.EventType, event) {
+			contextWindowFull = true
 		}
 		switch msg.EventType {
 		case "assistantResponseEvent":
@@ -3725,6 +3772,7 @@ func parseEventStreamWithTerminal(body io.Reader) (string, []KiroToolUse, Usage,
 			stopReason = "end_turn"
 		}
 	}
+	stopReason = applyContextWindowStopReason(stopReason, contextWindowFull, hasUsableToolUses(toolUses))
 	return cleanText, toolUses, usage, stopReason, upstreamTerminalSignal, nil
 }
 

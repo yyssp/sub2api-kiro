@@ -155,7 +155,9 @@ func AnthropicToResponsesResponseWithCustomTools(resp *AnthropicResponse, custom
 // anthropicStopReasonToResponsesStatus maps Anthropic stop_reason to Responses status.
 func anthropicStopReasonToResponsesStatus(stopReason string, blocks []AnthropicContentBlock) string {
 	switch stopReason {
-	case "max_tokens":
+	// model_context_window_exceeded 同样是被截断的回答，映射为输出长度受限，
+	// 下游 Chat Completions 据此得到 finish_reason=length 而不是 stop。
+	case "max_tokens", "model_context_window_exceeded":
 		return "incomplete"
 	case "end_turn", "tool_use", "stop_sequence":
 		return "completed"
@@ -591,7 +593,7 @@ func anthToResHandleMessageStop(state *AnthropicEventToResponsesState) []Respons
 // --- helper functions ---
 
 func anthropicResponsesStreamTerminalState(stopReason string) (string, *ResponsesIncompleteDetails) {
-	if stopReason == "max_tokens" {
+	if stopReason == "max_tokens" || stopReason == "model_context_window_exceeded" {
 		return "incomplete", &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
 	}
 	return "completed", nil

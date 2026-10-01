@@ -129,3 +129,42 @@ func TestStreamReportsWhetherUpstreamSentTerminalSignal(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, parsed.UpstreamTerminalSignal)
 }
+
+func contextUsageFrame(t *testing.T, percent float64) []byte {
+	return buildEventStreamFrame(t, "contextUsageEvent", map[string]any{"contextUsageEvent": map[string]any{"contextUsagePercentage": percent}})
+}
+
+func TestContextWindowFullMapsToModelContextWindowExceeded(t *testing.T) {
+	stream := bytes.NewBuffer(nil)
+	_, _ = stream.Write(textFrame(t, "partial"))
+	_, _ = stream.Write(contextUsageFrame(t, 100))
+	var out bytes.Buffer
+	result, err := StreamEventStreamAsAnthropicWithContext(context.Background(), stream, &out, "claude-sonnet-4-5", 9, KiroRequestContext{})
+	require.NoError(t, err)
+	require.Equal(t, "model_context_window_exceeded", result.StopReason)
+
+	nonStream := bytes.NewBuffer(nil)
+	_, _ = nonStream.Write(textFrame(t, "partial"))
+	_, _ = nonStream.Write(contextUsageFrame(t, 100.0))
+	_, _ = nonStream.Write(buildEventStreamFrame(t, "metadataEvent", map[string]any{"metadataEvent": map[string]any{"stopReason": "END_TURN"}}))
+	parsed, err := ParseNonStreamingEventStreamWithContext(nonStream, "claude-sonnet-4-5", KiroRequestContext{})
+	require.NoError(t, err)
+	require.Equal(t, "model_context_window_exceeded", parsed.StopReason)
+}
+
+func TestContextWindowBelowFullKeepsEndTurn(t *testing.T) {
+	stream := bytes.NewBuffer(nil)
+	_, _ = stream.Write(textFrame(t, "done"))
+	_, _ = stream.Write(contextUsageFrame(t, 99.9))
+	var out bytes.Buffer
+	result, err := StreamEventStreamAsAnthropicWithContext(context.Background(), stream, &out, "claude-sonnet-4-5", 9, KiroRequestContext{})
+	require.NoError(t, err)
+	require.Equal(t, "end_turn", result.StopReason)
+}
+
+func TestApplyContextWindowStopReasonKeepsExplicitReasons(t *testing.T) {
+	require.Equal(t, "max_tokens", applyContextWindowStopReason("max_tokens", true, false))
+	require.Equal(t, "tool_use", applyContextWindowStopReason("tool_use", true, true))
+	require.Equal(t, "end_turn", applyContextWindowStopReason("end_turn", true, true), "已发出工具调用时不改写")
+	require.Equal(t, "model_context_window_exceeded", applyContextWindowStopReason("END_TURN", true, false))
+}
