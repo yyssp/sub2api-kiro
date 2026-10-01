@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 )
 
 // kiroAvailableProfile 对应 ListAvailableProfiles API 返回的单个 profile。
@@ -39,9 +41,52 @@ func (r *kiroListAvailableProfilesResponse) firstARN() string {
 	return ""
 }
 
-// kiroProfileResolutionFlight 用于对同一账号的 profileArn 解析做进程内去重，
-// 避免并发请求重复调用 ListAvailableProfiles API。
-var kiroProfileResolutionFlight sync.Map // map[int64]*sync.Once
+// kiroProfileResolutionGroup 合并同一账号的并发解析，避免 N 个并发请求打 N 次 ListAvailableProfiles。
+var kiroProfileResolutionGroup singleflight.Group
+
+// kiroProfileResolutionFlight 记录每个账号下次允许发起解析的时间（map[int64]kiroProfileBackoff）。
+//
+// 过去用 sync.Once：首次解析失败就把占位 ARN 永久定死，进程不重启永不重试，
+// 企业账号会一直带着错误的 profileArn 打上游。现在失败按指数退避重试。
+var kiroProfileResolutionFlight sync.Map
+
+const (
+	kiroProfileResolveBackoffMin = 5 * time.Second
+	kiroProfileResolveBackoffMax = 60 * time.Second
+	// 上游确认没有企业 profile 时结果稳定，长时间内不必再查。
+	kiroProfileResolveNoProfileTTL = 30 * time.Minute
+)
+
+type kiroProfileBackoff struct {
+	until    time.Time
+	failures int
+}
+
+func kiroProfileResolutionDeferred(accountID int64, now time.Time) bool {
+	v, ok := kiroProfileResolutionFlight.Load(accountID)
+	if !ok {
+		return false
+	}
+	backoff, ok := v.(kiroProfileBackoff)
+	return ok && now.Before(backoff.until)
+}
+
+func kiroRecordProfileResolutionFailure(accountID int64, now time.Time) {
+	failures := 1
+	if v, ok := kiroProfileResolutionFlight.Load(accountID); ok {
+		if prev, ok := v.(kiroProfileBackoff); ok {
+			failures = prev.failures + 1
+		}
+	}
+	delay := kiroProfileResolveBackoffMin << min(failures-1, 4)
+	if delay > kiroProfileResolveBackoffMax {
+		delay = kiroProfileResolveBackoffMax
+	}
+	kiroProfileResolutionFlight.Store(accountID, kiroProfileBackoff{until: now.Add(delay), failures: failures})
+}
+
+// kiroListAvailableProfilesFn 是解析入口使用的调用点，测试替换它来模拟上游。
+var kiroListAvailableProfilesFn = kiroListAvailableProfiles
 
 // kiroListAvailableProfiles 调用 AWS CodeWhisperer ListAvailableProfiles API 获取真实 profileArn。
 //
@@ -120,7 +165,7 @@ func kiroListAvailableProfiles(ctx context.Context, account *Account, token stri
 //     （该 API 对 Builder ID 身份必然返回 403，见 kiroAccountLacksEnterpriseProfile）
 //   - 否则调用 ListAvailableProfiles，命中真实 ARN 时写回凭据并持久化到 DB
 //   - 上游无 profile → 回填默认 ARN（Social → Social ARN，其余 → BuilderID 占位符）并持久化
-//   - 进程内去重：同一账号仅首次请求时触发 API 调用，避免重复查询
+//   - 并发请求合并为一次 API 调用；失败按 5s-60s 指数退避重试，期间用默认 ARN
 func kiroResolveAndPersistProfileArn(ctx context.Context, repo AccountRepository, account *Account, token string) string {
 	if account == nil {
 		return ""
@@ -141,70 +186,80 @@ func kiroResolveAndPersistProfileArn(ctx context.Context, repo AccountRepository
 		return existingARN
 	}
 
-	// 进程内去重：同一账号只尝试一次 ListAvailableProfiles
 	accountID := account.ID
-	onceVal, _ := kiroProfileResolutionFlight.LoadOrStore(accountID, &sync.Once{})
-	once, ok := onceVal.(*sync.Once)
-	if !ok {
-		return existingARN
+	defaultARN := kiroDefaultProfileARN(account)
+
+	if kiroAccountLacksEnterpriseProfile(account) {
+		// BuilderId / Social 身份没有企业 profile，ListAvailableProfiles 必然 403，
+		// 直接使用默认 ARN，省掉一次注定失败的请求。已经是默认值时不重复落库。
+		if existingARN != defaultARN {
+			kiroApplyProfileArn(ctx, repo, account, defaultARN, true)
+		}
+		return defaultARN
 	}
 
-	var resolvedARN string
-	once.Do(func() {
-		arn := kiroDefaultProfileARN(account)
+	// 退避窗口内不再打上游，当前请求先用默认 ARN。
+	if kiroProfileResolutionDeferred(accountID, time.Now()) {
+		if existingARN != "" {
+			return existingARN
+		}
+		return defaultARN
+	}
 
-		if kiroAccountLacksEnterpriseProfile(account) {
-			// BuilderId / Social 身份没有企业 profile，ListAvailableProfiles 必然 403，
-			// 直接使用默认 ARN，省掉一次注定失败的请求。
-			logger.L().Debug("kiro profileArn resolution skipped for non-enterprise login, using default",
+	result, _, _ := kiroProfileResolutionGroup.Do(strconv.FormatInt(accountID, 10), func() (any, error) {
+		profiles, err := kiroListAvailableProfilesFn(ctx, account, token)
+		switch {
+		case err != nil:
+			// 失败只回填内存不落库：库里保留原值，退避结束后重新解析。
+			kiroRecordProfileResolutionFailure(accountID, time.Now())
+			logger.L().Warn("kiro profileArn resolution failed, using default until retry",
 				zap.Int64("account_id", accountID),
-				zap.String("profile_arn", arn),
-			)
-		} else if profiles, err := kiroListAvailableProfiles(ctx, account, token); err != nil {
-			// API 失败（如凭据被判定为不支持该操作的身份），fallback 到默认 ARN
-			logger.L().Warn("kiro profileArn resolution failed, using default",
-				zap.Int64("account_id", accountID),
-				zap.String("profile_arn", arn),
+				zap.String("profile_arn", defaultARN),
 				zap.Error(err),
 			)
-		} else if real := profiles.firstARN(); real != "" {
-			arn = real
-		} else {
-			// 上游无 Enterprise profile（Social/BuilderID 等），使用默认 ARN 回填
+			kiroApplyProfileArn(ctx, repo, account, defaultARN, false)
+			return defaultARN, nil
+		case profiles.firstARN() != "":
+			kiroProfileResolutionFlight.Delete(accountID)
+			arn := profiles.firstARN()
+			kiroApplyProfileArn(ctx, repo, account, arn, true)
+			return arn, nil
+		default:
+			kiroProfileResolutionFlight.Store(accountID, kiroProfileBackoff{until: time.Now().Add(kiroProfileResolveNoProfileTTL)})
 			logger.L().Debug("kiro profileArn resolution: no enterprise profile found, using default",
 				zap.Int64("account_id", accountID),
-				zap.String("profile_arn", arn),
+				zap.String("profile_arn", defaultARN),
 			)
+			kiroApplyProfileArn(ctx, repo, account, defaultARN, true)
+			return defaultARN, nil
 		}
-
-		resolvedARN = arn
-
-		// 回填到 account 内存对象
-		if account.Credentials == nil {
-			account.Credentials = make(map[string]any)
-		}
-		account.Credentials["profile_arn"] = arn
-
-		// 持久化到数据库
-		if repo != nil {
-			if persistErr := persistAccountCredentials(ctx, repo, account, account.Credentials); persistErr != nil {
-				logger.L().Warn("kiro profileArn persist failed (does not affect current request)",
-					zap.Int64("account_id", accountID),
-					zap.Error(persistErr),
-				)
-			}
-		}
-
-		logger.L().Info("kiro profileArn resolved and persisted",
-			zap.Int64("account_id", accountID),
-			zap.String("profile_arn", arn),
-		)
 	})
-
-	if resolvedARN != "" {
-		return resolvedARN
+	if arn, ok := result.(string); ok && arn != "" {
+		return arn
 	}
 	return existingARN
+}
+
+// kiroApplyProfileArn 回填内存凭据，persist 为真时同步落库。
+func kiroApplyProfileArn(ctx context.Context, repo AccountRepository, account *Account, arn string, persist bool) {
+	if account.Credentials == nil {
+		account.Credentials = make(map[string]any)
+	}
+	account.Credentials["profile_arn"] = arn
+	if !persist || repo == nil {
+		return
+	}
+	if err := persistAccountCredentials(ctx, repo, account, account.Credentials); err != nil {
+		logger.L().Warn("kiro profileArn persist failed (does not affect current request)",
+			zap.Int64("account_id", account.ID),
+			zap.Error(err),
+		)
+		return
+	}
+	logger.L().Info("kiro profileArn resolved and persisted",
+		zap.Int64("account_id", account.ID),
+		zap.String("profile_arn", arn),
+	)
 }
 
 // resolveAndPersistKiroProfileArn 是 GatewayService 对 kiroResolveAndPersistProfileArn 的 thin wrapper。
