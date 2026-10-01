@@ -41,7 +41,26 @@ type MCPResponse struct {
 
 type WebSearchResults struct {
 	Results []WebSearchResult `json:"results"`
+	// ErrorCode 非空表示搜索执行失败（Anthropic web_search_tool_result_error 的 error_code）。
+	// 失败要如实告诉模型和客户端，伪装成"无结果"会让模型据此编造结论。
+	ErrorCode string `json:"-"`
 }
+
+// WebSearchErrorUnavailable 对应 Anthropic 协议的 error_code=unavailable。
+const WebSearchErrorUnavailable = "unavailable"
+
+// NewWebSearchErrorResults 构造一个表示搜索失败的结果。
+func NewWebSearchErrorResults(code string) *WebSearchResults {
+	return &WebSearchResults{ErrorCode: code}
+}
+
+func (r *WebSearchResults) failed() bool {
+	return r != nil && r.ErrorCode != ""
+}
+
+// kiroWebSearchMaxQueryRunes 是发给上游 MCP 的 query 长度上限。
+// 2ue_kiro.rs 实测约 560 字符时上游返回 invalid_tool_input。
+const kiroWebSearchMaxQueryRunes = 200
 
 type WebSearchResult struct {
 	Title                string  `json:"title"`
@@ -95,25 +114,35 @@ func ParseSearchResults(resp *MCPResponse) *WebSearchResults {
 	return nil
 }
 
+// ExtractSearchQuery 只从当前轮（末条 user 消息）提取搜索词。
+//
+// 不回溯更早的 user 消息：当前轮没有搜索词时复用历史 query，
+// 会让本轮搜索的是上一个问题。
 func ExtractSearchQuery(body []byte) string {
 	messages := gjson.GetBytes(body, "messages")
 	if !messages.IsArray() {
 		return ""
 	}
 	arr := messages.Array()
-	for i := len(arr) - 1; i >= 0; i-- {
-		msg := arr[i]
-		if msg.Get("role").String() != "user" {
-			continue
-		}
-		text := extractSearchText(msg.Get("content"))
-		const prefix = "Perform a web search for the query: "
-		text = strings.TrimSpace(strings.TrimPrefix(text, prefix))
-		if text != "" {
-			return text
-		}
+	if len(arr) == 0 {
+		return ""
 	}
-	return ""
+	msg := arr[len(arr)-1]
+	if msg.Get("role").String() != "user" {
+		return ""
+	}
+	text := extractSearchText(msg.Get("content"))
+	const prefix = "Perform a web search for the query: "
+	text = strings.TrimSpace(strings.TrimPrefix(text, prefix))
+	return truncateSearchQuery(text)
+}
+
+func truncateSearchQuery(query string) string {
+	runes := []rune(query)
+	if len(runes) <= kiroWebSearchMaxQueryRunes {
+		return query
+	}
+	return strings.TrimSpace(string(runes[:kiroWebSearchMaxQueryRunes]))
 }
 
 func extractSearchText(content gjson.Result) string {
@@ -268,7 +297,12 @@ func InjectSearchIndicatorsInResponse(responsePayload []byte, searches []SearchI
 	return encoded, nil
 }
 
-func buildSearchResultContent(results *WebSearchResults) []map[string]any {
+// buildSearchResultContent 生成 web_search_tool_result.content：
+// 成功时为结果数组，失败时为 Anthropic 协议的 web_search_tool_result_error 对象。
+func buildSearchResultContent(results *WebSearchResults) any {
+	if results.failed() {
+		return map[string]any{"type": "web_search_tool_result_error", "error_code": results.ErrorCode}
+	}
 	content := make([]map[string]any, 0)
 	if results == nil {
 		return content
@@ -338,6 +372,10 @@ func getInterfaceString(v any) string {
 }
 
 func formatToolResultText(results *WebSearchResults) string {
+	if results.failed() {
+		return "Web search failed: the search service is temporarily unavailable (" + results.ErrorCode + "). " +
+			"No results were retrieved. Tell the user the search could not be completed instead of answering from assumed results."
+	}
 	if results == nil || len(results.Results) == 0 {
 		return "No search results found."
 	}

@@ -2,7 +2,9 @@ package kiro
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -135,4 +137,38 @@ func TestSearchGuidanceText_IsStructured(t *testing.T) {
 	require.Contains(t, guidance, "Current date:")
 	require.Contains(t, guidance, "Then you MUST use the web_search tool again with a refined query.")
 	require.Contains(t, guidance, "Rephrasing in English for better coverage")
+}
+
+// 搜索失败必须如实告知模型和客户端，不能伪装成"无结果"让模型据此编造结论。
+func TestWebSearchFailureIsReportedNotHidden(t *testing.T) {
+	failed := NewWebSearchErrorResults(WebSearchErrorUnavailable)
+
+	text := formatToolResultText(failed)
+	require.Contains(t, text, "Web search failed")
+	require.NotContains(t, text, "No search results found")
+
+	events := GenerateSearchIndicatorEvents("q", "srvtoolu_x", failed, 0)
+	require.Contains(t, string(events[3]), `"type":"web_search_tool_result_error"`)
+	require.Contains(t, string(events[3]), `"error_code":"unavailable"`)
+
+	updated, err := InjectSearchIndicatorsInResponse([]byte(`{"content":[{"type":"text","text":"a"}]}`), []SearchIndicator{{ToolUseID: "srvtoolu_x", Query: "q", Results: failed}})
+	require.NoError(t, err)
+	require.Equal(t, "web_search_tool_result_error", gjson.GetBytes(updated, "content.1.content.type").String())
+}
+
+func TestExtractSearchQueryUsesCurrentTurnOnly(t *testing.T) {
+	body := []byte(`{"messages":[
+		{"role":"user","content":"old question"},
+		{"role":"assistant","content":"answer"},
+		{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"r"}]}
+	]}`)
+	require.Empty(t, ExtractSearchQuery(body), "当前轮没有搜索词时不得复用历史 query")
+
+	require.Equal(t, "latest", ExtractSearchQuery([]byte(`{"messages":[{"role":"user","content":"old"},{"role":"assistant","content":"a"},{"role":"user","content":"Perform a web search for the query: latest"}]}`)))
+}
+
+func TestExtractSearchQueryTruncatesLongQuery(t *testing.T) {
+	long := strings.Repeat("字", 300)
+	got := ExtractSearchQuery([]byte(`{"messages":[{"role":"user","content":"` + long + `"}]}`))
+	require.Equal(t, kiroWebSearchMaxQueryRunes, utf8.RuneCountInString(got))
 }

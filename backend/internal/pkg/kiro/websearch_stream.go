@@ -14,22 +14,7 @@ type BufferedStreamResult struct {
 }
 
 func GenerateSearchIndicatorEvents(query, toolUseID string, results *WebSearchResults, startIndex int) [][]byte {
-	searchContent := make([]map[string]any, 0)
-	if results != nil {
-		for _, result := range results.Results {
-			snippet := ""
-			if result.Snippet != nil {
-				snippet = strings.TrimSpace(*result.Snippet)
-			}
-			searchContent = append(searchContent, map[string]any{
-				"type":              "web_search_result",
-				"title":             result.Title,
-				"url":               result.URL,
-				"encrypted_content": snippet,
-				"page_age":          nil,
-			})
-		}
-	}
+	searchContent := buildSearchResultContent(results)
 
 	inputJSON, _ := json.Marshal(map[string]string{"query": query})
 

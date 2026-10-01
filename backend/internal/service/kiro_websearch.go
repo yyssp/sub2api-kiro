@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 )
 
 const kiroMaxWebSearchIterations = 5
@@ -132,7 +135,8 @@ func (s *GatewayService) streamKiroWebSearchAsAnthropic(
 			token = nextToken
 		}
 		if mcpErr != nil {
-			results = nil
+			results = kiropkg.NewWebSearchErrorResults(kiropkg.WebSearchErrorUnavailable)
+			logKiroWebSearchFailure(account, query, mcpErr)
 		}
 
 		if err := writeSSEChunks(w, kiropkg.GenerateSearchIndicatorEvents(query, currentToolUseID, results, nextContentBlockIndex)); err != nil {
@@ -224,7 +228,8 @@ func (s *GatewayService) executeKiroWebSearch(ctx context.Context, account *Acco
 			token = nextToken
 		}
 		if mcpErr != nil {
-			results = nil
+			results = kiropkg.NewWebSearchErrorResults(kiropkg.WebSearchErrorUnavailable)
+			logKiroWebSearchFailure(account, query, mcpErr)
 		}
 		searches = append(searches, kiropkg.SearchIndicator{
 			ToolUseID: currentToolUseID,
@@ -472,4 +477,17 @@ func (s *GatewayService) doKiroMCPJSONRequest(ctx context.Context, account *Acco
 	}
 
 	return nil, currentToken, fmt.Errorf("kiro mcp request retries exhausted")
+}
+
+// logKiroWebSearchFailure 记录搜索执行失败。失败会以 web_search_tool_result_error
+// 告知模型，不再静默降级成"无结果"，这里补上服务端可观测性。
+func logKiroWebSearchFailure(account *Account, query string, err error) {
+	fields := []zap.Field{
+		zap.Int("query_runes", utf8.RuneCountInString(query)),
+		zap.String("error", sanitizeUpstreamErrorMessage(err.Error())),
+	}
+	if account != nil {
+		fields = append(fields, zap.Int64("account_id", account.ID))
+	}
+	logger.L().Warn("kiro.web_search_failed", fields...)
 }
