@@ -158,7 +158,10 @@ type KiroRequestContext struct {
 	StructuredOutputToolName string
 	StructuredOutputUserHint string
 	StopSequences            []string
-	MaxOutputTokens          int
+	// MaxResponseToolUses>0 时响应最多保留这么多个 tool_use（disable_parallel_tool_use）。
+	// Kiro 没有并行工具调用开关，只能在响应侧截断。
+	MaxResponseToolUses int
+	MaxOutputTokens     int
 	// EstimatedInputTokens 是调用方预估的输入 token 数，用于非流式路径兜底：
 	// 当 Kiro 上游没有 tokenUsage.uncachedInputTokens 时,解析结果里的
 	// InputTokens 为 0。流式路径通过独立的 inputTokens 参数种入初值,非流式
@@ -581,6 +584,9 @@ func BuildKiroPayloadWithGuard(claudeBody []byte, modelID, profileArn, origin st
 		requestCtx.ThinkingEnabled = true
 	}
 	requestCtx.StopSequences = extractClaudeStopSequences(claudeBody)
+	if parallelToolUseDisabled(claudeBody) {
+		requestCtx.MaxResponseToolUses = 1
+	}
 	structuredOutputTool, structuredOutputHint := buildStructuredOutputTool(claudeBody, &requestCtx)
 	toolChoiceHint := joinPromptHints(extractClaudeToolChoiceHint(claudeBody, &requestCtx), structuredOutputHint)
 	baseSystem := extractSystemPrompt(claudeBody)
@@ -722,6 +728,10 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	streamingToolInvalid := make(map[string]bool)
 	currentStreamingToolID := ""
 	toolBlockEmitted := false
+	emittedToolCount := 0
+	toolLimitReached := func() bool {
+		return requestCtx.MaxResponseToolUses > 0 && emittedToolCount >= requestCtx.MaxResponseToolUses
+	}
 	pendingAssistantText := ""
 	lastContentFragment := ""
 	pendingLeadingWhitespace := ""
@@ -845,7 +855,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		processedIDs[toolUseID] = true
 		tool := KiroToolUse{ToolUseID: toolUseID, Name: responseName, Input: input}
 		contentKey := toolUseContentKey(tool)
-		if contentKey == "" || emittedToolContents[contentKey] {
+		if contentKey == "" || emittedToolContents[contentKey] || toolLimitReached() {
 			return nil
 		}
 		if err := ensureMessageStart(); err != nil {
@@ -890,6 +900,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		}
 		emittedToolContents[contentKey] = true
 		toolBlockEmitted = true
+		emittedToolCount++
 		_, _ = outputTextBuf.WriteString(inputJSON)
 		if stopReason == "" {
 			stopReason = "tool_use"
@@ -1072,6 +1083,9 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			}
 			return emitTextDelta(string(inputJSON), true)
 		}
+		if toolLimitReached() {
+			return nil
+		}
 		if err := closeOpenStreamingTool(); err != nil {
 			return err
 		}
@@ -1113,6 +1127,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			return err
 		}
 		toolBlockEmitted = true
+		emittedToolCount++
 		return nil
 	}
 	flushPendingAssistantText := func() error {
@@ -1532,15 +1547,25 @@ func extractSystemPrompt(claudeBody []byte) string {
 }
 
 // extractTextFromContentBlocks 把 Claude 的 content 字段（字符串或 text block 数组）拼成纯文本。
+// extractTextFromContentBlocks 拼接 text 块。块之间补换行：
+// Claude Code 的 system 第一块是 billing-header 行，直接相连会和下一句粘成一行。
 func extractTextFromContentBlocks(content gjson.Result) string {
 	if content.IsArray() {
 		var sb strings.Builder
 		for _, block := range content.Array() {
+			text := ""
 			if block.Get("type").String() == "text" {
-				_, _ = sb.WriteString(block.Get("text").String())
+				text = block.Get("text").String()
 			} else if block.Type == gjson.String {
-				_, _ = sb.WriteString(block.String())
+				text = block.String()
 			}
+			if text == "" {
+				continue
+			}
+			if sb.Len() > 0 && !strings.HasSuffix(sb.String(), "\n") && !strings.HasPrefix(text, "\n") {
+				_ = sb.WriteByte('\n')
+			}
+			_, _ = sb.WriteString(text)
 		}
 		return sb.String()
 	}
@@ -1817,6 +1842,16 @@ func extractClaudeToolChoiceHint(claudeBody []byte, requestCtx *KiroRequestConte
 	}
 
 	return ""
+}
+
+// parallelToolUseDisabled 读取 tool_choice.disable_parallel_tool_use（auto/any/tool 均可携带）。
+// tool_choice=none 时不会有工具调用，无需限制。
+func parallelToolUseDisabled(claudeBody []byte) bool {
+	toolChoice := gjson.GetBytes(claudeBody, "tool_choice")
+	if !toolChoice.IsObject() || isToolChoiceNone(claudeBody) {
+		return false
+	}
+	return toolChoice.Get("disable_parallel_tool_use").Bool()
 }
 
 func extractClaudeStopSequences(claudeBody []byte) []string {
@@ -3494,6 +3529,12 @@ func buildAssistantMessageStruct(msg gjson.Result, requestCtx *KiroRequestContex
 					Name:      toolName,
 					Input:     input,
 				})
+			case "server_tool_use", "web_search_tool_result":
+				// 服务端工具（web_search）的调用与结果由网关执行，Kiro history 里没有对应结构。
+				// 渲染成文本保留上下文：直接丢掉会让模型在后续轮次里看不到它搜过什么。
+				if text := renderKiroServerToolBlockText(part); text != "" {
+					appendAssistantTextPart(text, &contentBuilder, &thinkingBuilder)
+				}
 			}
 		}
 	} else {
@@ -3514,6 +3555,46 @@ func buildAssistantMessageStruct(msg gjson.Result, requestCtx *KiroRequestContex
 	return KiroAssistantResponseMessage{
 		Content:  finalContent,
 		ToolUses: toolUses,
+	}
+}
+
+// renderKiroServerToolBlockText 把 assistant 历史中的服务端工具块渲染成文本。
+func renderKiroServerToolBlockText(part gjson.Result) string {
+	switch part.Get("type").String() {
+	case "server_tool_use":
+		query := strings.TrimSpace(part.Get("input.query").String())
+		if query == "" {
+			return ""
+		}
+		return "\n[Searched the web for: " + query + "]\n"
+	case "web_search_tool_result":
+		content := part.Get("content")
+		if !content.IsArray() {
+			if code := content.Get("error_code").String(); code != "" {
+				return "\n[Web search failed: " + code + "]\n"
+			}
+			return ""
+		}
+		var sb strings.Builder
+		for _, item := range content.Array() {
+			title := strings.TrimSpace(item.Get("title").String())
+			url := strings.TrimSpace(item.Get("url").String())
+			if title == "" && url == "" {
+				continue
+			}
+			if sb.Len() == 0 {
+				_, _ = sb.WriteString("\n[Web search results]\n")
+			}
+			_, _ = sb.WriteString("- ")
+			_, _ = sb.WriteString(title)
+			if url != "" {
+				_, _ = sb.WriteString(" (" + url + ")")
+			}
+			_, _ = sb.WriteString("\n")
+		}
+		return sb.String()
+	default:
+		return ""
 	}
 }
 
@@ -3811,6 +3892,9 @@ func buildClaudeResponse(content string, toolUses []KiroToolUse, model string, u
 	for _, tool := range toolUses {
 		if !isEmittableToolUse(tool) {
 			continue
+		}
+		if requestCtx.MaxResponseToolUses > 0 && usableTools >= requestCtx.MaxResponseToolUses {
+			break
 		}
 		usableTools++
 		blocks = append(blocks, map[string]any{
