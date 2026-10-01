@@ -307,6 +307,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 		return nil, err
 	}
 
+	logKiroMissingTerminalSignal(account, originalModel, false, parseResult.UpstreamTerminalSignal, parseResult.StopReason)
 	usage := kiroUsageToClaude(parseResult.Usage, inputTokens)
 	// Apply the same group-bound usage projection used by the other
 	// Claude-Code-compatible protocol adapters. The Kiro translator only
@@ -433,7 +434,10 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 
 	go func() {
 		defer func() { _ = resp.Body.Close() }()
-		_, streamErr := kiropkg.StreamEventStreamAsAnthropicWithContext(upstreamCtx, resp.Body, pw, requestModel, inputTokens, requestCtx)
+		streamResult, streamErr := kiropkg.StreamEventStreamAsAnthropicWithContext(upstreamCtx, resp.Body, pw, requestModel, inputTokens, requestCtx)
+		if streamErr == nil {
+			logKiroMissingTerminalSignal(account, requestModel, true, streamResult.UpstreamTerminalSignal, streamResult.StopReason)
+		}
 		if streamErr != nil {
 			_, _ = io.WriteString(pw, kiroStreamErrorEvent(streamErr))
 			_ = pw.CloseWithError(streamErr)
@@ -1381,4 +1385,24 @@ func kiroStreamExceptionRetryable(exceptionType string) bool {
 	default:
 		return false
 	}
+}
+
+// logKiroMissingTerminalSignal 记录上游 EOF 前未给出任何终态信号的响应。
+//
+// 这类响应的 stop_reason 是本地兜底推断的 end_turn/tool_use，可能掩盖上游静默截断。
+// 先观测比例（按账号、模型分组）再决定是否判失败：2ue_kiro.rs 首版直接判失败，
+// 误伤了只发 usage 不发终态事件的企业号。
+func logKiroMissingTerminalSignal(account *Account, model string, stream, terminal bool, stopReason string) {
+	if terminal {
+		return
+	}
+	fields := []zap.Field{
+		zap.String("model", model),
+		zap.Bool("stream", stream),
+		zap.String("inferred_stop_reason", stopReason),
+	}
+	if account != nil {
+		fields = append(fields, zap.Int64("account_id", account.ID), zap.String("account_type", account.Type))
+	}
+	logger.L().Info("kiro.stream_missing_terminal_signal", fields...)
 }

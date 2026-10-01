@@ -97,12 +97,20 @@ type StreamResult struct {
 	Usage         Usage
 	StopReason    string
 	FirstDeltaDur *time.Duration
+	// UpstreamTerminalSignal 表示上游在 EOF 前给出过终态信号（stopReason / messageStopEvent）。
+	// 为假时 stop_reason 是本地兜底推断的，可能掩盖了上游静默截断。
+	UpstreamTerminalSignal bool
 }
 
 type ParseResult struct {
-	ResponseBody []byte
-	Usage        Usage
-	StopReason   string
+	ResponseBody           []byte
+	Usage                  Usage
+	StopReason             string
+	UpstreamTerminalSignal bool
+}
+
+func isKiroTerminalEvent(eventType string) bool {
+	return eventType == "messageStopEvent" || eventType == "message_stop"
 }
 
 type KiroRequestContext struct {
@@ -635,7 +643,7 @@ func BuildKiroPayloadWithGuard(claudeBody []byte, modelID, profileArn, origin st
 }
 
 func ParseNonStreamingEventStreamWithContext(body io.Reader, model string, requestCtx KiroRequestContext) (*ParseResult, error) {
-	content, toolUses, usage, stopReason, err := parseEventStream(body)
+	content, toolUses, usage, stopReason, terminal, err := parseEventStreamWithTerminal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -651,9 +659,10 @@ func ParseNonStreamingEventStreamWithContext(body io.Reader, model string, reque
 	}
 	responseBody, finalStopReason := buildClaudeResponse(content, toolUses, model, &usage, stopReason, requestCtx)
 	return &ParseResult{
-		ResponseBody: responseBody,
-		Usage:        usage,
-		StopReason:   finalStopReason,
+		ResponseBody:           responseBody,
+		Usage:                  usage,
+		StopReason:             finalStopReason,
+		UpstreamTerminalSignal: terminal,
 	}, nil
 }
 
@@ -679,6 +688,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	lastContentFragment := ""
 	pendingLeadingWhitespace := ""
 	stopReason := ""
+	upstreamTerminalSignal := false
 	stopSequenceMatched := ""
 	stopSequencePendingText := ""
 	thinkingBuffer := ""
@@ -1342,6 +1352,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			// 必须作为失败上抛，否则会被伪装成正常 end_turn。
 			if msg.ExceptionType == kiroContentLengthExceededException && (contentBlockIndex >= 0 || pendingAssistantText != "" || thinkingBuffer != "") {
 				stopReason = "max_tokens"
+				upstreamTerminalSignal = true
 				break
 			}
 			return nil, newKiroStreamException(msg)
@@ -1370,6 +1381,9 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 				model, requestCtx.ThinkingEnabled, msg.EventType, payloadPrefix)
 		}
 
+		if isKiroTerminalEvent(msg.EventType) || readStopReason(event) != "" || readStopReason(nestedEvent(event, msg.EventType)) != "" {
+			upstreamTerminalSignal = true
+		}
 		semanticEvents := extractSemanticEvents(msg.EventType, event, &lastContentFragment)
 		for i := range semanticEvents {
 			if kiroUpstreamTraceEnabled {
@@ -1463,9 +1477,10 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	}
 
 	return &StreamResult{
-		Usage:         usage,
-		StopReason:    stopReason,
-		FirstDeltaDur: firstDelta,
+		Usage:                  usage,
+		StopReason:             stopReason,
+		UpstreamTerminalSignal: upstreamTerminalSignal,
+		FirstDeltaDur:          firstDelta,
 	}, nil
 }
 
@@ -3574,7 +3589,8 @@ func blockToMap(block gjson.Result) map[string]any {
 	return result
 }
 
-func parseEventStream(body io.Reader) (string, []KiroToolUse, Usage, string, error) {
+func parseEventStreamWithTerminal(body io.Reader) (string, []KiroToolUse, Usage, string, bool, error) {
+	upstreamTerminalSignal := false
 	reader := bufio.NewReader(body)
 	var content strings.Builder
 	var toolUses []KiroToolUse
@@ -3597,14 +3613,15 @@ func parseEventStream(body io.Reader) (string, []KiroToolUse, Usage, string, err
 			break
 		}
 		if err != nil {
-			return "", nil, usage, stopReason, err
+			return "", nil, usage, stopReason, false, err
 		}
 		if msg.isException() {
 			if msg.ExceptionType == kiroContentLengthExceededException && (content.Len() > 0 || len(toolUses) > 0 || currentTool != nil) {
 				stopReason = "max_tokens"
+				upstreamTerminalSignal = true
 				break
 			}
-			return "", nil, usage, stopReason, newKiroStreamException(msg)
+			return "", nil, usage, stopReason, false, newKiroStreamException(msg)
 		}
 		if msg == nil || len(msg.Payload) == 0 {
 			continue
@@ -3622,6 +3639,9 @@ func parseEventStream(body io.Reader) (string, []KiroToolUse, Usage, string, err
 		}
 		if sr := readStopReason(event); sr != "" {
 			stopReason = sr
+		}
+		if isKiroTerminalEvent(msg.EventType) || stopReason != "" || readStopReason(nestedEvent(event, msg.EventType)) != "" {
+			upstreamTerminalSignal = true
 		}
 		switch msg.EventType {
 		case "assistantResponseEvent":
@@ -3705,7 +3725,7 @@ func parseEventStream(body io.Reader) (string, []KiroToolUse, Usage, string, err
 			stopReason = "end_turn"
 		}
 	}
-	return cleanText, toolUses, usage, stopReason, nil
+	return cleanText, toolUses, usage, stopReason, upstreamTerminalSignal, nil
 }
 
 func buildClaudeResponse(content string, toolUses []KiroToolUse, model string, usage *Usage, stopReason string, requestCtx KiroRequestContext) ([]byte, string) {

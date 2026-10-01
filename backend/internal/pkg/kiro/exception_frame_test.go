@@ -105,3 +105,27 @@ func TestNonStreamExceptionIsError(t *testing.T) {
 	require.Equal(t, "ThrottlingException", streamErr.ExceptionType)
 	require.Equal(t, "Too many requests", streamErr.Message)
 }
+
+func TestStreamReportsWhetherUpstreamSentTerminalSignal(t *testing.T) {
+	withoutStop := bytes.NewBuffer(nil)
+	_, _ = withoutStop.Write(textFrame(t, "hello"))
+	var out bytes.Buffer
+	result, err := StreamEventStreamAsAnthropicWithContext(context.Background(), withoutStop, &out, "claude-sonnet-4-5", 9, KiroRequestContext{})
+	require.NoError(t, err)
+	require.False(t, result.UpstreamTerminalSignal)
+	require.Equal(t, "end_turn", result.StopReason, "兜底推断保持不变，只增加可观测信号")
+
+	withStop := bytes.NewBuffer(nil)
+	_, _ = withStop.Write(textFrame(t, "hello"))
+	_, _ = withStop.Write(buildEventStreamFrame(t, "metadataEvent", map[string]any{"metadataEvent": map[string]any{"stopReason": "END_TURN"}}))
+	out.Reset()
+	result, err = StreamEventStreamAsAnthropicWithContext(context.Background(), withStop, &out, "claude-sonnet-4-5", 9, KiroRequestContext{})
+	require.NoError(t, err)
+	require.True(t, result.UpstreamTerminalSignal)
+
+	nonStream := bytes.NewBuffer(nil)
+	_, _ = nonStream.Write(textFrame(t, "hello"))
+	parsed, err := ParseNonStreamingEventStreamWithContext(nonStream, "claude-sonnet-4-5", KiroRequestContext{})
+	require.NoError(t, err)
+	require.False(t, parsed.UpstreamTerminalSignal)
+}
