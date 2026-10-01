@@ -50,11 +50,11 @@ func TestKiroPayloadTooLargeMessageMentionsBothNumbers(t *testing.T) {
 	msg := kiroPayloadTooLargeMessage(1_500_000, 1_300_000)
 	require.Contains(t, msg, "1500000")
 	require.Contains(t, msg, "1300000")
-	require.Contains(t, msg, "too large")
+	require.Contains(t, msg, "prompt is too long")
 }
 
-// Anthropic 原生入口（流式与非流式共用这个 helper）：必须回 413 而非 502。
-func TestRespondKiroPayloadTooLargeWrites413(t *testing.T) {
+// Anthropic 原生入口（流式与非流式共用这个 helper）：必须回 400 prompt is too long 而非 502/413。
+func TestRespondKiroPayloadTooLargeWritesPromptTooLong400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -63,9 +63,10 @@ func TestRespondKiroPayloadTooLargeWrites413(t *testing.T) {
 		fmt.Errorf("wrapped: %w", &kiropkg.ErrKiroPayloadTooLarge{Weight: 99, Limit: 50}))
 
 	require.True(t, handled, "必须声明已处理，调用方据此跳过通用 502 分支")
-	require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code,
-		"回 502 会把用户引去排查上游，而请求根本没发出去")
+	require.Equal(t, http.StatusBadRequest, rec.Code,
+		"回 502 会把用户引去排查上游；回 413 Claude Code 不会自动 compact")
 	require.Contains(t, rec.Body.String(), "invalid_request_error")
+	require.Contains(t, rec.Body.String(), "prompt is too long")
 	require.NotContains(t, rec.Body.String(), "Upstream request failed")
 }
 

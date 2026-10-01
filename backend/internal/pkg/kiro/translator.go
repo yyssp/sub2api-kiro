@@ -269,7 +269,48 @@ type toolUseState struct {
 
 type eventStreamMessage struct {
 	EventType string
-	Payload   []byte
+	// MessageType 取自 :message-type 头：event / exception / error。
+	// AWS eventstream 的异常帧不带 :event-type，只能靠这两个头识别。
+	MessageType   string
+	ExceptionType string
+	Payload       []byte
+}
+
+func (m *eventStreamMessage) isException() bool {
+	return m != nil && (m.MessageType == "exception" || m.MessageType == "error")
+}
+
+// kiroContentLengthExceededException 是上游输出达到长度上限时下发的异常帧，
+// 已产出内容时语义等同于 max_tokens 截断，而不是失败。
+const kiroContentLengthExceededException = "ContentLengthExceededException"
+
+// KiroStreamException 表示上游在 eventstream 中途下发了异常帧。
+// 只暴露异常类型给下游；Message 可能含账号/ARN 细节，仅用于服务端日志。
+type KiroStreamException struct {
+	ExceptionType string
+	Message       string
+}
+
+func (e *KiroStreamException) Error() string {
+	if e.Message == "" {
+		return "kiro upstream stream exception: " + e.ExceptionType
+	}
+	return "kiro upstream stream exception: " + e.ExceptionType + ": " + e.Message
+}
+
+func newKiroStreamException(msg *eventStreamMessage) *KiroStreamException {
+	exceptionType := msg.ExceptionType
+	if exceptionType == "" {
+		exceptionType = "UnknownException"
+	}
+	message := ""
+	if len(msg.Payload) > 0 {
+		message = strings.TrimSpace(gjson.GetBytes(msg.Payload, "message").String())
+		if message == "" {
+			message = strings.TrimSpace(gjson.GetBytes(msg.Payload, "Message").String())
+		}
+	}
+	return &KiroStreamException{ExceptionType: exceptionType, Message: message}
 }
 
 type kiroSemanticEventType string
@@ -1296,6 +1337,15 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		if err != nil {
 			return nil, err
 		}
+		if msg.isException() {
+			// 已有输出时把长度超限当作截断收尾；其余异常（含无输出的长度超限）
+			// 必须作为失败上抛，否则会被伪装成正常 end_turn。
+			if msg.ExceptionType == kiroContentLengthExceededException && (contentBlockIndex >= 0 || pendingAssistantText != "" || thinkingBuffer != "") {
+				stopReason = "max_tokens"
+				break
+			}
+			return nil, newKiroStreamException(msg)
+		}
 		if msg == nil || len(msg.Payload) == 0 {
 			continue
 		}
@@ -1351,10 +1401,8 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	if err := flushTextStopBuffer(); err != nil {
 		return nil, err
 	}
-	// 移除"thinking-only 强制 max_tokens"误判分支
-	// 仅有 thinking 块、无 text 输出不代表截断,opus 4.8 思考密集场景常见
-	// 真正的截断由上游 ContentLengthExceededException 异常帧设置 stop_reason
-	// 此处由后续 stopReason == "" 兜底分支按 tool_use/end_turn 自然处理
+	// 仅有 thinking 块、无 text 输出不代表截断,opus 4.8 思考密集场景常见。
+	// 真正的截断由上游 ContentLengthExceededException 异常帧在读循环中设置 stop_reason。
 
 	if err := closeText(); err != nil {
 		return nil, err
@@ -3255,6 +3303,13 @@ func parseEventStream(body io.Reader) (string, []KiroToolUse, Usage, string, err
 		if err != nil {
 			return "", nil, usage, stopReason, err
 		}
+		if msg.isException() {
+			if msg.ExceptionType == kiroContentLengthExceededException && (content.Len() > 0 || len(toolUses) > 0 || currentTool != nil) {
+				stopReason = "max_tokens"
+				break
+			}
+			return "", nil, usage, stopReason, newKiroStreamException(msg)
+		}
 		if msg == nil || len(msg.Payload) == 0 {
 			continue
 		}
@@ -3831,19 +3886,30 @@ func readEventStreamMessage(reader *bufio.Reader) (*eventStreamMessage, error) {
 	if _, err := io.ReadFull(reader, remaining); err != nil {
 		return nil, err
 	}
-	eventType := extractEventType(remaining[:headersLength])
+	headerValues := extractStringHeaders(remaining[:headersLength])
+	msg := &eventStreamMessage{
+		EventType:     headerValues[":event-type"],
+		MessageType:   headerValues[":message-type"],
+		ExceptionType: headerValues[":exception-type"],
+	}
+	if msg.ExceptionType == "" {
+		msg.ExceptionType = headerValues[":error-code"]
+	}
 	payloadStart := headersLength
 	payloadEnd := uint32(len(remaining)) - 4
-	if payloadStart >= payloadEnd {
-		return &eventStreamMessage{EventType: eventType}, nil
+	if payloadStart < payloadEnd {
+		msg.Payload = remaining[payloadStart:payloadEnd]
 	}
-	return &eventStreamMessage{
-		EventType: eventType,
-		Payload:   remaining[payloadStart:payloadEnd],
-	}, nil
+	return msg, nil
 }
 
 func extractEventType(headers []byte) string {
+	return extractStringHeaders(headers)[":event-type"]
+}
+
+// extractStringHeaders 解析 eventstream 头部中所有 string 类型（type 7）的值。
+func extractStringHeaders(headers []byte) map[string]string {
+	values := make(map[string]string, 4)
 	offset := 0
 	for offset < len(headers) {
 		nameLen := int(headers[offset])
@@ -3867,11 +3933,8 @@ func extractEventType(headers []byte) string {
 			if offset+valueLen > len(headers) {
 				break
 			}
-			value := string(headers[offset : offset+valueLen])
+			values[name] = string(headers[offset : offset+valueLen])
 			offset += valueLen
-			if name == ":event-type" {
-				return value
-			}
 			continue
 		}
 		next, ok := skipHeaderValue(headers, offset, valueType)
@@ -3880,7 +3943,7 @@ func extractEventType(headers []byte) string {
 		}
 		offset = next
 	}
-	return ""
+	return values
 }
 
 func skipHeaderValue(headers []byte, offset int, valueType byte) (int, bool) {

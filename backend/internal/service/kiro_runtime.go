@@ -274,6 +274,29 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 	requestCtx.EstimatedInputTokens = inputTokens
 	parseResult, err := kiropkg.ParseNonStreamingEventStreamWithContext(resp.Body, originalModel, requestCtx)
 	if err != nil {
+		// 非流式尚未向客户端写任何字节：上游限流/过载类异常帧可以安全换号。
+		var streamErr *kiropkg.KiroStreamException
+		if errors.As(err, &streamErr) {
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  buildKiroRequestID(resp),
+				Kind:               "stream_exception",
+				Message:            sanitizeUpstreamErrorMessage(streamErr.Error()),
+			})
+			if kiroStreamExceptionRetryable(streamErr.ExceptionType) {
+				return nil, &UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable, ResponseBody: []byte(streamErr.Error())}
+			}
+			if streamErr.ExceptionType == "ContentLengthExceededException" {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"type":  "error",
+					"error": gin.H{"type": "invalid_request_error", "message": kiroUpstreamPromptTooLongMessage()},
+				})
+				return nil, err
+			}
+		}
 		c.JSON(http.StatusBadGateway, gin.H{
 			"type": "error",
 			"error": gin.H{
@@ -412,7 +435,7 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 		defer func() { _ = resp.Body.Close() }()
 		_, streamErr := kiropkg.StreamEventStreamAsAnthropicWithContext(upstreamCtx, resp.Body, pw, requestModel, inputTokens, requestCtx)
 		if streamErr != nil {
-			_, _ = io.WriteString(pw, "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"stream interrupted\"}}\n\n")
+			_, _ = io.WriteString(pw, kiroStreamErrorEvent(streamErr))
 			_ = pw.CloseWithError(streamErr)
 			return
 		}
@@ -879,9 +902,13 @@ func copyKiroTrimHeaders(dst, src http.Header) {
 	}
 }
 
-// respondKiroPayloadTooLarge 把 behavior=reject 的守卫拒绝映射成 413。
+// respondKiroPayloadTooLarge 把 behavior=reject 的守卫拒绝映射成
+// 400 invalid_request_error + "prompt is too long" 措辞。
 //
 // 返回 true 表示已写响应，调用方应立即返回、不要再走通用 502 分支。
+//
+// 不用 413：Claude Code 只在 400 且消息含 "prompt is too long" 时触发自动 compact，
+// 413 会让 CLI 卡在同一个超限请求上反复失败。
 //
 // 抽成公共函数而不是各写一份：流式与非流式是两个独立入口，
 // 只在其中一个加映射，另一个仍会回 502 —— 这正是 2026-09-14
@@ -892,7 +919,7 @@ func respondKiroPayloadTooLarge(c *gin.Context, err error) bool {
 	if !ok {
 		return false
 	}
-	c.JSON(http.StatusRequestEntityTooLarge, gin.H{
+	c.JSON(http.StatusBadRequest, gin.H{
 		"type": "error",
 		"error": gin.H{
 			"type":    "invalid_request_error",
@@ -912,12 +939,23 @@ func kiroPayloadTooLargeDetail(err error) (weight int, limit int, ok bool) {
 	return tooLarge.Weight, tooLarge.Limit, true
 }
 
+// kiroPromptTooLongPrefix 是 Claude Code 识别上下文超限、触发自动 compact 的措辞，
+// 与官方 API 的 "prompt is too long: N tokens > M maximum" 同前缀。
+const kiroPromptTooLongPrefix = "prompt is too long: "
+
 // kiroPayloadTooLargeMessage 统一错误文案，避免三个入口各写一份而漂移。
 func kiroPayloadTooLargeMessage(weight, limit int) string {
 	return fmt.Sprintf(
-		"Request payload too large: weighted size %d exceeds the configured limit %d. "+
+		kiroPromptTooLongPrefix+"request weighted size %d exceeds the configured limit %d. "+
 			"Reduce conversation history, tool output, or attachments.",
 		weight, limit)
+}
+
+// kiroUpstreamPromptTooLongMessage 把上游体积超限 400 的原文改写成 Claude Code 可识别的措辞。
+// Kiro 的阈值是加权字符数而非模型上下文窗口，这里不编造 "N tokens > M" 数字。
+func kiroUpstreamPromptTooLongMessage() string {
+	return kiroPromptTooLongPrefix + "the request input exceeds the upstream content length limit. " +
+		"Reduce conversation history, tool output, or attachments."
 }
 
 // logKiroPayloadTrim 在体积守卫真正裁剪（或裁剪后仍超限）时写一条诊断日志。
@@ -1162,11 +1200,15 @@ func (s *GatewayService) handleKiroHTTPError(ctx context.Context, resp *http.Res
 		Kind:               "http_error",
 		Message:            upstreamMsg,
 	})
+	clientMessage := coalesceKiroErrorMessage(resp.StatusCode, upstreamMsg)
+	if classification.Category == kiroErrorBadRequestOversize {
+		clientMessage = kiroUpstreamPromptTooLongMessage()
+	}
 	c.JSON(mapUpstreamStatusCode(resp.StatusCode), gin.H{
 		"type": "error",
 		"error": gin.H{
 			"type":    claudeErrorType(resp.StatusCode),
-			"message": coalesceKiroErrorMessage(resp.StatusCode, upstreamMsg),
+			"message": clientMessage,
 		},
 	})
 	return fmt.Errorf("kiro upstream error: %d %s", resp.StatusCode, upstreamMsg)
@@ -1299,5 +1341,44 @@ func coalesceKiroErrorMessage(statusCode int, upstreamMsg string) string {
 		return "Authentication failed"
 	default:
 		return "Upstream request failed"
+	}
+}
+
+// kiroStreamErrorEvent 把流中途失败编码成 Anthropic SSE error 事件。
+// 上游异常帧按异常类型映射 error.type，客户端据此区分限流、过载与请求错误；
+// 其余读取/解码失败保持 api_error。只暴露异常类型，不透传上游原文。
+func kiroStreamErrorEvent(err error) string {
+	errorType, message := "api_error", "stream interrupted"
+	var streamErr *kiropkg.KiroStreamException
+	if errors.As(err, &streamErr) {
+		switch streamErr.ExceptionType {
+		case "ThrottlingException", "ServiceQuotaExceededException":
+			errorType, message = "rate_limit_error", "upstream rate limited: "+streamErr.ExceptionType
+		case "ServiceUnavailableException", "ModelNotReadyException":
+			errorType, message = "overloaded_error", "upstream overloaded: "+streamErr.ExceptionType
+		case "ContentLengthExceededException":
+			errorType, message = "invalid_request_error", kiroUpstreamPromptTooLongMessage()
+		case "ValidationException":
+			errorType, message = "invalid_request_error", "upstream rejected the request: "+streamErr.ExceptionType
+		default:
+			message = "stream interrupted: " + streamErr.ExceptionType
+		}
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"type":  "error",
+		"error": map[string]any{"type": errorType, "message": message},
+	})
+	return "event: error\ndata: " + string(payload) + "\n\n"
+}
+
+// kiroStreamExceptionRetryable 判断异常帧是否属于换号可能恢复的临时故障。
+func kiroStreamExceptionRetryable(exceptionType string) bool {
+	switch exceptionType {
+	case "ThrottlingException", "ServiceQuotaExceededException",
+		"ServiceUnavailableException", "ModelNotReadyException",
+		"InternalServerException", "UnknownException":
+		return true
+	default:
+		return false
 	}
 }
