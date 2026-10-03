@@ -96,3 +96,21 @@ func TestEchoedPlaceholderDetection(t *testing.T) {
 	require.Equal(t, "I will follow these instructions.", result.EchoedPlaceholder)
 	require.Contains(t, out.String(), "I will follow these instructions.", "只观测，不改写输出")
 }
+
+// 真实上游 metadataEvent 下发的是 "END_TURN"，非流式响应必须归一化成协议值。
+func TestNonStreamNormalizesUpstreamUppercaseStopReason(t *testing.T) {
+	stream := bytes.NewBuffer(nil)
+	_, _ = stream.Write(textFrame(t, "pong"))
+	_, _ = stream.Write(buildEventStreamFrame(t, "metadataEvent", map[string]any{"metadataEvent": map[string]any{"stopReason": "END_TURN"}}))
+	parsed, err := ParseNonStreamingEventStreamWithContext(stream, "claude-sonnet-4-5", KiroRequestContext{})
+	require.NoError(t, err)
+	require.Equal(t, "end_turn", parsed.StopReason)
+	require.Equal(t, "end_turn", gjson.GetBytes(parsed.ResponseBody, "stop_reason").String())
+
+	stream = bytes.NewBuffer(nil)
+	_, _ = stream.Write(textFrame(t, "x"))
+	_, _ = stream.Write(buildEventStreamFrame(t, "metadataEvent", map[string]any{"metadataEvent": map[string]any{"stopReason": "MAX_TOKENS"}}))
+	parsed, err = ParseNonStreamingEventStreamWithContext(stream, "claude-sonnet-4-5", KiroRequestContext{})
+	require.NoError(t, err)
+	require.Equal(t, "max_tokens", parsed.StopReason)
+}

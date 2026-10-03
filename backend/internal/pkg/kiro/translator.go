@@ -170,6 +170,17 @@ func applyContextWindowStopReason(stopReason string, contextFull, toolEmitted bo
 	}
 }
 
+// normalizeKiroUpstreamStopReason 把上游 stop_reason 归一化为 Anthropic 协议值；
+// 不认识的值返回空串，交给调用方按 tool_use/end_turn 兜底。与流式路径的白名单一致。
+func normalizeKiroUpstreamStopReason(raw string) string {
+	switch v := strings.ToLower(strings.TrimSpace(raw)); v {
+	case "end_turn", "tool_use", "max_tokens", "stop_sequence":
+		return v
+	default:
+		return ""
+	}
+}
+
 func isKiroTerminalEvent(eventType string) bool {
 	return eventType == "messageStopEvent" || eventType == "message_stop"
 }
@@ -3789,8 +3800,10 @@ func parseEventStreamWithTerminal(body io.Reader) (string, []KiroToolUse, Usage,
 		}
 		if sr := readStopReason(event); sr != "" {
 			stopReason = sr
+		} else if sr := readStopReason(nestedEvent(event, msg.EventType)); sr != "" {
+			stopReason = sr
 		}
-		if isKiroTerminalEvent(msg.EventType) || stopReason != "" || readStopReason(nestedEvent(event, msg.EventType)) != "" {
+		if isKiroTerminalEvent(msg.EventType) || stopReason != "" {
 			upstreamTerminalSignal = true
 		}
 		if kiroContextWindowFull(msg.EventType, event) {
@@ -3871,6 +3884,9 @@ func parseEventStreamWithTerminal(body io.Reader) (string, []KiroToolUse, Usage,
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.InputTokens + usage.OutputTokens
 	}
+	// 上游的原始值是 END_TURN 这类大写枚举，必须归一化成 Anthropic 协议值，
+	// 否则非流式响应会把 "END_TURN" 原样下发（流式路径早就做了同样的白名单）。
+	stopReason = normalizeKiroUpstreamStopReason(stopReason)
 	if stopReason == "" {
 		if hasUsableToolUses(toolUses) {
 			stopReason = "tool_use"
