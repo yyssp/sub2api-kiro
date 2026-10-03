@@ -103,7 +103,7 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	// 238_opencode_go 来自上游，原版列表漏了本 fork 已有的 kiro / cursor，
 	// 在已有 kiro 配额行的库上 ADD CONSTRAINT 必然失败。当前文件改为超集；
 	// 已应用上游原版（db=35ce9b16）的环境互认，约束终态由 241 统一。
-	"238_opencode_go_platform.sql": newMigrationChecksumCompatibilityRule("95e2486f29a17901debfa53af497c58d6c78d77b2eef466009d676b73f5ace96", "35ce9b168aef3fdf29ac1ab02041abf6ce568d41b9dc18f32924d6fde67cb093"),
+	"238_opencode_go_platform.sql":                  newMigrationChecksumCompatibilityRule("95e2486f29a17901debfa53af497c58d6c78d77b2eef466009d676b73f5ace96", "35ce9b168aef3fdf29ac1ab02041abf6ce568d41b9dc18f32924d6fde67cb093"),
 	"224_user_platform_quotas_add_cn_providers.sql": newMigrationChecksumCompatibilityRule("5227db3c1a6a1e2e422a9f9ba9d1f490c708b6c6dd91ce89f3c48115421a3e55", "4de3bf301cd838bbaf85613ce37dd47643165c0e3f36a1075341ff71aa37fae1"),
 }
 
