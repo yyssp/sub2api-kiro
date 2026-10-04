@@ -4392,10 +4392,6 @@ func readEventStreamMessage(reader *bufio.Reader) (*eventStreamMessage, error) {
 	return msg, nil
 }
 
-func extractEventType(headers []byte) string {
-	return extractStringHeaders(headers)[":event-type"]
-}
-
 // extractStringHeaders 解析 eventstream 头部中所有 string 类型（type 7）的值。
 func extractStringHeaders(headers []byte) map[string]string {
 	values := make(map[string]string, 4)
