@@ -521,3 +521,124 @@ func TestShouldEmulateWebSearch_KiroRequiresChannelConfig(t *testing.T) {
 	account := newKiroOAuthAccount()
 	require.False(t, svc.shouldEmulateWebSearch(context.Background(), account, nil, webSearchToolBody))
 }
+
+func TestShouldEmulateWebSearchFor_OpenAIAPIKeyAccountEnabled(t *testing.T) {
+	mgr := websearch.NewManager([]websearch.ProviderConfig{{Type: "brave", APIKey: "k"}}, nil)
+	SetWebSearchManager(mgr)
+	defer SetWebSearchManager(nil)
+
+	setGlobalWebSearchConfig(&WebSearchEmulationConfig{
+		Enabled:   true,
+		Providers: []WebSearchProviderConfig{{Type: "brave", APIKey: "k"}},
+	})
+	defer clearGlobalWebSearchConfig()
+
+	settingSvc := newSettingServiceForWebSearchTest(true)
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{featureKeyWebSearchEmulation: WebSearchModeEnabled},
+	}
+	groupID := int64(0)
+	require.True(t, shouldEmulateWebSearchFor(context.Background(), settingSvc, nil, account, &groupID, webSearchToolBody))
+	require.False(t, shouldEmulateWebSearchFor(context.Background(), settingSvc, nil, account, &groupID, nonWebSearchToolBody))
+}
+
+// Exercise the shared interception gate, including channel inheritance.
+func TestShouldEmulateWebSearchFor_AccountChannelModes(t *testing.T) {
+	previousManager := getWebSearchManager()
+	previousConfig := webSearchEmulationCache.Load()
+	SetWebSearchManager(websearch.NewManager([]websearch.ProviderConfig{{Type: "brave", APIKey: "k"}}, nil))
+	t.Cleanup(func() {
+		SetWebSearchManager(previousManager)
+		if previousConfig == nil {
+			clearGlobalWebSearchConfig()
+		} else {
+			webSearchEmulationCache.Store(previousConfig)
+		}
+	})
+
+	settingSvc := newSettingServiceForWebSearchTest(true)
+	groupID := int64(42)
+	for _, platform := range []string{PlatformOpenAI, PlatformAnthropic} {
+		for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuth, AccountTypeSetupToken} {
+			for _, mode := range []string{WebSearchModeDefault, WebSearchModeEnabled, WebSearchModeDisabled} {
+				for _, channelEnabled := range []bool{false, true} {
+					channelMode := "channel_off"
+					if channelEnabled {
+						channelMode = "channel_on"
+					}
+					t.Run(platform+"/"+accountType+"/"+mode+"/"+channelMode, func(t *testing.T) {
+						account := &Account{
+							Platform: platform, Type: accountType,
+							Extra: map[string]any{featureKeyWebSearchEmulation: mode},
+						}
+						channelSvc := newChannelServiceWithCache(groupID, &Channel{
+							ID: 10, Status: StatusActive,
+							FeaturesConfig: map[string]any{
+								featureKeyWebSearchEmulation: map[string]any{platform: channelEnabled},
+							},
+						})
+						// 非 API Key 账号（OAuth / setup-token）一律保留上游原生搜索，
+						// 不跟随渠道开关（本 fork 对 Anthropic OAuth 同样如此）。
+						want := false
+						if accountType == AccountTypeAPIKey {
+							switch mode {
+							case WebSearchModeEnabled:
+								want = true
+							case WebSearchModeDisabled:
+								want = false
+							default:
+								want = channelEnabled
+							}
+						}
+						for _, globalEnabled := range []bool{false, true} {
+							setGlobalWebSearchConfig(&WebSearchEmulationConfig{
+								Enabled:   globalEnabled,
+								Providers: []WebSearchProviderConfig{{Type: "brave", APIKey: "k"}},
+							})
+							require.Equal(t, globalEnabled && want, shouldEmulateWebSearchFor(
+								context.Background(), settingSvc, channelSvc, account, &groupID, webSearchToolBody),
+								"globalEnabled=%v", globalEnabled)
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+// Kiro 中转账号（自定义 base_url）不走本地仿真：渠道的 kiro 开关只管直连账号。
+func TestShouldEmulateWebSearch_KiroRelayAccountIgnoresChannel(t *testing.T) {
+	mgr := websearch.NewManager([]websearch.ProviderConfig{{Type: "brave", APIKey: "k"}}, nil)
+	SetWebSearchManager(mgr)
+	defer SetWebSearchManager(nil)
+
+	setGlobalWebSearchConfig(&WebSearchEmulationConfig{
+		Enabled:   true,
+		Providers: []WebSearchProviderConfig{{Type: "brave", APIKey: "k"}},
+	})
+	defer clearGlobalWebSearchConfig()
+
+	settingSvc := newSettingServiceForWebSearchTest(true)
+	ch := &Channel{
+		ID:     13,
+		Status: StatusActive,
+		FeaturesConfig: map[string]any{
+			featureKeyWebSearchEmulation: map[string]any{PlatformKiro: true},
+		},
+	}
+	channelSvc := newChannelServiceWithCache(79, ch)
+	svc := &GatewayService{settingService: settingSvc, channelService: channelSvc}
+
+	relay := &Account{
+		ID:          3,
+		Platform:    PlatformKiro,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "k", "base_url": "https://relay.example.com"},
+		Extra:       map[string]any{featureKeyWebSearchEmulation: WebSearchModeEnabled},
+	}
+	groupID := int64(79)
+	require.False(t, svc.shouldEmulateWebSearch(context.Background(), relay, &groupID, webSearchToolBody))
+}

@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
-
-// 从平台目录派生而非写死数量：新增平台时不用回来改断言。
-const PLATFORM_COUNT = CONCRETE_PLATFORM_OPTIONS.length
 
 const apiMocks = vi.hoisted(() => ({
   showError: vi.fn(),
@@ -79,7 +75,7 @@ beforeEach(() => {
 })
 
 describe('UserPlatformQuotaModal', () => {
-  it.each([0, 4, 14])('does not turn a negative limit in input %s into unlimited', async (index) => {
+  it.each([0, 4, 14, 17])('does not turn a negative limit in input %s into unlimited', async (index) => {
     const w = await mountAndOpen()
     await w.findAll('input[type=number]')[index].setValue('-1')
     await w.findAll('button').find(b => b.text() === 'admin.users.platformQuota.save')!.trigger('click')
@@ -105,12 +101,13 @@ describe('UserPlatformQuotaModal', () => {
     expect(apiMocks.getPlatformQuotas).toHaveBeenCalledWith(99)
   })
 
-  it('renders all supported platforms with empty limits', async () => {
+  it('renders all fifteen supported platforms with empty limits', async () => {
     const w = await mountAndOpen()
     const rows = w.findAll('tbody tr')
-    expect(rows).toHaveLength(PLATFORM_COUNT)
-    expect(rows.map(row => row.find('td').text())).toContain('kiro')
-    expect(rows.map(row => row.find('td').text())).toContain('cursor')
+    expect(rows.map(row => row.find('td').text())).toEqual([
+      'anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok',
+      'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'opencode_go', 'typesafe', 'command_code', 'cline',
+    ])
     for (const row of rows) {
       const inputs = row.findAll('input[type=number]')
       expect(inputs).toHaveLength(3)
@@ -119,11 +116,11 @@ describe('UserPlatformQuotaModal', () => {
     w.unmount()
   })
 
-  it.each(['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'] as const)(
+  it.each(['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe', 'command_code', 'cline'] as const)(
     'saves edits to %s without erasing existing platform limits', async (platform) => {
       const existing: PlatformQuotaUpdateItem[] = [
         { platform: 'openai', daily_limit_usd: 10, weekly_limit_usd: 20, monthly_limit_usd: 100 },
-        ...(['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'] as const).map(p => ({
+        ...(['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe', 'command_code', 'cline'] as const).map(p => ({
           platform: p, daily_limit_usd: 0, weekly_limit_usd: null, monthly_limit_usd: 50,
         })),
       ]
@@ -140,7 +137,7 @@ describe('UserPlatformQuotaModal', () => {
         : item)
       expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledTimes(1)
       expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledWith(99, expect.arrayContaining(expected))
-      expect(apiMocks.updatePlatformQuotas.mock.calls[0][1]).toHaveLength(PLATFORM_COUNT)
+      expect(apiMocks.updatePlatformQuotas.mock.calls[0][1]).toHaveLength(15)
       expect(w.emitted('success')).toHaveLength(1)
       w.unmount()
     },
@@ -155,13 +152,13 @@ describe('UserPlatformQuotaModal', () => {
     })
     const w = await mountAndOpen()
     const inputs = w.findAll('input[type=number]')
-    // 每个平台 3 个窗口（日/周/月）
-    expect(inputs.length).toBe(PLATFORM_COUNT * 3)
+    // 15 platforms × 3 windows = 45 inputs
+    expect(inputs.length).toBe(45)
     // 第一个 input 是 anthropic.daily = 10
     expect((inputs[0].element as HTMLInputElement).value).toBe('10')
   })
 
-  it('保存提交完整全平台 payload', async () => {
+  it('保存提交完整 15 platform payload', async () => {
     apiMocks.getPlatformQuotas.mockResolvedValueOnce({
       platform_quotas: [
         { platform: 'openai', daily_limit_usd: null, weekly_limit_usd: 20, monthly_limit_usd: null,
@@ -178,7 +175,7 @@ describe('UserPlatformQuotaModal', () => {
     expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledTimes(1)
     const [uid, payload] = apiMocks.updatePlatformQuotas.mock.calls[0]
     expect(uid).toBe(99)
-    expect(payload).toHaveLength(PLATFORM_COUNT) // 所有平台都要提交
+    expect(payload).toHaveLength(15) // 15 platforms always submitted
     const openai = payload.find((p: any) => p.platform === 'openai')
     expect(openai.weekly_limit_usd).toBe(20)
   })
@@ -252,7 +249,7 @@ describe('UserPlatformQuotaModal', () => {
   it('未配置限额的平台重置按钮禁用并提示不可用', async () => {
     const w = await mountAndOpen()
     const resetBtns = w.findAll('button').filter((b) => b.text() === '↻')
-    expect(resetBtns.length).toBe(PLATFORM_COUNT * 3)
+    expect(resetBtns.length).toBe(45) // 15 平台 × 3 窗口
     for (const b of resetBtns) {
       expect((b.element as HTMLButtonElement).disabled).toBe(true)
       expect(b.attributes('title')).toBe('admin.users.platformQuota.reset.unavailable')

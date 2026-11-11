@@ -43,7 +43,10 @@ func TestCursorIsInSchedulerSnapshotPlatforms(t *testing.T) {
 		PlatformMiniMax,
 		PlatformCursor,
 		PlatformOpenCodeGo,
-	}, platforms[:])
+		PlatformTypeSafe,
+		PlatformCommandCode,
+		PlatformCline,
+	}, platforms)
 }
 
 func TestCursorIsInAllPlatformsForErrorPassthrough(t *testing.T) {

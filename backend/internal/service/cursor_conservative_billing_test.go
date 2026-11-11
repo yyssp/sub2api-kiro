@@ -74,9 +74,19 @@ func TestShouldUseCursorConservativeBillingFallback_ConcreteModelNotAffected(t *
 // 谓词写好却没人设这个标志，就等于兜底永不触发——
 // 与 CursorAccountUsableForModel 此前「零生产调用者」是同一类缺陷。
 func TestRecordUsage_SetsIsCursorAccountFlag(t *testing.T) {
+	require.True(t, recordUsageOptsForAccount(&Account{Platform: PlatformCursor}).IsCursorAccount)
+	require.True(t, recordUsageOptsForAccount(&Account{Platform: PlatformKiro}).IsKiroAccount)
+	require.False(t, recordUsageOptsForAccount(&Account{Platform: PlatformAnthropic}).IsCursorAccount)
+	require.Equal(t, &recordUsageOpts{}, recordUsageOptsForAccount(nil))
+
+	// 计费主链路与报价（QuoteUsageCost）必须共用同一份按账号派生的选项，
+	// 否则保守兜底在其中一条路径上永不生效，报价与实扣不一致。
 	src := readUsageBillingSource(t)
-	require.Contains(t, src, "opts.IsCursorAccount = account != nil && account.Platform == PlatformCursor",
+	require.Contains(t, src, "accountOpts := recordUsageOptsForAccount(account)",
 		"IsCursorAccount 必须在 recordUsage 主链路里按平台赋值，否则保守兜底永不生效")
+	require.Contains(t, src, "opts.IsCursorAccount = accountOpts.IsCursorAccount")
+	require.Contains(t, src, "recordUsageOptsForAccount(input.Account)",
+		"QuoteUsageCost 必须按账号派生计费选项，与 RecordUsage 同价")
 }
 
 // ⚠️ 接线守卫：兜底必须挂在定价失败的那条分支上。

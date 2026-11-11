@@ -39,11 +39,18 @@ func TestEnsureSimpleModeDefaultGroups_CreatesMissingDefaults(t *testing.T) {
 	// 结果是账号建好了却永远调度不到。每接入一个平台都要在这里补一行。
 	assertGroupExists(service.PlatformCursor + "-default")
 
-	grokDefault, err := client.Group.Query().
-		Where(group.NameEQ(service.PlatformGrok+"-default"), group.DeletedAtIsNil()).
-		Only(seedCtx)
-	require.NoError(t, err)
-	require.True(t, grokDefault.AllowImageGeneration)
+	for _, name := range []string{
+		service.PlatformGrok + "-default",
+		service.PlatformGemini + "-default",
+		service.PlatformAntigravity + "-default-1",
+		service.PlatformAntigravity + "-default-2",
+	} {
+		imageDefault, err := client.Group.Query().
+			Where(group.NameEQ(name), group.DeletedAtIsNil()).
+			Only(seedCtx)
+		require.NoError(t, err)
+		require.True(t, imageDefault.AllowImageGeneration, "expected group %s to allow image generation", name)
+	}
 }
 
 func TestEnsureSimpleModeDefaultGroups_BackfillsOnlyAutoCreatedGrokDefault(t *testing.T) {

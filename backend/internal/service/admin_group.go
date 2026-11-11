@@ -12,6 +12,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
@@ -21,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
@@ -409,6 +411,8 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return xai.DefaultModelIDs()
 	case PlatformOpenCodeGo:
 		return DefaultOpenCodeGoModelIDs()
+	case PlatformTypeSafe:
+		return []string{typesafe.JevLatestModel}
 	case PlatformComposite:
 		return compositeDefaultModelsListCandidateIDs()
 	default:
@@ -420,16 +424,29 @@ func defaultModelsListCandidateIDs(platform string) []string {
 	}
 }
 
-func defaultAllowImageGenerationForPlatform(platform string) bool {
-	// Grok image and video generation routes share the legacy image-generation gate.
-	// Older clients send the false zero value, so Grok groups must default enabled.
-	return platform == PlatformGrok
+// DefaultAllowImageGenerationForPlatform reports whether new groups on the platform allow
+// image generation. CreateGroup ORs the requested value with it, so a false in the create
+// request does not turn it off. Composite defaults disabled because the same switch also
+// gates OpenAI image generation there.
+func DefaultAllowImageGenerationForPlatform(platform string) bool {
+	switch platform {
+	case PlatformGrok, PlatformGemini, PlatformAntigravity:
+		return true
+	default:
+		return false
+	}
 }
 
 func compositeDefaultModelsListCandidateIDs() []string {
 	seen := make(map[string]struct{})
 	ids := make([]string, 0)
-	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformKiro, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformCursor, PlatformOpenCodeGo} {
+	for _, platform := range domain.CompositePrecedencePlatformIDs() {
+		// TypeSafe stays out of the static composite candidates (jev-latest only works
+		// through /v1/systemone); groups with TypeSafe accounts still get it from the
+		// account model mappings collected by GetGroupModelsListCandidates.
+		if platform == PlatformTypeSafe {
+			continue
+		}
 		for _, id := range defaultModelsListCandidateIDs(platform) {
 			if _, ok := seen[id]; ok {
 				continue
@@ -477,7 +494,7 @@ func normalizeCreateGroupInputForSimpleMode(input *CreateGroupInput) {
 		return
 	}
 	*input = CreateGroupInput{
-		Name: input.Name, Description: input.Description, Platform: input.Platform,
+		Name: input.Name, Description: input.Description, I18n: input.I18n, Platform: input.Platform,
 		RateMultiplier: 1, SubscriptionType: SubscriptionTypeStandard,
 	}
 }
@@ -486,7 +503,7 @@ func normalizeUpdateGroupInputForSimpleMode(input *UpdateGroupInput) {
 	if input == nil {
 		return
 	}
-	*input = UpdateGroupInput{Name: input.Name, Description: input.Description}
+	*input = UpdateGroupInput{Name: input.Name, Description: input.Description, I18n: input.I18n}
 }
 
 func normalizeCacheStrategyID(id *int64) *int64 {
@@ -526,6 +543,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 	if input.RateMultiplier <= 0 {
 		return nil, errors.New("rate_multiplier must be > 0")
+	}
+	i18n, err := normalizeGroupI18n(input.I18n)
+	if err != nil {
+		return nil, err
 	}
 
 	platform := NormalizeGroupPlatform(input.Platform)
@@ -658,8 +679,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if input.KiroAutoStickyEnabled != nil {
 		kiroAutoStickyEnabled = *input.KiroAutoStickyEnabled
 	}
-	allowImageGeneration := input.AllowImageGeneration || defaultAllowImageGenerationForPlatform(platform)
+	allowImageGeneration := input.AllowImageGeneration || DefaultAllowImageGenerationForPlatform(platform)
 	allowBatchImageGeneration := input.AllowBatchImageGeneration && allowImageGeneration && platform == PlatformGemini
+	imageCountBilling := input.ImageCountBilling && allowImageGeneration &&
+		(platform == PlatformComposite || platform == PlatformOpenAI)
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -706,6 +729,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	group := &Group{
 		Name:                            input.Name,
 		Description:                     input.Description,
+		I18n:                            i18n,
 		Platform:                        platform,
 		CacheStrategyID:                 cacheStrategyID,
 		RateMultiplier:                  input.RateMultiplier,
@@ -719,6 +743,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ModelPricing:                    modelPricing,
 		AllowImageGeneration:            allowImageGeneration,
 		AllowBatchImageGeneration:       allowBatchImageGeneration,
+		ImageCountBilling:               imageCountBilling,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		ImageRateMultiplier:             imageRateMultiplier,
 		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
@@ -926,6 +951,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.Description != nil {
 		group.Description = *input.Description
 	}
+	if input.I18n != nil {
+		i18n, err := normalizeGroupI18n(*input.I18n)
+		if err != nil {
+			return nil, err
+		}
+		group.I18n = i18n
+	}
 	if input.Platform != "" {
 		group.Platform = input.Platform
 	}
@@ -986,6 +1018,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if !group.AllowImageGeneration || group.Platform != PlatformGemini {
 		group.AllowBatchImageGeneration = false
+	}
+	if input.ImageCountBilling != nil {
+		group.ImageCountBilling = *input.ImageCountBilling
+	}
+	if !group.AllowImageGeneration || (group.Platform != PlatformComposite && group.Platform != PlatformOpenAI) {
+		group.ImageCountBilling = false
 	}
 	if input.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *input.ImageRateIndependent

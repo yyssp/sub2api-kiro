@@ -82,13 +82,35 @@ func TestCursorPassesAllPlatformCheckConstraints(t *testing.T) {
 		t.Fatalf("ApplyMigrations 失败: %v", err)
 	}
 
+	// 242 起 user_platform_quotas / composite_model_routes 的平台 CHECK 已删除，
+	// 改由应用层平台清单（domain/platforms.go）校验；渠道监控 provider CHECK
+	// 表示已实现的探测能力，仍保留，必须放行 cursor。
+	for _, dropped := range []struct{ table, check string }{
+		{"user_platform_quotas", "user_platform_quotas_platform_check"},
+		{"composite_model_routes", "composite_model_routes_target_platform_check"},
+	} {
+		t.Run(dropped.check+"_dropped", func(t *testing.T) {
+			var n int
+			if err := db.QueryRowContext(ctx, `
+				SELECT count(*)
+				  FROM pg_constraint c
+				  JOIN pg_class t ON t.oid = c.conrelid
+				 WHERE t.relname = $1 AND c.conname = $2`,
+				dropped.table, dropped.check,
+			).Scan(&n); err != nil {
+				t.Fatalf("查询约束: %v", err)
+			}
+			if n != 0 {
+				t.Fatalf("约束 %s 应已被 242 删除", dropped.check)
+			}
+		})
+	}
+
 	constraints := []struct {
 		name  string
 		table string
 		check string
 	}{
-		{"user_platform_quotas.platform", "user_platform_quotas", "user_platform_quotas_platform_check"},
-		{"composite_model_routes.target_platform", "composite_model_routes", "composite_model_routes_target_platform_check"},
 		{"channel_monitors.provider", "channel_monitors", "channel_monitors_provider_check"},
 		{"channel_monitor_request_templates.provider", "channel_monitor_request_templates", "channel_monitor_request_templates_provider_check"},
 	}

@@ -4,12 +4,15 @@
  */
 
 import { apiClient } from "../client";
+import { listPlatformIds } from "@/constants/platformCatalog";
 import type {
+  AccountPlatform,
   CustomEndpoint,
   CustomMenuItem,
   LoginAgreementDocument,
   NotifyEmailEntry,
 } from "@/types";
+import type { RechargeBonusTier } from "@/utils/rechargeBonus";
 
 export interface DefaultSubscriptionSetting {
   group_id: number;
@@ -17,21 +20,8 @@ export interface DefaultSubscriptionSetting {
 }
 
 // ── 平台限额类型 ──────────────────────────────────────────────────
-// 与后端 internal/service/domain_constants.go 的 AllowedQuotaPlatforms 一致。
-// 漏项是 fail-open：设置页列不出该平台，于是它没有默认限额。
-export type PlatformType =
-  | "anthropic"
-  | "openai"
-  | "gemini"
-  | "antigravity"
-  | "kiro"
-  | "cursor"
-  | "grok"
-  | "kimi"
-  | "zhipu"
-  | "deepseek"
-  | "minimax"
-  | "opencode_go"
+/** 可设置默认限额的平台：平台清单中的全部具体平台（与后端 AllowedQuotaPlatforms 同源）。 */
+export type PlatformType = AccountPlatform
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
 
 /** 单平台三档限额；null = 不限制，undefined = 未填（等价 null） */
@@ -44,30 +34,6 @@ export interface PlatformQuotaLimits {
 /** 全平台默认限额 map（key = PlatformType） */
 export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuotaLimits>>
 
-/**
- * 默认限额涉及的全部平台。
- *
- * ⚠️ 这是限额表格的唯一数据源：归一化（normalizePlatformQuotasMap）和
- * 设置页的表格渲染必须共用它。此前表格用的是手写字面量，比这里少 5 个平台，
- * 结果是那些平台在设置页根本没有输入行 → 限额永远设不上 → 后端按
- * "nil 即无限额" 处理 → 静默无限花钱。新增平台时只改这一处。
- */
-export const PLATFORM_QUOTA_PLATFORMS: PlatformType[] = [
-  "anthropic",
-  "openai",
-  "gemini",
-  "antigravity",
-  "kiro",
-  "cursor",
-  "grok",
-  "kimi",
-  "zhipu",
-  "deepseek",
-  "minimax",
-  "opencode_go",
-]
-
-const PLATFORMS: PlatformType[] = PLATFORM_QUOTA_PLATFORMS
 
 export type SchedulingThresholdPlatformType =
   | "openai"
@@ -77,11 +43,12 @@ export type SchedulingThresholdPlatformType =
   | "zhipu"
   | "minimax"
   | "opencode_go"
+  | "command_code"
 
 export type AccountSchedulingThresholdsMap = Record<SchedulingThresholdPlatformType, number>
 
 // 与后端 AllowedSchedulingThresholdPlatforms 保持一致（deepseek 为余额型，
-// 走余额检测而非用量阈值；minimax Coding/Token Plan 与 OpenCode GO 有滚动窗口）。
+// 走余额检测而非用量阈值；minimax Coding/Token Plan、OpenCode GO 与 Command Code 有滚动窗口）。
 export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] = [
   "openai",
   "anthropic",
@@ -90,6 +57,7 @@ export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] =
   "zhipu",
   "minimax",
   "opencode_go",
+  "command_code",
 ]
 
 export function normalizeAccountSchedulingThresholdsMap(
@@ -111,10 +79,10 @@ export function sanitizeAccountSchedulingThresholdsMap(
   return normalizeAccountSchedulingThresholdsMap(input)
 }
 
-/** 归一化为全 4 平台 × 3 窗口（缺失填 null），供模板非空绑定 */
+/** 归一化为全部平台 × 3 窗口（缺失填 null），供模板非空绑定 */
 export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
   const result: DefaultPlatformQuotasMap = {}
-  for (const p of PLATFORMS) {
+  for (const p of listPlatformIds()) {
     const src = input?.[p]
     result[p] = {
       daily:   typeof src?.daily === "number" ? src.daily : null,
@@ -125,11 +93,11 @@ export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | nu
   return result
 }
 
-/** 提交前清洗：非有限数/负数/空字符串 → null（保留 0 = 显式禁用），返回全 4 平台嵌套 map */
+/** 提交前清洗：非有限数/负数/空字符串 → null（保留 0 = 显式禁用），返回全部平台嵌套 map */
 export function sanitizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
   const clean = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null)
   const result: DefaultPlatformQuotasMap = {}
-  for (const p of PLATFORMS) {
+  for (const p of listPlatformIds()) {
     const src = input?.[p]
     result[p] = { daily: clean(src?.daily), weekly: clean(src?.weekly), monthly: clean(src?.monthly) }
   }
@@ -711,6 +679,9 @@ export interface SystemSettings {
   payment_balance_recharge_multiplier: number;
   payment_subscription_usd_to_cny_rate: number;
   payment_recharge_fee_rate: number;
+  payment_recharge_bonus_tiers?: RechargeBonusTier[];
+  payment_recharge_bonus_mode?: string;
+  payment_recharge_bonus_notice?: string;
   payment_load_balance_strategy: string;
   payment_product_name_prefix: string;
   payment_product_name_suffix: string;
@@ -1034,6 +1005,9 @@ export interface UpdateSettingsRequest {
   payment_balance_recharge_multiplier?: number;
   payment_subscription_usd_to_cny_rate?: number;
   payment_recharge_fee_rate?: number;
+  payment_recharge_bonus_tiers?: RechargeBonusTier[];
+  payment_recharge_bonus_mode?: string;
+  payment_recharge_bonus_notice?: string;
   payment_load_balance_strategy?: string;
   payment_product_name_prefix?: string;
   payment_product_name_suffix?: string;
@@ -1391,6 +1365,35 @@ export interface PanelRateLimitSettings {
   public_ip_rpm: number;
 }
 
+/** Exact registration email blacklist (matched by inbox identity). */
+export interface RegistrationEmailBlacklist {
+  emails: string[];
+  max: number;
+}
+
+export interface UpdateRegistrationEmailBlacklistResponse extends RegistrationEmailBlacklist {
+  /** Entries not present in the previously saved list. */
+  added: string[];
+}
+
+export async function getRegistrationEmailBlacklist(): Promise<RegistrationEmailBlacklist> {
+  const { data } = await apiClient.get<RegistrationEmailBlacklist>(
+    "/admin/settings/registration-email-blacklist",
+  );
+  return data;
+}
+
+/** Replace the whole exact email blacklist; an empty array clears it. */
+export async function updateRegistrationEmailBlacklist(
+  emails: string[],
+): Promise<UpdateRegistrationEmailBlacklistResponse> {
+  const { data } = await apiClient.put<UpdateRegistrationEmailBlacklistResponse>(
+    "/admin/settings/registration-email-blacklist",
+    { emails },
+  );
+  return data;
+}
+
 export async function getPanelRateLimitSettings(): Promise<PanelRateLimitSettings> {
   const { data } = await apiClient.get<PanelRateLimitSettings>(
     "/admin/settings/panel-rate-limit",
@@ -1635,6 +1638,8 @@ export const settingsAPI = {
   updateOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
+  getRegistrationEmailBlacklist,
+  updateRegistrationEmailBlacklist,
   getPanelRateLimitSettings,
   updatePanelRateLimitSettings,
   getStreamTimeoutSettings,

@@ -64,6 +64,8 @@ const usageLogsEffectiveRequestedModelIndex = "idx_usage_logs_effective_requeste
 const usageLogsEffectiveUpstreamModelIndex = "idx_usage_logs_effective_upstream_model_created"
 const usageLogsUpstreamRequestIDIndexMigration = "233_add_usage_log_upstream_request_id_index_notx.sql"
 const usageLogsUpstreamRequestIDIndex = "idx_usage_logs_upstream_request_id"
+const usageLogsAPIKeyCostIndexMigration = "249_add_usage_logs_api_key_cost_index_notx.sql"
+const usageLogsAPIKeyCostIndex = "idx_usage_logs_api_key_created_cost"
 
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
@@ -105,6 +107,9 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	// 已应用上游原版（db=6f987e25）的环境互认，约束终态由 241 统一。
 	"238_opencode_go_platform.sql":                  newMigrationChecksumCompatibilityRule("95e2486f29a17901debfa53af497c58d6c78d77b2eef466009d676b73f5ace96", "6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2"),
 	"224_user_platform_quotas_add_cn_providers.sql": newMigrationChecksumCompatibilityRule("5227db3c1a6a1e2e422a9f9ba9d1f490c708b6c6dd91ce89f3c48115421a3e55", "4de3bf301cd838bbaf85613ce37dd47643165c0e3f36a1075341ff71aa37fae1"),
+	// 241_add_typesafe 来自上游，原版列表同样漏了 kiro / cursor（问题同 238）。当前文件改为
+	// 超集；已应用上游原版（db=b6559525）的环境互认，两项约束随后由 242 删除。
+	"241_add_typesafe_platform.sql": newMigrationChecksumCompatibilityRule("c207d636f59c42c769a12331c3ee9b6801ba935fc66d2f0f5d55af7b78f428e5", "b6559525bf8d0b5d7c617e7415944f0d1fae8c408e9131ace84139795f66dcd2"),
 }
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。
@@ -318,6 +323,8 @@ func prepareNonTransactionalMigration(ctx context.Context, db migrationConnectio
 		return nil
 	case usageLogsUpstreamRequestIDIndexMigration:
 		return dropInvalidIndexIfPresent(ctx, db, usageLogsUpstreamRequestIDIndex)
+	case usageLogsAPIKeyCostIndexMigration:
+		return dropInvalidIndexIfPresent(ctx, db, usageLogsAPIKeyCostIndex)
 	default:
 		return nil
 	}
