@@ -376,3 +376,65 @@ describe('useCursorCredentialImport 账号名去重', () => {
     expect(importer.parseError.value).toBe('')
   })
 })
+
+describe('useCursorCredentialImport 备注、续期与已有账号', () => {
+  beforeEach(() => {
+    mocks.importCursorCredentials.mockReset()
+    mocks.listAccounts.mockReset()
+    mocks.listAccounts.mockResolvedValue({ items: [], total: 0 })
+  })
+
+  // 每条凭证自带的 note 之前会被表单统一备注覆盖掉，现在默认带进预览、可逐条改。
+  it('备注默认取凭证自带的 note，可逐条修改，留空交给调用方用表单备注', async () => {
+    mocks.importCursorCredentials.mockResolvedValue({
+      entries: [entry({ access_token: 't1', note: '  主力号 ' }), entry({ access_token: 't2' })]
+    })
+    const importer = useCursorCredentialImport()
+    importer.content.value = 'x'
+    await importer.parse('empty')
+
+    expect(importer.entryNotes.value).toEqual(['主力号', ''])
+    importer.entryNotes.value[1] = '备用'
+    expect(importer.collectCreatable().map((item) => item.note)).toEqual(['主力号', '备用'])
+  })
+
+  it('统计无 refresh token 的条目时不计 web token（建号时会兑换出 refresh token）', async () => {
+    mocks.importCursorCredentials.mockResolvedValue({
+      entries: [
+        entry({ access_token: 't1', refresh_token: 'r1' }),
+        entry({ access_token: 't2' }),
+        entry({ access_token: 't3', token_type: 'web' }),
+        entry({ access_token: 't4', disabled: true })
+      ]
+    })
+    const importer = useCursorCredentialImport()
+    importer.content.value = 'x'
+    await importer.parse('empty')
+
+    // t4 被「跳过已禁用」排除，只剩 t2 一条既无 refresh 又不是 web。
+    expect(importer.withoutRefreshCount.value).toBe(1)
+    importer.skipDisabled.value = false
+    expect(importer.withoutRefreshCount.value).toBe(2)
+  })
+
+  it('统计库里已有同一用户的条目', async () => {
+    mocks.importCursorCredentials.mockResolvedValue({
+      entries: [
+        entry({ access_token: 't1', existing: { id: 3, name: 'a', status: 'active' } }),
+        entry({ access_token: 't2' })
+      ]
+    })
+    const importer = useCursorCredentialImport()
+    importer.content.value = 'x'
+    await importer.parse('empty')
+    expect(importer.existingCount.value).toBe(1)
+  })
+
+  it('Sand Trial 开关默认关闭，resetAll 后恢复关闭', () => {
+    const importer = useCursorCredentialImport()
+    expect(importer.activateSandTrial.value).toBe(false)
+    importer.activateSandTrial.value = true
+    importer.resetAll()
+    expect(importer.activateSandTrial.value).toBe(false)
+  })
+})

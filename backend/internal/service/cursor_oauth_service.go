@@ -24,10 +24,12 @@ import (
 type CursorOAuthService struct {
 	accountRepo AccountRepository
 	client      *cursor.Client
+	// usageFetcher 建号后补齐额度快照用；为 nil 时跳过（测试可置空）。
+	usageFetcher *CursorUsageFetcher
 }
 
 func NewCursorOAuthService(accountRepo AccountRepository) *CursorOAuthService {
-	return &CursorOAuthService{accountRepo: accountRepo, client: sharedCursorClient()}
+	return &CursorOAuthService{accountRepo: accountRepo, client: sharedCursorClient(), usageFetcher: NewCursorUsageFetcher()}
 }
 
 // CursorTokenInfo 是一次凭证解析/兑换的结果。
@@ -256,6 +258,10 @@ type CursorImportEntry struct {
 	ExpiresAt string `json:"expires_at,omitempty"`
 	Note      string `json:"note,omitempty"`
 	Disabled  bool   `json:"disabled"`
+	// UserID 是 Cursor 用户 ID（uid），同一用户的 token 会轮换，uid 才是稳定身份。
+	UserID string `json:"user_id,omitempty"`
+	// Existing 非空表示库中已有同一用户的 Cursor 账号：导入时更新它的凭证而不是新建。
+	Existing *CursorExistingAccount `json:"existing,omitempty"`
 }
 
 // CursorImportSkippedEntry 是一条被跳过的记录及原因。
@@ -275,14 +281,15 @@ type CursorImportResult struct {
 
 // ImportCursorCredentials 解析粘贴的凭证文本，返回可预览的条目清单。
 //
-// ⚠️ 这是纯解析，不联网：
+// ⚠️ 这是纯解析，不访问上游：
 // 单条导入路径（ParseCursorCredential）会对 web token 立即调
 // cursor.ExchangeWebToken 去兑换，但批量预览如果照做，N 条凭证就是
 // N 次上游请求——用户只是想看一眼解析结果，不该触发一轮网络风暴，
 // 更不该在"我还没点确认"的时候就改变上游状态。
-// web token 的兑换推迟到真正建号时（handler 里逐条走
-// ParseCursorCredential），预览阶段只把 token_type 标出来提示用户。
-func (s *CursorOAuthService) ImportCursorCredentials(input *CursorImportInput) (*CursorImportResult, error) {
+// web token 的兑换推迟到真正建号时（CreateAccount 的旁挂钩子），
+// 预览阶段只把 token_type 标出来提示用户。
+// 唯一的查库动作是按 uid 标注库中已有的同一用户（见 annotateCursorImportExisting）。
+func (s *CursorOAuthService) ImportCursorCredentials(ctx context.Context, input *CursorImportInput) (*CursorImportResult, error) {
 	if input == nil {
 		return nil, fmt.Errorf("cursor import input is required")
 	}
@@ -315,6 +322,7 @@ func (s *CursorOAuthService) ImportCursorCredentials(input *CursorImportInput) (
 		}
 		result.Entries = append(result.Entries, entry)
 	}
+	s.annotateCursorImportExisting(ctx, result.Entries)
 	return result, nil
 }
 

@@ -163,10 +163,14 @@ export function useCursorCredentialImport() {
   const parseError = ref('')
   const entries = ref<CursorImportEntry[]>([])
   const entryNames = ref<string[]>([])
+  // 每条的备注，默认取凭证文件里自带的 note；可在预览表里逐条修改。
+  const entryNotes = ref<string[]>([])
   // 无法识别或重复的条目：不中断导入，但必须让用户看到少了什么、为什么少。
   const skippedEntries = ref<CursorImportSkippedEntry[]>([])
   // 是否跳过导出文件里标记为停用的条目。
   const skipDisabled = ref(true)
+  // 建号后是否激活 $250 Sand Trial：会改变上游账号状态，默认关闭。
+  const activateSandTrial = ref(false)
 
   const acceptAttr = computed(() =>
     source.value === 'json' ? 'application/json,.json,.jsonl' : '.txt,text/plain,.json,.jsonl'
@@ -183,11 +187,23 @@ export function useCursorCredentialImport() {
     () => creatableEntries.value.filter((entry) => isShortLivedEntry(entry)).length
   )
 
+  /** 没带 refresh_token 的条目（web token 建号时会尝试兑换出 refresh_token，不计在内）。 */
+  const withoutRefreshCount = computed(
+    () =>
+      creatableEntries.value.filter((entry) => !entry.refresh_token && !isShortLivedEntry(entry)).length
+  )
+
+  /** 库里已有同一用户的条目：确认后更新原账号的 token，而不是新建。 */
+  const existingCount = computed(
+    () => creatableEntries.value.filter((entry) => Boolean(entry.existing)).length
+  )
+
   const canParse = computed(() => !parsing.value && Boolean(content.value.trim()))
 
   const resetPreview = () => {
     entries.value = []
     entryNames.value = []
+    entryNotes.value = []
     skippedEntries.value = []
     parseError.value = ''
   }
@@ -198,6 +214,7 @@ export function useCursorCredentialImport() {
     fileName.value = ''
     parsing.value = false
     skipDisabled.value = true
+    activateSandTrial.value = false
     resetPreview()
   }
 
@@ -233,6 +250,7 @@ export function useCursorCredentialImport() {
       entryNames.value = parsed.map((entry, i) =>
         ensureUniqueName(buildCursorEntryName(entry, i, namePrefix), taken)
       )
+      entryNotes.value = parsed.map((entry) => String(entry.note || '').trim())
       skippedEntries.value = res.skipped || []
       if (!parsed.length) parseError.value = emptyMessage
       return parsed.length
@@ -245,20 +263,22 @@ export function useCursorCredentialImport() {
   }
 
   /**
-   * 预览里被勾选保留的条目，连同用户可能改过的名称一起交给调用方。
+   * 预览里被勾选保留的条目，连同用户可能改过的名称、备注一起交给调用方。
    *
    * namePrefix 用于兜底：用户把某行名字清空时要重新生成，此时得沿用
    * 解析时那个前缀，否则这一行会莫名其妙退回 `cursor_` 开头。
+   * 备注留空表示沿用表单里的统一备注（由调用方决定）。
    */
   const collectCreatable = (
     namePrefix?: string
-  ): Array<{ entry: CursorImportEntry; name: string }> => {
-    const result: Array<{ entry: CursorImportEntry; name: string }> = []
+  ): Array<{ entry: CursorImportEntry; name: string; note: string }> => {
+    const result: Array<{ entry: CursorImportEntry; name: string; note: string }> = []
     entries.value.forEach((entry, idx) => {
       if (skipDisabled.value && entry.disabled) return
       const name =
         String(entryNames.value[idx] || '').trim() || buildCursorEntryName(entry, idx, namePrefix)
-      result.push({ entry, name })
+      const note = String(entryNotes.value[idx] || '').trim()
+      result.push({ entry, name, note })
     })
     return result
   }
@@ -271,13 +291,17 @@ export function useCursorCredentialImport() {
     parseError,
     entries,
     entryNames,
+    entryNotes,
     skippedEntries,
     skipDisabled,
+    activateSandTrial,
     acceptAttr,
     acceptHint,
     creatableEntries,
     creatableCount,
     shortLivedCount,
+    withoutRefreshCount,
+    existingCount,
     canParse,
     resetPreview,
     resetAll,

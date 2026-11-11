@@ -228,3 +228,6 @@ func JWTEmail(token string) string { return jwtEmail(token) }
 
 // JWTSubject 返回 token 的 sub，用于账号去重。
 func JWTSubject(token string) string { return jwtSubject(token) }
+
+// JWTUserID 返回 JWT sub 去掉身份源前缀（如 auth0|）后的用户 ID，即 uid::JWT 里的 uid。
+func JWTUserID(token string) string { return jwtUserID(token) }

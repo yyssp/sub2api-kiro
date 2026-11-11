@@ -40,7 +40,7 @@ func (h *AccountHandler) ImportCursorCredentials(c *gin.Context) {
 		return
 	}
 
-	result, err := h.cursorOAuthService.ImportCursorCredentials(&service.CursorImportInput{
+	result, err := h.cursorOAuthService.ImportCursorCredentials(c.Request.Context(), &service.CursorImportInput{
 		Content: req.Content,
 	})
 	if err != nil {

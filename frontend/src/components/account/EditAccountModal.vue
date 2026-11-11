@@ -2100,6 +2100,13 @@
         </div>
       </div>
 
+      <!-- Cursor：查看身份 / 续期能力 / 设备 ID，并单独替换 token（走专用接口，不随下方保存）。 -->
+      <CursorCredentialSection
+        v-if="account.platform === 'cursor' && account.type === 'oauth'"
+        :account="account"
+        @replaced="(updated) => emit('updated', updated)"
+      />
+
       <div v-if="!isSparkShadow">
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
@@ -3593,6 +3600,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
+import CursorCredentialSection from '@/components/account/CursorCredentialSection.vue'
 import OpenAIImageSizeTiersField from '@/components/account/OpenAIImageSizeTiersField.vue'
 import {
   OPENAI_IMAGE_SIZE_TIERS,

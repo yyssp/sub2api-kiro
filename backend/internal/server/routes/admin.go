@@ -553,6 +553,8 @@ func registerCursorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	cursor := admin.Group("/cursor")
 	{
 		cursor.POST("/import-credentials", h.Admin.Account.ImportCursorCredentials)
+		cursor.POST("/import-accounts", h.Admin.Account.ConfirmCursorImport)
+		cursor.POST("/accounts/:id/credential", h.Admin.Account.ReplaceCursorCredential)
 	}
 }
 

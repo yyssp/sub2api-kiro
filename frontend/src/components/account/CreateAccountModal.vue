@@ -47,15 +47,18 @@
     >
       <!-- 导入模式下每条凭证各有名称（在下一步的预览表里逐条编辑），这里不再要求单个名称。 -->
       <div v-if="!isKiroImportMode">
-        <label class="input-label">{{ t('admin.accounts.accountName') }}</label>
+        <label class="input-label">
+          {{ isCursorImportMode ? t('admin.accounts.cursorNamePrefix') : t('admin.accounts.accountName') }}
+        </label>
         <input
           v-model="form.name"
           type="text"
-          :required="!isGrokSSOInputMethod"
+          :required="!isGrokSSOInputMethod && !isCursorImportMode"
           class="input"
-          :placeholder="t('admin.accounts.enterAccountName')"
+          :placeholder="isCursorImportMode ? t('admin.accounts.cursorNamePrefixPlaceholder') : t('admin.accounts.enterAccountName')"
           data-tour="account-form-name"
         />
+        <p v-if="isCursorImportMode" class="input-hint">{{ t('admin.accounts.cursorNamePrefixHint') }}</p>
       </div>
       <div>
         <label class="input-label">{{ t('admin.accounts.notes') }}</label>
@@ -1177,6 +1180,18 @@
             </div>
           </button>
         </div>
+      </div>
+
+      <!-- Cursor 只有导入一条路：说明凭证要在下一步粘贴，并解释 refresh token 的作用。 -->
+      <div v-if="isCursorImportMode" class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm dark:border-dark-600 dark:bg-dark-800">
+        <div class="font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.cursorAddTitle') }}</div>
+        <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-gray-600 dark:text-dark-300">
+          <li>{{ t('admin.accounts.cursorAddFormats') }}</li>
+          <li>{{ t('admin.accounts.cursorAddRefresh') }}</li>
+          <li>{{ t('admin.accounts.cursorAddWebToken') }}</li>
+          <li>{{ t('admin.accounts.cursorAddDuplicate') }}</li>
+          <li>{{ t('admin.accounts.cursorAddProxy') }}</li>
+        </ul>
       </div>
 
       <!-- Kiro account type selection -->
@@ -4711,6 +4726,7 @@ import { useKiroOAuth } from '@/composables/useKiroOAuth'
 import { useKiroCredentialImport } from '@/composables/useKiroCredentialImport'
 import KiroCredentialImportPanel from '@/components/account/KiroCredentialImportPanel.vue'
 import { useCursorCredentialImport } from '@/composables/useCursorCredentialImport'
+import { confirmCursorImport, type CursorImportAccountPayload } from '@/api/admin/cursor'
 import CursorCredentialImportPanel from '@/components/account/CursorCredentialImportPanel.vue'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
 import type {
@@ -8365,8 +8381,9 @@ const handleCursorParse = async () => {
  * 第二步：把预览里保留的条目建成账号。
  *
  * 每条都套用本表单的通用参数（分组/代理/优先级/并发/倍率/备注…），
- * 名称则取预览表里可编辑的那一列——导入的账号和手工添加的账号
+ * 名称、备注取预览表里可编辑的那两列——导入的账号和手工添加的账号
  * 在调度上没有任何区别，不该因为来路不同而少一套参数。
+ * 库里已有同一 Cursor 用户的条目只更新 token（见 confirmCursorImport），不新建。
  */
 const handleCursorImport = async () => {
   if (!isCursorImportMode.value) return
@@ -8377,8 +8394,8 @@ const handleCursorImport = async () => {
   cursorCreateError.value = ''
   cursorCreating.value = true
   try {
-    const accounts = []
-    for (const { entry, name } of selected) {
+    const accounts: CursorImportAccountPayload[] = []
+    for (const { entry, name, note } of selected) {
       // 凭证字段名与后端 service 的 CursorCred* 常量一一对应。
       const credentials: Record<string, unknown> = { access_token: entry.access_token }
       if (entry.refresh_token) credentials.refresh_token = entry.refresh_token
@@ -8389,16 +8406,19 @@ const handleCursorImport = async () => {
       if (entry.machine_id) credentials.machine_id = entry.machine_id
       if (!applyTempUnschedConfig(credentials)) return
       accounts.push({
+        // 库里已有同一 Cursor 用户时只更新它的 token，表单参数不覆盖已调好的配置。
+        existing_account_id: entry.existing?.id,
         name,
-        notes: form.notes,
-        platform: 'cursor' as const,
-        type: 'oauth' as const,
+        // 每条自带的备注优先，留空才用表单里的统一备注。
+        notes: note || form.notes,
+        platform: 'cursor',
+        type: 'oauth',
         credentials,
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
         priority: form.priority,
-        status: entry.disabled ? ('inactive' as const) : undefined,
+        status: entry.disabled ? 'inactive' : undefined,
         schedulable: entry.disabled ? false : undefined,
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
@@ -8406,28 +8426,36 @@ const handleCursorImport = async () => {
         auto_pause_on_expired: autoPauseOnExpired.value
       })
     }
-    const result = await adminAPI.accounts.batchCreate(accounts)
+    const result = await confirmCursorImport({
+      accounts,
+      activate_sand_trial: cursorImporter.activateSandTrial.value
+    })
+    const failures = result.results
+      .map((item, index) => (item.success ? '' : `#${index + 1} ${item.name}: ${item.error || 'Unknown error'}`))
+      .filter(Boolean)
+      .join('\n')
     if (result.failed === 0) {
-      appStore.showSuccess(t('admin.accounts.oauth.batchSuccess', { count: result.success }))
+      appStore.showSuccess(
+        t('admin.accounts.cursorImportDone', { created: result.created, updated: result.updated })
+      )
       emit('created')
       handleClose()
     } else if (result.success > 0) {
       appStore.showWarning(
-        t('admin.accounts.oauth.batchPartialSuccess', { success: result.success, failed: result.failed })
+        t('admin.accounts.cursorImportPartial', {
+          created: result.created,
+          updated: result.updated,
+          failed: result.failed
+        })
       )
-      cursorCreateError.value = result.results
-        .map((item, index) => (item.success ? '' : `#${index + 1}: ${item.error || 'Unknown error'}`))
-        .filter(Boolean)
-        .join('\n')
+      cursorCreateError.value = failures
       emit('created')
     } else {
-      cursorCreateError.value = result.results
-        .map((item, index) => `#${index + 1}: ${item.error || 'Unknown error'}`)
-        .join('\n')
+      cursorCreateError.value = failures
       appStore.showError(t('admin.accounts.oauth.batchFailed'))
     }
   } catch (error: any) {
-    cursorCreateError.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    cursorCreateError.value = error.response?.data?.detail || error.response?.data?.message || t('admin.accounts.oauth.authFailed')
     appStore.showError(cursorCreateError.value)
   } finally {
     cursorCreating.value = false

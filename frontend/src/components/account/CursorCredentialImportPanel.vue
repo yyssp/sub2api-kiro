@@ -92,8 +92,11 @@
           <thead class="text-gray-500 dark:text-dark-400">
             <tr>
               <th class="px-2 py-1 font-medium">{{ t('admin.accounts.cursorImportColName') }}</th>
+              <th class="px-2 py-1 font-medium">{{ t('admin.accounts.cursorImportColEmail') }}</th>
               <th class="px-2 py-1 font-medium">{{ t('admin.accounts.cursorImportColTokenType') }}</th>
+              <th class="px-2 py-1 font-medium">{{ t('admin.accounts.cursorImportColRefresh') }}</th>
               <th class="px-2 py-1 font-medium">{{ t('admin.accounts.cursorImportColExpires') }}</th>
+              <th class="px-2 py-1 font-medium">{{ t('admin.accounts.cursorImportColNote') }}</th>
               <th class="px-2 py-1 font-medium">{{ t('admin.accounts.cursorImportColStatus') }}</th>
             </tr>
           </thead>
@@ -105,11 +108,17 @@
               :class="{ 'opacity-50': skipDisabled && entry.disabled }"
             >
               <td class="px-2 py-1">
+                <!-- 已有账号只更新 token、不改名，所以显示原账号名、不可编辑。 -->
+                <span v-if="entry.existing" class="text-gray-600 dark:text-dark-300">
+                  {{ entry.existing.name }}
+                </span>
                 <input
+                  v-else
                   v-model="entryNames[idx]"
-                  class="w-48 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs dark:border-dark-600 dark:bg-dark-800"
+                  class="w-40 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs dark:border-dark-600 dark:bg-dark-800"
                 />
               </td>
+              <td class="px-2 py-1 text-gray-600 dark:text-dark-300">{{ entry.email || '-' }}</td>
               <td class="px-2 py-1">
                 <!-- web token 只有几小时寿命，必须区别于 session 高亮出来。 -->
                 <span
@@ -121,9 +130,37 @@
                   {{ entry.token_type }}
                 </span>
               </td>
+              <td class="px-2 py-1">
+                <!-- refresh_token 决定能否自动续期；web token 建号时会兑换出来，单独说明。 -->
+                <span v-if="entry.refresh_token" class="text-emerald-600 dark:text-emerald-400">
+                  {{ t('admin.accounts.cursorImportRefreshYes') }}
+                </span>
+                <span v-else-if="entry.token_type === 'web'" class="text-amber-600 dark:text-amber-400">
+                  {{ t('admin.accounts.cursorImportRefreshOnExchange') }}
+                </span>
+                <span v-else class="text-gray-500 dark:text-dark-400">
+                  {{ t('admin.accounts.cursorImportRefreshNo') }}
+                </span>
+              </td>
               <td class="px-2 py-1">{{ formatExpiry(entry.expires_at) }}</td>
               <td class="px-2 py-1">
-                <span v-if="entry.disabled" class="text-amber-600 dark:text-amber-400">
+                <span v-if="entry.existing" class="text-gray-400 dark:text-dark-500">-</span>
+                <input
+                  v-else
+                  v-model="entryNotes[idx]"
+                  :placeholder="t('admin.accounts.cursorImportNotePlaceholder')"
+                  class="w-32 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs dark:border-dark-600 dark:bg-dark-800"
+                />
+              </td>
+              <td class="px-2 py-1">
+                <span
+                  v-if="entry.existing"
+                  class="text-sky-600 dark:text-sky-400"
+                  :title="t('admin.accounts.cursorImportExistingTitle')"
+                >
+                  {{ t('admin.accounts.cursorImportExisting', { id: entry.existing.id }) }}
+                </span>
+                <span v-else-if="entry.disabled" class="text-amber-600 dark:text-amber-400">
                   {{ t('admin.accounts.cursorImportDisabled') }}
                 </span>
                 <span v-else class="text-emerald-600 dark:text-emerald-400">
@@ -142,6 +179,33 @@
       >
         {{ t('admin.accounts.cursorImportShortLivedHint', { count: shortLivedCount }) }}
       </p>
+
+      <p
+        v-if="existingCount > 0"
+        class="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700 dark:bg-sky-900/20 dark:text-sky-300"
+      >
+        {{ t('admin.accounts.cursorImportExistingHint', { count: existingCount }) }}
+      </p>
+
+      <p
+        v-if="withoutRefreshCount > 0"
+        class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-300"
+      >
+        {{ t('admin.accounts.cursorImportNoRefreshHint', { count: withoutRefreshCount }) }}
+      </p>
+
+      <!-- Sand Trial 会改变上游账号状态，所以是显式开关、默认关闭。 -->
+      <label class="flex items-start gap-2 rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-700">
+        <input v-model="activateSandTrial" type="checkbox" class="mt-0.5 rounded" />
+        <span>
+          <span class="block text-sm text-gray-800 dark:text-dark-100">
+            {{ t('admin.accounts.cursorImportActivateTrial') }}
+          </span>
+          <span class="block text-xs text-gray-500 dark:text-dark-400">
+            {{ t('admin.accounts.cursorImportActivateTrialHint') }}
+          </span>
+        </span>
+      </label>
 
       <p class="text-xs text-gray-500 dark:text-dark-400">
         {{ t('admin.accounts.cursorImportParamsHint') }}
@@ -207,11 +271,15 @@ const {
   parseError,
   entries,
   entryNames,
+  entryNotes,
   skippedEntries,
   skipDisabled,
+  activateSandTrial,
   acceptAttr,
   acceptHint,
   shortLivedCount,
+  withoutRefreshCount,
+  existingCount,
   resetPreview,
   selectSource,
   loadFile

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -39,7 +40,7 @@ func TestImportCursorCredentials_PlainText(t *testing.T) {
 	a := newCursorTestJWT("a@example.com", "session", exp)
 	b := newCursorTestJWT("b@example.com", "session", exp)
 
-	result, err := svc.ImportCursorCredentials(&CursorImportInput{Content: a + "\n" + b})
+	result, err := svc.ImportCursorCredentials(context.Background(), &CursorImportInput{Content: a + "\n" + b})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -75,7 +76,7 @@ func TestImportCursorCredentials_WebTokenNotExchangedAtPreview(t *testing.T) {
 	svc := newCursorImportService()
 	web := newCursorTestJWT("w@example.com", "web", time.Now().Add(3*time.Hour))
 
-	result, err := svc.ImportCursorCredentials(&CursorImportInput{Content: web})
+	result, err := svc.ImportCursorCredentials(context.Background(), &CursorImportInput{Content: web})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -100,7 +101,7 @@ func TestImportCursorCredentials_JSONExport(t *testing.T) {
 	token := newCursorTestJWT("j@example.com", "session", time.Now().Add(time.Hour))
 	raw := fmt.Sprintf(`{"accounts":[{"accessToken":%q,"refreshToken":"rt","machineId":"mid","disabled":true,"note":"n"}]}`, token)
 
-	result, err := svc.ImportCursorCredentials(&CursorImportInput{Content: raw})
+	result, err := svc.ImportCursorCredentials(context.Background(), &CursorImportInput{Content: raw})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -118,7 +119,7 @@ func TestImportCursorCredentials_PartialFailureReported(t *testing.T) {
 	good := newCursorTestJWT("g@example.com", "session", time.Now().Add(time.Hour))
 	raw := fmt.Sprintf(`[{"accessToken":%q},{"email":"x@example.com"}]`, good)
 
-	result, err := svc.ImportCursorCredentials(&CursorImportInput{Content: raw})
+	result, err := svc.ImportCursorCredentials(context.Background(), &CursorImportInput{Content: raw})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -137,13 +138,13 @@ func TestImportCursorCredentials_PartialFailureReported(t *testing.T) {
 func TestImportCursorCredentials_Errors(t *testing.T) {
 	svc := newCursorImportService()
 
-	if _, err := svc.ImportCursorCredentials(nil); err == nil {
+	if _, err := svc.ImportCursorCredentials(context.Background(), nil); err == nil {
 		t.Error("nil input should error")
 	}
-	if _, err := svc.ImportCursorCredentials(&CursorImportInput{Content: ""}); err == nil {
+	if _, err := svc.ImportCursorCredentials(context.Background(), &CursorImportInput{Content: ""}); err == nil {
 		t.Error("empty content should error")
 	}
-	if _, err := svc.ImportCursorCredentials(&CursorImportInput{Content: "not a token"}); err == nil {
+	if _, err := svc.ImportCursorCredentials(context.Background(), &CursorImportInput{Content: "not a token"}); err == nil {
 		t.Error("garbage content should error")
 	}
 }
@@ -154,7 +155,7 @@ func TestImportedEntryBuildsAccountCredentials(t *testing.T) {
 	token := newCursorTestJWT("b@example.com", "session", time.Now().Add(time.Hour))
 	raw := fmt.Sprintf(`[{"accessToken":%q,"refreshToken":"rt","machineId":"mid"}]`, token)
 
-	result, err := svc.ImportCursorCredentials(&CursorImportInput{Content: raw})
+	result, err := svc.ImportCursorCredentials(context.Background(), &CursorImportInput{Content: raw})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
