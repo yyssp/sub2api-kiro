@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -143,6 +144,73 @@ func prepareCursorMachineIDForCreate(platform string, credentials map[string]any
 		return credentials
 	}
 	return EnsureMachineID(credentials)
+}
+
+// exchangeCursorWebTokenOnCreate 是 CreateAccount 的 Cursor 旁挂钩子：解析账号绑定的
+// 代理后调用 exchangeCursorWebTokenForCreate。非 Cursor 平台原样返回凭证。
+func (s *adminServiceImpl) exchangeCursorWebTokenOnCreate(ctx context.Context, input *CreateAccountInput) map[string]any {
+	if input == nil || input.Platform != PlatformCursor {
+		if input == nil {
+			return nil
+		}
+		return input.Credentials
+	}
+	proxyURL := ""
+	if input.ProxyID != nil && s.proxyRepo != nil {
+		if p, err := s.proxyRepo.GetByID(ctx, *input.ProxyID); err == nil && p != nil {
+			proxyURL = p.URL()
+		}
+	}
+	creds, exchanged := exchangeCursorWebTokenForCreate(input.Platform, input.Credentials, proxyURL)
+	if access, _ := creds[CursorCredAccessToken].(string); !exchanged && cursor.TokenType(strings.TrimSpace(access)) == "web" {
+		// 兑换失败不拒绝建号（见 exchangeCursorWebTokenForCreate），但必须留痕：
+		// 这个账号几小时后就会失效。
+		slog.Warn("create_account_cursor_web_token_not_exchanged", "name", input.Name)
+	}
+	return creds
+}
+
+// exchangeCursorWebTokenForCreate 在建号时把短效 web token 兑换成长效 session token。
+//
+// web token（WorkosCursorSessionToken）只有几小时寿命，导入时原样落库会让账号
+// 几小时后失效、且没有 refresh_token 可续期。导入预览刻意不联网（见
+// ImportCursorCredentials），兑换就必须在这里——用户点了确认、真正建号时——完成。
+//
+// 只处理 type=web 且尚未带 refresh_token 的凭证；session token 和已兑换过的凭证
+// 原样返回。兑换失败时保留原 token 并返回 exchanged=false，由调用方决定如何提示；
+// 不报错是为了在网络受限时仍能先落库（与 ParseCursorCredential 的取舍一致）。
+// proxyURL 必须是账号绑定的代理，与后续对话、续期共用出口 IP。
+func exchangeCursorWebTokenForCreate(platform string, credentials map[string]any, proxyURL string) (map[string]any, bool) {
+	if platform != PlatformCursor || credentials == nil {
+		return credentials, false
+	}
+	access, _ := credentials[CursorCredAccessToken].(string)
+	access = strings.TrimSpace(access)
+	if access == "" || cursor.TokenType(access) != "web" {
+		return credentials, false
+	}
+	if existing, _ := credentials[CursorCredRefreshToken].(string); strings.TrimSpace(existing) != "" {
+		return credentials, false
+	}
+	session, _ := credentials[CursorCredSession].(string)
+	if strings.TrimSpace(session) == "" {
+		_, session, _ = cursor.NormalizeToken(access)
+	}
+	exAccess, exRefresh, ok := cursor.ExchangeWebTokenVia(session, proxyURL)
+	if !ok || strings.TrimSpace(exAccess) == "" {
+		return credentials, false
+	}
+	updates := map[string]any{CursorCredAccessToken: exAccess}
+	if strings.TrimSpace(exRefresh) != "" {
+		updates[CursorCredRefreshToken] = exRefresh
+	}
+	if _, exSession, _ := cursor.NormalizeToken(exAccess); strings.TrimSpace(exSession) != "" {
+		updates[CursorCredSession] = exSession
+	}
+	if email := strings.TrimSpace(cursor.JWTEmail(exAccess)); email != "" {
+		updates[CursorCredEmail] = email
+	}
+	return MergeCredentials(credentials, updates), true
 }
 
 // EnsureMachineID 保证凭证里有一个已固化的 machine_id。

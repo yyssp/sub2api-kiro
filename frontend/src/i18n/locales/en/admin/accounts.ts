@@ -79,7 +79,7 @@ export default {
       cursorImportConfirm: 'Import {count} account(s)',
       cursorImportEmpty: 'No accounts were parsed',
       cursorImportSkipped: 'Skipped {count} unrecognized or duplicate record(s)',
-      cursorImportShortLivedHint: '{count} of them are short-lived web tokens (valid for only a few hours). They will be exchanged for long-lived tokens on creation, so please confirm the import promptly.',
+      cursorImportShortLivedHint: '{count} of them are short-lived web tokens (valid for only a few hours). On creation they are exchanged through the account proxy for long-lived tokens with a refresh token; expired tokens cannot be exchanged and are saved as-is, so please confirm the import promptly.',
       cursorImportParamsHint: 'Group, proxy, priority, concurrency and other parameters from the form below apply to every imported account.',
       dataImportTitle: 'Import Data',
       dataImportHint: 'Upload the exported JSON file to import accounts and proxies.',

@@ -79,7 +79,7 @@ export default {
       cursorImportConfirm: '导入 {count} 个账号',
       cursorImportEmpty: '未解析到任何账号',
       cursorImportSkipped: '已跳过 {count} 条无法识别或重复的记录',
-      cursorImportShortLivedHint: '其中 {count} 条是 web 类型的短效 token（仅数小时有效），创建时会尝试兑换为长效 token，请尽快确认导入。',
+      cursorImportShortLivedHint: '其中 {count} 条是 web 类型的短效 token（仅数小时有效），创建时会经账号代理兑换为长效 token 并获得 refresh token；token 已失效则兑换失败、按原样保存，请尽快确认导入。',
       cursorImportParamsHint: '下方表单的分组、代理、优先级、并发等参数会套用到全部导入的账号。',
       dataImportTitle: '导入数据',
       dataImportHint: '上传导出的 JSON 文件以批量导入账号与代理。',

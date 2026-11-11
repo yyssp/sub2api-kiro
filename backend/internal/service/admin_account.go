@@ -550,6 +550,8 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	}
 	// Never persist ephemeral SSO/password secrets after OAuth conversion.
 	input.Credentials = SanitizeStoredCredentials(input.Platform, input.Credentials)
+	// Cursor 短效 web token 在真正建号时兑换成长效 session token（导入预览不联网）。
+	input.Credentials = s.exchangeCursorWebTokenOnCreate(ctx, input)
 
 	account, err := buildAccountForCreate(input, accountExtra)
 	if err != nil {

@@ -22,6 +22,30 @@ const deepLoginUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
 // ExchangeWebToken 用有效 web session(uid::webJWT)兑换 session accessToken + refreshToken。
 // 返回 ok=false 表示 web token 已失效或兑换失败(调用方应原样保留 web token)。
 func ExchangeWebToken(webSession string) (access, refresh string, ok bool) {
+	return ExchangeWebTokenVia(webSession, "")
+}
+
+// exchangeWebTokenFn 是兑换实现，测试经 SetExchangeWebTokenFnForTest 替换，
+// 避免建号路径的单测真的去请求 cursor.com。
+var exchangeWebTokenFn = exchangeWebToken
+
+// ExchangeWebTokenVia 经账号绑定的代理兑换 web token。
+//
+// ⚠️ 与 RefreshAuthTokenVia 同理：兑换必须与该账号后续的对话、续期共用出口 IP，
+// 否则同一账号的首次登录就从另一个 IP 发起。proxyURL 为空时直连。
+func ExchangeWebTokenVia(webSession, proxyURL string) (access, refresh string, ok bool) {
+	return exchangeWebTokenFn(webSession, proxyURL)
+}
+
+// SetExchangeWebTokenFnForTest 替换 web token 兑换实现，仅供测试使用；
+// 返回一个恢复原实现的函数。
+func SetExchangeWebTokenFnForTest(fn func(webSession, proxyURL string) (string, string, bool)) func() {
+	prev := exchangeWebTokenFn
+	exchangeWebTokenFn = fn
+	return func() { exchangeWebTokenFn = prev }
+}
+
+func exchangeWebToken(webSession, proxyURL string) (access, refresh string, ok bool) {
 	if strings.TrimSpace(webSession) == "" {
 		return "", "", false
 	}
@@ -36,6 +60,10 @@ func ExchangeWebToken(webSession string) (access, refresh string, ok bool) {
 
 	jar, _ := cookiejar.New(nil)
 	cl := &http.Client{Jar: jar, Timeout: 30 * time.Second}
+	if strings.TrimSpace(proxyURL) != "" {
+		// 复用续期路径的代理 transport；cookie jar 与超时按兑换流程单独设置。
+		cl.Transport = newH2Client(proxyURL).Transport
+	}
 	cookie := "WorkosCursorSessionToken=" + webSession
 
 	// 1) loginDeepControl: 带上 web 会话打开深链登录页
