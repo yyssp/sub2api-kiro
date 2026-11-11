@@ -50,6 +50,15 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if isKiroDirectModeAccount(account) {
 		return nil, nil, fmt.Errorf("kiro direct account must use the kiro forwarding path")
 	}
+	// Cursor 直连账号的凭证只对 Cursor 有效。OpenAI 兼容入口（chat/completions、responses）
+	// 把请求转成 Anthropic Messages 后会落到这里，不拦就会带着 Cursor token 发往
+	// api.anthropic.com：既泄露凭证，上游 401 还会被误记到账号头上。
+	if isCursorDirectModeAccount(account) {
+		return nil, nil, &UpstreamFailoverError{
+			StatusCode: http.StatusBadGateway,
+			Reason:     anthropicMessagesForeignOAuthReason,
+		}
+	}
 	if err := checkAnthropicMessagesCredential(account); err != nil {
 		return nil, nil, err
 	}

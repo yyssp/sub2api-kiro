@@ -56,6 +56,14 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return nil
 	}
 
+	// Cursor 没有 count_tokens 端点，凭证也只对 Cursor 有效：本地估算，绝不落到下面的
+	// Anthropic 请求（那会带着 Cursor token 发往 api.anthropic.com）。
+	if isCursorDirectModeAccount(account) {
+		inputTokens := estimateCursorInputTokens(cursorRequestFromBody(parsed.Body.Bytes(), parsed.Model))
+		c.JSON(http.StatusOK, gin.H{"input_tokens": inputTokens})
+		return nil
+	}
+
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body.Bytes()
 		passthroughModel := parsed.Model
