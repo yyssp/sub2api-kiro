@@ -14,6 +14,7 @@
 | [01-sources.md](01-sources.md) | 调研方法和覆盖统计；按 A（协议/代码检索）、B（网关与 fork）、C（GitHub 之外）三个维度，列出未过时的仓库及其活跃度、实现方式、结论 |
 | [02-gateway-ideas.md](02-gateway-ideas.md) | 不限于 Cursor 的网关通用好思路（只记录不实现），每条附社区出处、价值、落地要点与优先级 |
 | [03-cursor-deferred.md](03-cursor-deferred.md) | 与 Cursor 直接相关、但本轮暂不实现的项：为什么不做、启用前要怎么实测、改动落点 |
+| [04-real-protocol-verification.md](04-real-protocol-verification.md) | 用真实账号与美国出口代理核对协议的清单：已上线改动的回归确认，以及社区说法冲突、需先实测再决定是否改代码的协议点 |
 
 ## 已实现的 Cursor 改进
 
