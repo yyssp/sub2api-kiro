@@ -50,3 +50,19 @@
 1. 先跑 A 组（回归确认），因为这些已经在代码里。
 2. B1、B2、B3 优先：都是「只解析、不改行为」就能先拿到证据的项。
 3. B4–B7 涉及改变请求形状，需要单独开关或临时脚本，不在生产路径上试。
+
+## 实测记录
+
+### 2026-11-12：crsr_ Dashboard API Key（真实账号 + 美国出口 187-share-6）
+
+| 观察 | 结论 | 落地 |
+|---|---|---|
+| `POST api2.cursor.sh/auth/exchange_user_api_key`（Bearer crsr_，body `{}`）→ 200 `{accessToken, refreshToken}`，两者是同一个 JWT，`type=api_key_token`，寿命 60 分钟 | key 是长期凭证，token 只是 60 分钟缓存 | `63184c13d` |
+| 该 token 调 `/oauth/token`（refresh_token 授权）→ `shouldLogout=true`、无 access_token | 不能按 session 账号续期，只能用 crsr_ 重新兑换；绝不能给这类账号写 refresh_token（会被后台刷新判成确认失效停号） | `63184c13d` |
+| 该 token 调 `GetCurrentPeriodUsage` / `GetSandUsageStatus` / `GetUserMeta` / `AvailableModels` → 均 200 | Dashboard 与模型目录对 API Key 账号可用 | — |
+| 该 token 走 Sand `InferenceService/Stream` → `ERROR_NOT_LOGGED_IN` | API Key 账号只能走 AgentService；协议层对 api_key_token 强制关闭 Sand 直连 | `63184c13d` |
+| 该 token 走 AgentService/Run（composer-2.5）→ 正常出字 `pong`，`exit reason=turn-ended`，turn_ended 用量 `input=12220 output=51 cache_read=1088 cache_write=0` | **A1/A2 回归确认**：服务端确实发 request_context(exec 10) 与大量 `set_blob`(kv)，我们的应答让本轮正常结束 | A1/A2 ✅ |
+| AvailableModels 返回 250 个模型，全是扁平 ID（如 `claude-opus-4-8-low`、`claude-sonnet-5-medium`、`cursor-grok-4.6-low`）；`claude-opus-4-8`、`claude-sonnet-5`、`gpt-5.5` 这类基础名在 AgentService 上报 `ERROR_BAD_MODEL_NAME` | **B5 部分结论**：wire 上必须用目录里的扁平变体 ID，基础名不行；GPT 已从 Cursor 下架（与 2026-11-12 OpenAI 退出 Cursor 一致） | B5 部分 ✅，静态兜底列表 `DefaultModels` 需更新 |
+| `useModelParameters:true` 时返回 47 个基础模型 + variants；`claude-opus-4-8` 的参数是 `thinking/context/effort/fast`，`claude-sonnet-5-5` 是 `context/reasoning_effort`（不叫 effort） | **B7 ✅**：参数名因模型而异，effort 有 `effort` 与 `reasoning_effort` 两种 | 待评估 |
+| 同一账号连续用不同 machine_id 发起约 10 次请求后：`ERROR_CUSTOM_MESSAGE: Too many computers used within the last 24 hours` | 设备数按 checksum 指纹统计；探针必须复用固定 machine_id | 记录，探针约束 |
+| 部分模型（`claude-opus-4-8-low`、`claude-sonnet-5-medium`）返回 `ERROR_RATE_LIMITED: You have an unpaid invoice` | 账号层面欠费，对该账号的付费模型确定性失败；现有分类把 "unpaid invoice" 归为鉴权停号 | 待评估是否应只停付费模型 |
