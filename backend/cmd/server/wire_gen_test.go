@@ -102,6 +102,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // ollamaCloudUsage
 		nil, // opencodeGoUsage
 		nil, // cursorQuotaRefresh
+		nil, // cursorModelCatalog
 		nil, // auditLog
 		nil, // openAIAutoReset
 		nil, // promptAudit
