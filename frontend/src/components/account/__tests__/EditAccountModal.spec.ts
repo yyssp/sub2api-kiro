@@ -2251,3 +2251,22 @@ describe('EditAccountModal temp-unschedulable rule scope', () => {
     wrapper.unmount()
   })
 })
+
+// 编辑账号同样通用：Cursor / Kiro 的 OAuth 账号也要能看到并保存白名单与映射。
+describe('EditAccountModal model restriction is shared across platforms', () => {
+  it.each(['cursor', 'kiro'])('loads and saves the whitelist for %s OAuth accounts', async (platform) => {
+    const account = buildAccount()
+    account.platform = platform
+    account.type = 'oauth'
+    account.credentials = { access_token: 'tok', model_mapping: { 'claude-sonnet-5': 'claude-sonnet-5' } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const selector = wrapper.findComponent(ModelWhitelistSelectorStub)
+    expect(selector.exists(), `${platform} OAuth 账号必须显示模型白名单`).toBe(true)
+    expect(selector.props('modelValue')).toEqual(['claude-sonnet-5'])
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({ 'claude-sonnet-5': 'claude-sonnet-5' })
+  })
+})

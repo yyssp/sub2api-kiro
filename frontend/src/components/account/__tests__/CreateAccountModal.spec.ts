@@ -1245,9 +1245,9 @@ describe('CreateAccountModal Kiro default models', () => {
   it('starts in whitelist mode with no auto-filled mapping rows', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'Kiro')
-    expect(wrapper.find('[data-testid="kiro-model-whitelist"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="model-whitelist-selector"]').exists()).toBe(true)
 
-    await wrapper.get('[data-testid="kiro-model-mode-mapping"]').trigger('click')
+    await wrapper.get('[data-testid="model-mode-mapping"]').trigger('click')
     const mappingInputs = wrapper
       .findAll('input')
       .filter((input) => input.attributes('placeholder') === 'admin.accounts.requestModel')
@@ -1258,12 +1258,23 @@ describe('CreateAccountModal Kiro default models', () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'Kiro')
     await selectButtonByText(wrapper, 'API Key')
-    await wrapper.get('[data-testid="kiro-model-mode-mapping"]').trigger('click')
+    await wrapper.get('[data-testid="model-mode-mapping"]').trigger('click')
     await wrapper.get('form#create-account-form input[type="text"]').setValue('kiro account')
     await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
     await flushPromises()
 
     expect(createAccountMock.mock.calls[0]?.[0]?.credentials).not.toHaveProperty('model_mapping')
+  })
+})
+
+// 账号配置页对所有平台通用：模型白名单 / 映射不能因为平台是 Cursor、Kiro 就整块消失。
+describe('CreateAccountModal model restriction is shared across platforms', () => {
+  it.each(['Cursor', 'Kiro'])('shows the model whitelist / mapping section for %s', async (label) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, label)
+    expect(wrapper.find('[data-testid="model-mode-whitelist"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="model-mode-mapping"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="model-whitelist-selector"]').exists()).toBe(true)
   })
 })

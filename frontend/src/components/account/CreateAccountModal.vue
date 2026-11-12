@@ -1685,117 +1685,6 @@
         </div>
       </div>
 
-      <!-- Kiro 模型限制：默认白名单（Claude 清单去掉 fable 族），也可切到映射模式 -->
-      <div v-if="form.platform === 'kiro'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
-        <div class="mb-4 flex gap-2">
-          <button
-     type="button"
-            data-testid="kiro-model-mode-whitelist"
-     @click="kiroModelRestrictionMode = 'whitelist'"
-     :class="[
-       'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-kiroModelRestrictionMode === 'whitelist'
-  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-     ]"
-          >
-     {{ t('admin.accounts.modelWhitelist') }}
-   </button>
-   <button
-     type="button"
-     data-testid="kiro-model-mode-mapping"
-            @click="kiroModelRestrictionMode = 'mapping'"
-     :class="[
-       'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-       kiroModelRestrictionMode === 'mapping'
-         ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-     ]"
-          >
-     {{ t('admin.accounts.modelMapping') }}
-          </button>
-        </div>
-
- <div v-if="kiroModelRestrictionMode === 'whitelist'" data-testid="kiro-model-whitelist">
-   <ModelWhitelistSelector
-     v-model="kiroWhitelistModels"
-     :available-models="claudeModels"
-     :show-sync-button="false"
-   />
-   <p class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.accounts.selectedModels', { count: kiroWhitelistModels.length }) }}
-     <span v-if="kiroWhitelistModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
-          </p>
-        </div>
-
-        <div v-else>
-          <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
-            <p class="text-xs text-purple-700 dark:text-purple-400">
-              {{ t('admin.accounts.mapRequestModels') }}
-            </p>
-          </div>
-
-          <div v-if="kiroModelMappings.length > 0" class="mb-3 space-y-2">
-            <div
-              v-for="(mapping, index) in kiroModelMappings"
-              :key="getKiroModelMappingKey(mapping)"
-              class="space-y-1"
-            >
-              <div class="flex items-center gap-2">
-                <input
-                  v-model="mapping.from"
-                  type="text"
-                  :class="[
-                    'input flex-1',
-                    !isValidWildcardPattern(mapping.from) ? 'border-red-500 dark:border-red-500' : ''
-                  ]"
-                  :placeholder="t('admin.accounts.requestModel')"
-                />
-                <svg class="h-4 w-4 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                </svg>
-                <input
-                  v-model="mapping.to"
-                  type="text"
-                  :class="[
-                    'input flex-1',
-                    mapping.to.includes('*') ? 'border-red-500 dark:border-red-500' : ''
-                  ]"
-                  :placeholder="t('admin.accounts.actualModel')"
-                />
-                <button
-                  type="button"
-                  @click="removeKiroModelMapping(index)"
-                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                >
-                  <Icon name="x" size="sm" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <button type="button" @click="addKiroModelMapping" class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300">
-            <svg class="mr-1 inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-            {{ t('admin.accounts.addMapping') }}
-          </button>
-
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="preset in kiroPresetMappings"
-              :key="preset.label"
-              type="button"
-              @click="addKiroPresetMapping(preset.from, preset.to)"
-              :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
-            >
-              + {{ preset.label }}
-            </button>
-          </div>
-        </div>
-      </div>
-
       <div v-if="form.platform === 'antigravity' && antigravityAccountType === 'oauth'">
         <label class="input-label">{{ t('admin.accounts.antigravityProjectIdLabel') }}</label>
         <input
@@ -3051,9 +2940,9 @@ kiroModelRestrictionMode === 'whitelist'
         </div>
       </div>
 
-      <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <!-- OpenAI / Grok / Cursor / Kiro 模型白名单与映射（这些平台的连接参数不走通用 apikey 区，需要独立区域） -->
       <div
-        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
+        v-if="((form.platform === 'openai' || form.platform === 'grok' || form.platform === 'cursor') && isOAuthFlow) || form.platform === 'kiro'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -3072,7 +2961,8 @@ kiroModelRestrictionMode === 'whitelist'
           <div class="mb-4 flex gap-2">
             <button
               type="button"
-              @click="modelRestrictionMode = 'whitelist'"
+              data-testid="model-mode-whitelist"
+       @click="modelRestrictionMode = 'whitelist'"
               :class="[
                 'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
                 modelRestrictionMode === 'whitelist'
@@ -3084,7 +2974,8 @@ kiroModelRestrictionMode === 'whitelist'
             </button>
             <button
               type="button"
-              @click="modelRestrictionMode = 'mapping'"
+              data-testid="model-mode-mapping"
+@click="modelRestrictionMode = 'mapping'"
               :class="[
                 'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
                 modelRestrictionMode === 'mapping'
@@ -5436,24 +5327,20 @@ const cursorImporter = useCursorCredentialImport()
 // currentOAuthLoading/Error 的 anthropic 兜底分支上去污染别的平台状态。
 const cursorCreating = ref(false)
 const cursorCreateError = ref('')
-const kiroModelMappings = ref<ModelMapping[]>([])
-// Kiro 新建账号默认走白名单：与 Claude 平台默认清单一致但去掉 fable 族。
-// 过去这里会自动塞一整张默认映射表（gpt-5.6、claude-*-thinking 等十几条），
-// 用户看到一堆并不需要的映射；映射模式仍保留给真正需要改名的场景。
-const kiroModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
-const kiroWhitelistModels = ref<string[]>(getKiroDefaultWhitelistModels())
-/** Kiro 落库用的 model_mapping：白名单为自映射，映射模式为用户填写的映射。 */
+/** Kiro 落库用的 model_mapping：与其它平台共用同一套白名单 / 映射表单状态。 */
 const buildKiroModelMapping = () =>
-  kiroModelRestrictionMode.value === 'whitelist'
-    ? buildModelMappingObject('whitelist', kiroWhitelistModels.value, [])
-    : buildModelMappingObject('mapping', [], kiroModelMappings.value)
+ buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+// 选中 Kiro 时回到白名单模式并填默认模型：Claude 默认清单去掉 fable 族（见 getKiroDefaultWhitelistModels）。
+// 过去这里会自动塞一整张默认映射表，用户看到一堆并不需要的映射。
+/** 新建账号白名单的默认勾选：Kiro 用 Claude 清单去掉 fable 族，其余平台用平台模型清单。 */
+const defaultWhitelistModels = (platform: string): string[] =>
+  platform === 'kiro' ? getKiroDefaultWhitelistModels() : [...getModelsByPlatform(platform)]
 const resetKiroModelRestriction = () => {
-  kiroModelRestrictionMode.value = 'whitelist'
-  kiroWhitelistModels.value = getKiroDefaultWhitelistModels()
-  kiroModelMappings.value = []
+ modelRestrictionMode.value = 'whitelist'
+ allowedModels.value = getKiroDefaultWhitelistModels()
+ modelMappings.value = []
 }
 const kiroCreditUnitPriceUsd = ref(0)
-const kiroPresetMappings = computed(() => getPresetMappingsByPlatform('kiro'))
 const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 
 // Bedrock credentials
@@ -5486,7 +5373,6 @@ const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-model-mapping')
 const getOpenAICompactModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-openai-compact-model-mapping')
 const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-antigravity-model-mapping')
-const getKiroModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-kiro-model-mapping')
 const getTempUnschedRuleKey = createStableObjectKeyResolver<TempUnschedRuleForm>('create-temp-unsched-rule')
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('google_one')
 const geminiAIStudioOAuthEnabled = ref(false)
@@ -5834,7 +5720,7 @@ watch(
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
         .catch(() => { tlsFingerprintProfiles.value = [] })
       // Modal opened - fill related models
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      allowedModels.value = defaultWhitelistModels(form.platform)
       // Antigravity: 默认使用映射模式并填充默认映射
       if (form.platform === 'antigravity') {
         antigravityModelRestrictionMode.value = 'mapping'
@@ -5848,7 +5734,6 @@ watch(
         antigravityWhitelistModels.value = []
         antigravityModelMappings.value = []
         antigravityModelRestrictionMode.value = 'mapping'
-        kiroModelMappings.value = []
       }
     } else {
       resetForm()
@@ -5949,7 +5834,6 @@ watch(
       // Cursor 只有导入这一条路，必须落在 oauth-based 上，
       // 否则 isOAuthFlow 为 false，点「下一步」进不到导入面板。
       accountCategory.value = 'oauth-based'
-      kiroModelMappings.value = []
       antigravityWhitelistModels.value = []
       antigravityModelMappings.value = []
       apiKeyValue.value = ''
@@ -5959,7 +5843,6 @@ watch(
       antigravityWhitelistModels.value = []
       antigravityModelMappings.value = []
       antigravityModelRestrictionMode.value = 'mapping'
-      kiroModelMappings.value = []
     }
     if (newPlatform === 'grok') {
       accountCategory.value = 'oauth-based'
@@ -6089,7 +5972,7 @@ watch(
   [modelRestrictionMode, () => form.platform],
   ([newMode]) => {
     if (newMode === 'whitelist') {
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      allowedModels.value = defaultWhitelistModels(form.platform)
     }
   }
 )
@@ -6142,22 +6025,6 @@ const addAntigravityPresetMapping = (from: string, to: string) => {
     return
   }
   antigravityModelMappings.value.push({ from, to })
-}
-
-const addKiroModelMapping = () => {
-  kiroModelMappings.value.push({ from: '', to: '' })
-}
-
-const removeKiroModelMapping = (index: number) => {
-  kiroModelMappings.value.splice(index, 1)
-}
-
-const addKiroPresetMapping = (from: string, to: string) => {
-  if (kiroModelMappings.value.some((m) => m.from === from)) {
-    appStore.showInfo(t('admin.accounts.mappingExists', { model: from }))
-    return
-  }
-  kiroModelMappings.value.push({ from, to })
 }
 
 // Error code warning dialog state
@@ -8461,6 +8328,9 @@ const handleCursorImport = async () => {
       // machine_id 有就沿用：它是 x-cursor-checksum 的设备指纹种子，
       // 留空会让后端重新生成，等于在上游眼里换了台设备。
       if (entry.machine_id) credentials.machine_id = entry.machine_id
+      // 模型白名单 / 映射与其它平台同一套：表单里配了才写，留空表示不限制。
+      const cursorModelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      if (cursorModelMapping) credentials.model_mapping = cursorModelMapping
       if (!applyTempUnschedConfig(credentials)) return
       accounts.push({
         // 库里已有同一 Cursor 用户时只更新它的 token，表单参数不覆盖已调好的配置。
