@@ -27,7 +27,7 @@
 | A3 | 并行工具收批（tool_requests_listed(27) 或 1s 静默） | 让 Claude Code 一次读多个文件，确认 `listed=N` 与交付的工具数一致 | 未核实 |
 | A4 | 图片不再合成 path + client_supports_inline_images(19) | 发一张图片，确认不报 `Image not found` 且模型能描述图片 | 未核实 |
 | A5 | Sand 面 thinking_part(9) / error(8) / usage | 用 Claude 模型纯文本请求（走 Sand），确认思考内容出现、usage 日志有值 | 未核实 |
-| A6 | 错误分级（`d144788ff`） | 被动观察：出现 OUTDATED_CLIENT / 用户级限流 / 地区封锁时，账号状态与冷却是否符合预期 | 未核实 |
+| A6 | 错误分级（`d144788ff`） | 被动观察：出现 OUTDATED_CLIENT / 用户级限流 / 地区封锁时，账号状态与冷却是否符合预期 | 部分：设备数超限原先漏分类，已补（见实测记录） |
 | A7 | 额度自动刷新（`86fa47a92`） | 导入后 5 分钟内 `cursor_quota.fetched_at` 应被后台刷新 | 未核实 |
 
 ### B. 社区说法冲突或未核实、核对后才决定是否改代码
@@ -66,3 +66,4 @@
 | `useModelParameters:true` 时返回 47 个基础模型 + variants；`claude-opus-4-8` 的参数是 `thinking/context/effort/fast`，`claude-sonnet-5-5` 是 `context/reasoning_effort`（不叫 effort） | **B7 ✅**：参数名因模型而异，effort 有 `effort` 与 `reasoning_effort` 两种 | 待评估 |
 | 同一账号连续用不同 machine_id 发起约 10 次请求后：`ERROR_CUSTOM_MESSAGE: Too many computers used within the last 24 hours` | 设备数按 checksum 指纹统计；探针必须复用固定 machine_id | 记录，探针约束 |
 | 部分模型（`claude-opus-4-8-low`、`claude-sonnet-5-medium`）返回 `ERROR_RATE_LIMITED: You have an unpaid invoice` | 账号层面欠费，对该账号的付费模型确定性失败；现有分类把 "unpaid invoice" 归为鉴权停号 | 待评估是否应只停付费模型 |
+| 设备数超限后，一个 Claude Code 请求在网关里打了 16 次上游、耗时 39s 才返回 502 | 正文的 "too many" 落到限流关键词被判成瞬时 503：不写冷却，单账号分组里 `HandleSelectionExhausted` 只对 503 清空排除列表、退避 2s 再选回同一个号，直到换号上限 | 新增 `device_limited` 类：429 + 固定文案 + 账号冷却 1 小时；修复后同样请求 1 次上游、2s 返回 429，冷却已落库 |

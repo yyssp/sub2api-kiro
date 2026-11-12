@@ -106,6 +106,10 @@ const (
 		"You have exceeded your usage limit. [resource_exhausted]"
 	cursorFreeUserRateLimitSample = "Connect error 429: ERROR_FREE_USER_RATE_LIMIT_EXCEEDED: Rate limit exceeded [resource_exhausted]"
 	cursorRegionBlockedSample     = "Connect error 403: ERROR_CUSTOM_MESSAGE: Model not available in your region [permission_denied]"
+	// 2026-11-12 真实账号原文（AgentService END 帧）。
+	cursorDeviceLimitSample = "ERROR_CUSTOM_MESSAGE: Too many computers. - Too many computers used within the last 24 hours " +
+		"for the same Cursor account. Please try again later, use a different Cursor account, or contact us at " +
+		"hi@cursor.com if you believe this is a mistake."
 )
 
 // ---- 归类 ----
@@ -159,6 +163,17 @@ func TestClassifyCursorError_AccountBlockedDisablesAccount(t *testing.T) {
 	}
 }
 
+func TestClassifyCursorError_DeviceLimit(t *testing.T) {
+	got := classifyCursorError("claude-opus-4-8-medium", cursorDeviceLimitSample)
+	require.Equal(t, cursorErrorDeviceLimit, got.Category,
+		"修复前正文的 too many 让它落到瞬时错误：不写冷却，同一个账号被连打 16 次")
+	require.Equal(t, http.StatusTooManyRequests, got.StatusCode)
+	require.Equal(t, "rate_limit_error", got.ErrorType)
+	require.Equal(t, cursorDeviceLimitMessage, got.Message, "不得把「换一个 Cursor 账号 / 发邮件」原文透给网关调用方")
+	require.Empty(t, got.QuotaBucket)
+	require.False(t, cursorShouldDisableAccount(got), "凭证仍有效，不得停号")
+}
+
 // ---- 调度契约 ----
 
 func TestCursorFailoverError_NewCategories(t *testing.T) {
@@ -166,7 +181,7 @@ func TestCursorFailoverError_NewCategories(t *testing.T) {
 	require.False(t, outdated.ShouldRetryNextAccount(), "版本过旧换号只会把整个号池烧一遍")
 	require.Equal(t, GatewayFailureScopeProvider, outdated.Scope, "不得归因到账号")
 
-	for _, text := range []string{cursorProUserRateLimitSample, cursorFreeUserRateLimitSample, cursorRegionBlockedSample} {
+	for _, text := range []string{cursorProUserRateLimitSample, cursorFreeUserRateLimitSample, cursorDeviceLimitSample, cursorRegionBlockedSample} {
 		err := cursorFailoverError(classifyCursorError("claude-sonnet-5", text), false)
 		require.True(t, err.ShouldRetryNextAccount(), "该账号此刻不行，别的账号可能行: %s", text)
 		require.Equal(t, GatewayFailureScopeAccount, err.Scope)
@@ -200,6 +215,32 @@ func TestRecordCursorFailure_UserRateLimitCoolsDownAccountWithoutMarkingBucket(t
 		require.Empty(t, repo.errors, "不得停号")
 		require.Empty(t, repo.modelLimits)
 	}
+}
+
+// ⚠️ 单账号分组的放大链路：瞬时错误按 503 回给 failover，选号耗尽后
+// HandleSelectionExhausted 只对 503 清空排除列表、退避 2s 再选回同一个账号，
+// 直到换号次数用完。设备数超限必须同时满足两点才能掐断这条链路：
+//   - 状态码不是 503，选号耗尽时不走退避重选；
+//   - 账号落冷却，后续请求不再选中它。
+func TestCursorDeviceLimit_DoesNotTriggerSingleAccountBackoff(t *testing.T) {
+	err := cursorFailoverError(classifyCursorError("claude-opus-4-8-medium", cursorDeviceLimitSample), false)
+	require.NotEqual(t, http.StatusServiceUnavailable, err.StatusCode,
+		"503 会触发单账号退避重选，一个请求就把同一个账号打十几次")
+	require.False(t, err.RetryableOnSameAccount)
+}
+
+func TestRecordCursorFailure_DeviceLimitCoolsDownAccount(t *testing.T) {
+	svc, repo, c, acc := newCursorCooldownFixture(t)
+	before := time.Now()
+	svc.recordCursorFailure(context.Background(), c, acc, classifyCursorError("claude-opus-4-8-medium", cursorDeviceLimitSample))
+
+	require.Len(t, repo.tempUnsched, 1, "设备数超限必须让账号冷却，否则下个请求又选中它")
+	call := repo.tempUnsched[0]
+	require.WithinDuration(t, before.Add(cursorDeviceLimitCooldown), call.until, 5*time.Second)
+	require.Contains(t, call.reason, cursorDeviceLimitReason)
+	require.Empty(t, repo.errors, "不得停号：凭证有效，窗口滑过后自动恢复")
+	require.Empty(t, repo.updates, "不得标桶")
+	require.Empty(t, repo.modelLimits, "设备数是账号维度，与模型无关")
 }
 
 func TestRecordCursorFailure_RegionBlockedCoolsDownAccountModel(t *testing.T) {

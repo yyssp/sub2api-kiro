@@ -70,6 +70,23 @@ func TestIsUserRateLimitErr(t *testing.T) {
 	}
 }
 
+// 设备数超限：真实账号原文带 "too many"，修复前落到限流关键词被判成纯瞬时，
+// 不写冷却，单账号分组的 503 退避把同一个账号连打了 16 次。
+func TestIsDeviceLimitErr(t *testing.T) {
+	text := "ERROR_CUSTOM_MESSAGE: Too many computers. - Too many computers used within the last 24 hours " +
+		"for the same Cursor account. Please try again later, use a different Cursor account, or contact us " +
+		"at hi@cursor.com if you believe this is a mistake."
+	if !IsDeviceLimitErr(text) {
+		t.Fatalf("IsDeviceLimitErr(%q) = false, want true", text)
+	}
+	if got := ClassifyCursorErr(text); got != ErrTransient {
+		t.Errorf("ClassifyCursorErr(device limit) = %v, want ErrTransient：凭证仍有效，不得停号或标桶", got)
+	}
+	if IsDeviceLimitErr("ERROR_RATE_LIMITED: too many requests") {
+		t.Fatal("普通限流不得被当成设备数超限")
+	}
+}
+
 // 地区封锁：地点词与否定词必须同时出现；区域故障措辞不得误伤。
 func TestIsRegionBlockedErr(t *testing.T) {
 	for _, text := range []string{

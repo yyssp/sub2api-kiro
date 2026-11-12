@@ -830,7 +830,7 @@ func (s *GatewayService) recordCursorFailure(ctx context.Context, c *gin.Context
 		return
 	}
 
-	// 用户级限流 / 地区封锁只落冷却（见 applyCursorErrorCooldown），
+	// 用户级限流 / 设备数超限 / 地区封锁只落冷却（见 applyCursorErrorCooldown），
 	// 既不停号也不标桶：它们会自愈，停号或标桶都会把健康账号长期摘掉。
 	if s.applyCursorErrorCooldown(ctx, account, classified) {
 		return

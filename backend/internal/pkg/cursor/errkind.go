@@ -45,9 +45,9 @@ func ClassifyErr(creditErr, modelErr bool, spawnErr error, text string) ErrKind 
 // ClassifyCursorErr 归类 Cursor 上游错误。
 // 先匹配 Cursor 特有错误码/文案(登录失效、额度耗尽、限流), 再回退到通用 ClassifyErr。
 //
-// ⚠️ 本函数只给出三态 ErrKind。客户端版本过旧、用户级限流、地区封锁这三类
-// 不在三态里，由 service 层的分类器先用 IsOutdatedClientErr /
-// IsUserRateLimitErr / IsRegionBlockedErr 拦截，拦不住的才落到这里——
+// ⚠️ 本函数只给出三态 ErrKind。客户端版本过旧、用户级限流、设备数上限、地区封锁
+// 这四类不在三态里，由 service 层的分类器先用 IsOutdatedClientErr /
+// IsUserRateLimitErr / IsDeviceLimitErr / IsRegionBlockedErr 拦截，拦不住的才落到这里——
 // 它们的文案都会命中下面的额度或限流关键词，单靠本函数会被归错类。
 func ClassifyCursorErr(text string) ErrKind {
 	low := strings.ToLower(text)
@@ -62,9 +62,10 @@ func ClassifyCursorErr(text string) ErrKind {
 	// 以下三类既不是额度耗尽也不是凭证失效，但文案都会被后面的关键词误伤：
 	//   - 版本过旧借用 ..._RATE_LIMIT 错误码，会被当成限流；
 	//   - PRO 用户级限流带 "exceeded your usage limit"，会被当成额度耗尽而永久标满桶；
-	//   - 地区封锁常以 "Connect error 403" 包裹，会被通用兜底的 "403" 判成凭证失效而停号。
+	//   - 地区封锁常以 "Connect error 403" 包裹，会被通用兜底的 "403" 判成凭证失效而停号；
+	//   - 设备数上限带 "too many"，会被当成可立即重试的限流。
 	// 统一先截成 ErrTransient（不标桶、不停号），具体处置由 service 层细分。
-	if IsOutdatedClientErr(text) || IsUserRateLimitErr(text) || IsRegionBlockedErr(text) {
+	if IsOutdatedClientErr(text) || IsUserRateLimitErr(text) || IsDeviceLimitErr(text) || IsRegionBlockedErr(text) {
 		return ErrTransient
 	}
 
@@ -168,6 +169,18 @@ func IsUserRateLimitErr(text string) bool {
 	low := strings.ToLower(text)
 	return strings.Contains(low, "user_rate_limit_exceeded") ||
 		strings.Contains(low, "api_rate_limit_exceeded")
+}
+
+// IsDeviceLimitErr 判断账号是否撞上 Cursor 的设备数上限。
+//
+// 2026-11-12 真实账号原文："ERROR_CUSTOM_MESSAGE: Too many computers. - Too many
+// computers used within the last 24 hours for the same Cursor account. ..."
+//
+// ⚠️ 它会被后面的限流关键词 "too many" 判成瞬时错误。瞬时错误不写冷却，单账号
+// 分组里 failover 的 503 退避会把同一个账号连打十几次（实测一个请求 16 次上游）。
+// 设备数按 24 小时滚动窗口统计，几秒、几分钟内都不会恢复。
+func IsDeviceLimitErr(text string) bool {
+	return strings.Contains(strings.ToLower(text), "too many computers")
 }
 
 // IsRegionBlockedErr 判断是否为地区/国家维度的访问限制。

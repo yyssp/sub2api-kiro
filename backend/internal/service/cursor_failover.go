@@ -149,10 +149,11 @@ func cursorFailoverError(c cursorErrorClassification, realOutputWritten bool) *U
 		err.NextAccountAction = NextAccountStop
 		err.Scope = GatewayFailureScopeProvider
 
-	// 用户级限流 / 地区封锁：都是「这个账号此刻不行，别的账号可能行」。
+	// 用户级限流 / 设备数超限 / 地区封锁：都是「这个账号此刻不行，别的账号可能行」。
 	// 冷却已由 recordCursorFailure 落库，这里只负责换号。
-	// ⚠️ 不可同账号重试：限流窗口和出口地区都不会在几百毫秒内变化。
-	case c.Category == cursorErrorUserRateLimit, c.Category == cursorErrorRegionBlocked:
+	// ⚠️ 不可同账号重试：限流窗口、设备数窗口和出口地区都不会在几百毫秒内变化。
+	case c.Category == cursorErrorUserRateLimit, c.Category == cursorErrorDeviceLimit,
+		c.Category == cursorErrorRegionBlocked:
 		err.NextAccountAction = NextAccountRetry
 		err.Scope = GatewayFailureScopeAccount
 

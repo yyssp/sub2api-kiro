@@ -25,6 +25,9 @@ const (
 	// cursorErrorUserRateLimit 是账号自身的用户级/套餐级限流：该账号短暂冷却后
 	// 自动恢复，不是额度耗尽（不标桶），也不是号池瞬时故障（不同号重试）。
 	cursorErrorUserRateLimit = "user_rate_limited"
+	// cursorErrorDeviceLimit 是账号 24 小时内登录设备数超限：按账号滚动窗口统计，
+	// 该账号冷却后换号，不停号（凭证仍有效），也不标桶。
+	cursorErrorDeviceLimit = "device_limited"
 	// cursorErrorRegionBlocked 是账号出口地区被上游拒绝：换一个出口不同的账号
 	// 可能就能服务，该账号对该模型冷却，提示检查代理出口。
 	cursorErrorRegionBlocked = "region_blocked"
@@ -41,6 +44,12 @@ const cursorOutdatedClientMessage = "Cursor upstream rejected the gateway's clie
 const cursorRegionBlockedMessage = "Cursor upstream rejected this account's network region; " +
 	"check the egress region of the account's proxy"
 
+// cursorDeviceLimitMessage 是设备数超限时对外的固定文案。
+//
+// ⚠️ 不透传上游原文：原文让调用方「换一个 Cursor 账号或发邮件给 Cursor」，
+// 这是号池管理员的动作，网关调用方既做不了，也不该看到上游账号体系。
+const cursorDeviceLimitMessage = "Cursor upstream temporarily refused this account (device limit); try again later"
+
 // cursorErrorClassification 是一次 Cursor 上游失败的归类结果。
 //
 // StatusCode/ErrorType 直接对应返回给客户端的 Anthropic 错误语义，
@@ -56,6 +65,7 @@ const cursorRegionBlockedMessage = "Cursor upstream rejected this account's netw
 //
 //	outdated_client   → 502 api_error（固定文案，不换号）
 //	user_rate_limited → 429 rate_limit_error（账号冷却 + 换号）
+//	device_limited    → 429 rate_limit_error（固定文案，账号冷却 + 换号）
 //	region_blocked    → 403 permission_error（账号×模型冷却 + 换号）
 type cursorErrorClassification struct {
 	Category   string
@@ -182,6 +192,19 @@ func classifyCursorErrorForRequest(model string, tools []cursor.ToolDef, text st
 			StatusCode: http.StatusTooManyRequests,
 			ErrorType:  "rate_limit_error",
 			Message:    trimmed,
+			Kind:       cursor.ErrTransient,
+		}
+	}
+
+	// 3.5) 设备数超限：必须先于通用兜底——正文的 "too many" 会被判成瞬时限流，
+	// 瞬时错误不写冷却，单账号分组的 503 退避会把同一个账号连打十几次。
+	// 429 也让 failover 不走 503 退避，号池里没有别的号时直接把错误还给客户端。
+	if cursor.IsDeviceLimitErr(raw) {
+		return cursorErrorClassification{
+			Category:   cursorErrorDeviceLimit,
+			StatusCode: http.StatusTooManyRequests,
+			ErrorType:  "rate_limit_error",
+			Message:    cursorDeviceLimitMessage,
 			Kind:       cursor.ErrTransient,
 		}
 	}

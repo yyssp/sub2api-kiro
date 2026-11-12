@@ -24,6 +24,17 @@ import (
 // 一致，属于同一类「账号此刻不行、过一会儿自愈」的状态。
 const cursorUserRateLimitCooldown = 10 * time.Minute
 
+// cursorDeviceLimitCooldown 是设备数超限后的账号冷却时长。
+//
+// ⚠️ 为什么是 1 小时：上游按「过去 24 小时用过的设备数」滚动统计，最早那台
+// 设备滑出窗口的时间点未知，几分钟内几乎不可能恢复。
+//   - 10 分钟（同用户级限流）：一天里白撞 140 多次，每次还占一次换号；
+//   - 24 小时：窗口可能早就松动了，账号被白白摘掉一整天。
+//
+// 1 小时是一天最多撞 24 次的折中。网关对同一账号复用落库的 machine_id，
+// 冷却后重试不会再新增设备数。
+const cursorDeviceLimitCooldown = time.Hour
+
 // cursorRegionBlockedCooldown 是地区封锁后「该账号 × 该模型」的冷却时长。
 //
 // ⚠️ 为什么是 30 分钟：出口地区由账号绑定的代理决定，管理员不改代理就不会
@@ -38,12 +49,13 @@ const cursorCooldownReasonMaxBytes = 512
 
 const (
 	cursorUserRateLimitReason = "cursor_user_rate_limited"
+	cursorDeviceLimitReason   = "cursor_device_limited"
 	cursorRegionBlockedReason = "cursor_region_blocked"
 )
 
 // applyCursorErrorCooldown 按归类结果给账号落冷却，返回是否已处理。
 //
-// 只处理「账号此刻不可用但会自愈」的两类：用户级限流（账号级冷却）与
+// 只处理「账号此刻不可用但会自愈」的三类：用户级限流与设备数超限（账号级冷却）、
 // 地区封锁（账号×模型级冷却）。其余类别返回 false，交回 recordCursorFailure
 // 的原有分支（停号 / 标桶）。
 //
@@ -54,6 +66,9 @@ func (s *GatewayService) applyCursorErrorCooldown(ctx context.Context, account *
 	switch classified.Category {
 	case cursorErrorUserRateLimit:
 		s.coolDownCursorAccount(ctx, account, cursorUserRateLimitCooldown, cursorUserRateLimitReason, classified.Message)
+		return true
+	case cursorErrorDeviceLimit:
+		s.coolDownCursorAccount(ctx, account, cursorDeviceLimitCooldown, cursorDeviceLimitReason, classified.Message)
 		return true
 	case cursorErrorRegionBlocked:
 		s.coolDownCursorAccountModel(ctx, account, classified.CooldownModel, cursorRegionBlockedCooldown, cursorRegionBlockedReason, classified.Message)
