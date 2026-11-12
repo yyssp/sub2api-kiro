@@ -223,6 +223,45 @@ describe('ModelWhitelistSelector', () => {
     expect(copyToClipboard).not.toHaveBeenCalled()
   })
 
+  // 编辑弹层改了 base_url / key 但还没保存时，拉模型必须用表单当前值，
+  // 而不是库里的旧值；不传覆盖时保持原行为（只带账号 ID）。
+  it('sends unsaved form credentials when syncing a saved account', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: ['gpt-6'] })
+    const wrapper = mountSelector({
+      accountId: 46,
+      syncOverrides: { base_url: 'https://new.example.com', api_key: 'sk-new' }
+    })
+    await syncButton(wrapper).trigger('click')
+    await flushPromises()
+
+    expect(syncUpstreamModels).toHaveBeenCalledWith(46, {
+      base_url: 'https://new.example.com',
+      api_key: 'sk-new'
+    })
+  })
+
+  it('snapshots overrides at click time so later edits do not leak into the in-flight sync', async () => {
+    const pending = deferred<{ models: string[] }>()
+    syncUpstreamModels.mockReturnValue(pending.promise)
+    const wrapper = mountSelector({ accountId: 46, syncOverrides: { base_url: 'https://a.example.com' } })
+    await syncButton(wrapper).trigger('click')
+    await wrapper.setProps({ syncOverrides: { base_url: 'https://b.example.com' } })
+    pending.resolve({ models: ['gpt-6'] })
+    await flushPromises()
+
+    expect(syncUpstreamModels).toHaveBeenCalledTimes(1)
+    expect(syncUpstreamModels).toHaveBeenCalledWith(46, { base_url: 'https://a.example.com' })
+  })
+
+  it('keeps the plain saved-account request when no overrides are provided', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: ['gpt-6'] })
+    const wrapper = mountSelector({ accountId: 46 })
+    await syncButton(wrapper).trigger('click')
+    await flushPromises()
+
+    expect(syncUpstreamModels).toHaveBeenCalledWith(46)
+  })
+
   it('warns when model IDs sync but capability metadata is incomplete', async () => {
     syncUpstreamModels.mockResolvedValue({
       models: ['x-preview-f-free'],

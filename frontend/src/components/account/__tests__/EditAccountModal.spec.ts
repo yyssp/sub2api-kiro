@@ -76,6 +76,7 @@ const ModelWhitelistSelectorStub = defineComponent({
   name: 'ModelWhitelistSelector',
   props: {
     modelMappings: { type: Array, default: () => [] },
+    syncOverrides: { type: Object, default: undefined },
     modelValue: {
       type: Array,
       default: () => []
@@ -391,6 +392,37 @@ describe('EditAccountModal', () => {
     expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelMappings')).toEqual([
       { from: 'gpt-latest', to: 'deepseek-chat' }
     ])
+  })
+
+  // 改了 base_url / API Key 还没保存就点「获取上游模型」：必须把表单当前值交给模型选择器，
+  // 否则拉取仍打到库里的旧上游；API Key 留空表示沿用已保存的 key。
+  it('passes the unsaved base URL and API key to upstream model sync', async () => {
+    const wrapper = mountModal()
+    const selector = () => wrapper.getComponent(ModelWhitelistSelectorStub)
+    expect(selector().props('syncOverrides'), '没改任何连接参数时不带覆盖').toBeUndefined()
+
+    const baseUrlInput = wrapper
+      .findAll('input[type="text"]')
+      .find((input) => (input.element as HTMLInputElement).value === 'https://api.openai.com')
+    expect(baseUrlInput).toBeDefined()
+    await baseUrlInput!.setValue('https://relay.example.com/v1')
+    await wrapper.get('input[type="password"]').setValue('sk-unsaved')
+
+    expect(selector().props('syncOverrides')).toEqual({
+      base_url: 'https://relay.example.com/v1',
+      api_key: 'sk-unsaved'
+    })
+  })
+
+  it('does not send connection overrides for OAuth accounts', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.credentials = { access_token: 'tok', model_mapping: { 'gpt-5.2': 'gpt-5.2' } }
+    const wrapper = mountModal(account)
+    const selectors = wrapper.findAllComponents(ModelWhitelistSelectorStub)
+    for (const selector of selectors) {
+      expect(selector.props('syncOverrides')).toBeUndefined()
+    }
   })
 
   it('sets expiry presets from now instead of extending the saved expiry', async () => {

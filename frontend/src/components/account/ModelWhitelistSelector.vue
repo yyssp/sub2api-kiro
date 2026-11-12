@@ -151,7 +151,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
-import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
+import type { SyncUpstreamOverrides, SyncUpstreamPreviewParams } from '@/api/admin/accounts'
 import { useClipboard } from '@/composables/useClipboard'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -176,6 +176,11 @@ const props = withDefaults(defineProps<{
     api_key: string
   }
   showSyncButton?: boolean
+  /**
+   * 已有账号同步时使用的未保存连接参数（编辑弹层的表单当前值）。
+   * 不传则后端完全使用库里已保存的凭证。
+   */
+  syncOverrides?: SyncUpstreamOverrides
 }>(), {
   showSyncActions: true,
   showSyncButton: true
@@ -326,12 +331,16 @@ const syncUpstreamModels = async () => {
   const syncVersion = upstreamSyncVersion
   const accountId = props.accountId
   const previewCredentials = props.syncCredentials
+  // 在发请求前取快照：请求进行中用户继续改表单，不应影响这一次的结果归属。
+  const overrides = props.syncOverrides ? { ...props.syncOverrides } : undefined
   const isCurrentSync = () => syncVersion === upstreamSyncVersion
   isSyncingUpstream.value = true
   try {
     let result
     if (accountId) {
-      result = await accountsAPI.syncUpstreamModels(accountId)
+      result = overrides
+        ? await accountsAPI.syncUpstreamModels(accountId, overrides)
+ : await accountsAPI.syncUpstreamModels(accountId)
     } else if (previewCredentials) {
       result = await accountsAPI.syncUpstreamModelsPreview(previewCredentials as SyncUpstreamPreviewParams)
     } else {

@@ -639,8 +639,29 @@ export interface UpstreamModelMetadata {
  * @param id - Account ID
  * @returns List of model IDs returned by the upstream
  */
-export async function syncUpstreamModels(id: number): Promise<SyncUpstreamModelsResult> {
-  const { data } = await apiClient.post<SyncUpstreamModelsResult>(`/admin/accounts/${id}/models/sync-upstream`)
+/**
+ * 编辑弹层里尚未保存的连接参数。拉取上游模型时用它覆盖库里的值；
+ * 空字符串 / 未提供表示沿用已保存的值（API Key 留空即「不修改」）。
+ */
+export interface SyncUpstreamOverrides {
+  base_url?: string
+  api_key?: string
+}
+
+export async function syncUpstreamModels(
+  id: number,
+  overrides?: SyncUpstreamOverrides
+): Promise<SyncUpstreamModelsResult> {
+  const body: SyncUpstreamOverrides = {}
+  const baseUrl = overrides?.base_url?.trim()
+  const apiKey = overrides?.api_key?.trim()
+  if (baseUrl) body.base_url = baseUrl
+  if (apiKey) body.api_key = apiKey
+  const url = `/admin/accounts/${id}/models/sync-upstream`
+  // 没有未保存的覆盖值时保持原请求形态（无请求体），后端完全使用已保存的凭证。
+  const { data } = Object.keys(body).length > 0
+    ? await apiClient.post<SyncUpstreamModelsResult>(url, body)
+    : await apiClient.post<SyncUpstreamModelsResult>(url)
   return data
 }
 

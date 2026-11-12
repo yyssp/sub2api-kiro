@@ -3164,6 +3164,22 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		return
 	}
 
+	// 编辑弹层里改了 base_url / API Key 但还没保存时，拉模型必须用表单里的当前值，
+	// 否则用户看到的模型列表来自旧上游。请求体可选：显式传入的字段覆盖库里的值，
+	// 没传（或 API Key 留空，即「不修改」）的字段回退到已保存的凭证。
+	// 覆盖只作用于这次拉取的内存副本，不落库；Grok 观测结果同样基于副本。
+	var override struct {
+		BaseURL *string `json:"base_url"`
+		APIKey  *string `json:"api_key"`
+	}
+	if c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&override); err != nil {
+			response.BadRequest(c, "Invalid request: "+err.Error())
+			return
+		}
+	}
+	account = applyUpstreamModelSyncOverride(account, override.BaseURL, override.APIKey)
+
 	if h.accountTestService == nil {
 		response.InternalError(c, "Account test service is not configured")
 		return
@@ -3491,4 +3507,39 @@ func sanitizeExtraBaseRPM(extra map[string]any) {
 		v = 10000
 	}
 	extra["base_rpm"] = v
+}
+
+// applyUpstreamModelSyncOverride 返回一个用表单当前值覆盖了 base_url / api_key 的账号副本。
+//
+// ⚠️ 必须拷贝 Credentials 而不是原地改：account 可能来自缓存/快照，原地改会把未保存的
+// 表单值写进共享对象，后续请求就会拿着用户没确认的凭证转发。
+// 空字符串的 api_key 表示「不修改」（编辑弹层留空即沿用已保存的 key），不覆盖。
+// base_url 为空同样不覆盖：清空 base_url 是保存时的语义，拉模型时没有意义。
+func applyUpstreamModelSyncOverride(account *service.Account, baseURL, apiKey *string) *service.Account {
+	if account == nil {
+		return nil
+	}
+	newBaseURL := ""
+	if baseURL != nil {
+		newBaseURL = strings.TrimSpace(*baseURL)
+	}
+	newAPIKey := ""
+	if apiKey != nil {
+		newAPIKey = strings.TrimSpace(*apiKey)
+	}
+	if newBaseURL == "" && newAPIKey == "" {
+		return account
+	}
+	clone := *account
+	clone.Credentials = make(map[string]any, len(account.Credentials)+2)
+	for k, v := range account.Credentials {
+		clone.Credentials[k] = v
+	}
+	if newBaseURL != "" {
+		clone.Credentials["base_url"] = newBaseURL
+	}
+	if newAPIKey != "" {
+		clone.Credentials["api_key"] = newAPIKey
+	}
+	return &clone
 }

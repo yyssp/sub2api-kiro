@@ -475,6 +475,7 @@
               :model-mappings="modelMappings"
               :platform="account?.platform || 'anthropic'"
               :account-id="account?.id"
+              :sync-overrides="syncUpstreamOverrides"
               :show-sync-button="account.platform !== 'grok' || !account.id"
               @upstream-sync-finished="refreshGrokDiagnostics"
             />
@@ -1143,6 +1144,7 @@
             :model-mappings="modelMappings"
             :platform="account?.platform || 'anthropic'"
             :account-id="account?.id"
+            :sync-overrides="syncUpstreamOverrides"
             :show-sync-button="account.platform !== 'grok' || !account.id"
             @upstream-sync-finished="refreshGrokDiagnostics"
           />
@@ -1410,7 +1412,7 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :model-mappings="modelMappings" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+            <ModelWhitelistSelector v-model="allowedModels" :model-mappings="modelMappings" :platform="account?.platform || 'anthropic'" :account-id="account?.id" :sync-overrides="syncUpstreamOverrides" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -3577,6 +3579,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 
 import { adminAPI } from '@/api/admin'
+import type { SyncUpstreamOverrides } from '@/api/admin/accounts'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
@@ -3873,6 +3876,25 @@ const kiroCreditUnitPriceUsd = ref(0)
 const isCNApiKeyAccount = computed(
   () => props.account?.type === 'apikey' && isMultiProtocolApiKeyPlatform(props.account.platform)
 )
+// 「获取上游模型」要用表单里尚未保存的 base_url / API Key，而不是库里的旧值。
+// 只对 apikey / upstream 账号生效：它们才有可编辑的连接参数；OAuth 等类型的
+// editBaseUrl 只是平台默认值占位，传过去反而会覆盖真实凭证。
+// 只带「确实改过」的字段：base_url 与已保存值（空则为平台默认）相同就不带；
+// API Key 留空表示「不修改」也不带。什么都没改时返回 undefined，请求保持原样。
+const syncUpstreamOverrides = computed<SyncUpstreamOverrides | undefined>(() => {
+  const account = props.account
+  if (!account || (account.type !== 'apikey' && account.type !== 'upstream')) return undefined
+  const baseUrl = (isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
+    ? editAdaptiveBaseUrls.value.chat_completions
+    : editBaseUrl.value).trim()
+  const savedBaseUrl = String((account.credentials as Record<string, unknown> | undefined)?.base_url || '').trim() ||
+    (account.type === 'apikey' ? defaultBaseUrl.value : '')
+  const overrides: SyncUpstreamOverrides = {}
+  if (baseUrl && baseUrl !== savedBaseUrl) overrides.base_url = baseUrl
+  const apiKey = editApiKey.value.trim()
+  if (apiKey) overrides.api_key = apiKey
+  return Object.keys(overrides).length > 0 ? overrides : undefined
+})
 // 前端没有专属界面、走通用表单的多协议供应商：模式 / 协议 / 默认端点来自 profile。
 const isGenericMultiProtocolAccount = computed(
   () =>
