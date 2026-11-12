@@ -132,7 +132,6 @@ func provideCleanup(
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	opencodeGoUsage *service.OpenCodeGoUsageService,
 	cursorQuotaRefresh *service.CursorQuotaRefreshService,
-	cursorModelCatalog *service.CursorModelCatalogService,
 	auditLog *service.AuditLogService,
 	openAIAutoReset *service.OpenAIQuotaAutoResetService,
 	promptAudit *securityaudit.PromptService,
@@ -426,12 +425,6 @@ func provideCleanup(
 			{"CursorQuotaRefreshService", func() error {
 				if cursorQuotaRefresh != nil {
 					cursorQuotaRefresh.Stop()
-				}
-				return nil
-			}},
-			{"CursorModelCatalogService", func() error {
-				if cursorModelCatalog != nil {
-					cursorModelCatalog.Stop()
 				}
 				return nil
 			}},
