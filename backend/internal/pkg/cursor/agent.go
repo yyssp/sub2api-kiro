@@ -41,6 +41,22 @@ var agentDebug = os.Getenv("CURSOR_AGENT_DEBUG") != "" || os.Getenv("CURSOR_UPST
 // 传输和运行上下文，绝不作为下游模型正文或伪造的模型输出。
 var agentBidiHeartbeatInterval = 5 * time.Second
 
+// Run 流的静默判定窗口（含义见 consumeAgentResponse）。声明为变量只为测试缩短，
+// 生产代码不得修改。
+var (
+	// 连一个字节都收不到 = 传输已死。
+	agentLivenessGap = 45 * time.Second
+	// 出现过思考后的传输静默窗口：复杂思考块的帧间隔可达 1-2 分钟。
+	agentReasoningLivenessGap = 120 * time.Second
+	// 只有心跳、没有任何进展的上限。取官方 CLI 的 240s（hofund 设计文档）：
+	// 长思考期间上游只发心跳是正常的，过短会误杀；opencodex 的 90s 偏激进。
+	agentProgressGap = 240 * time.Second
+	// 首个工具调用就绪后再等这么久收齐同一批并行调用。上游没有批次结束标记，
+	// 只能靠 tool_requests_listed(27) 的计数或静默窗口判断（cpa-cursor
+	// toolCallQuiet=1s；7iook 实测同批 exec_mcp 间隔约 270ms）。
+	agentToolBatchQuiet = time.Second
+)
+
 // ErrUndeclaredUpstreamTool 表示 Cursor 上游要求执行本请求未声明的工具。
 // 这不是账号故障，继续等待或换号均不能使下游客户端接受该工具调用。
 var ErrUndeclaredUpstreamTool = errors.New("cursor upstream requested an undeclared tool")
@@ -108,6 +124,8 @@ type AgentRequest struct {
 	ReadFileContent map[string]string
 	Images          []ImageAttachment
 	Documents       []DocumentAttachment
+	// OnUpstreamUsage 在收到 turn_ended 时回调上游自报的用量（仅对账用，见 UpstreamUsage）。
+	OnUpstreamUsage func(UpstreamUsage)
 }
 
 type agentTraceContextKey struct{}
@@ -370,27 +388,39 @@ func buildAgentClientMessage(model string, in AgentRequest) []byte {
 	// 工具也发送空 wrapper，阻止 Cursor 默认注入 shell/grep/glob 等原生工具。
 	mcpTools := []byte(nil)
 	for _, tool := range in.Tools {
-		wireName := toolWireName(tool)
-		schema := tool.InputSchema
-		if strings.TrimSpace(schema) == "" {
-			schema = `{"type":"object","properties":{}}`
-		}
-		def := protoString(1, wireName)
-		// Claude Code 的客户端工具由本地网关执行，使用 Cursor agent.v1
-		// 约定的 provider_identifier，不能伪装成 Anthropic 服务端工具。
-		def = append(def, protoString(4, "claude-local")...)
-		def = append(def, protoString(5, wireName)...)
-		def = append(def, protoString(2, tool.Description)...)
-		// agent.v1.McpToolDefinition.input_schema 是
-		// google.protobuf.Value(Struct)，不是 JSON 字符串。错误地放到
-		// field 6 会使 Cursor 忽略 MCP 目录，随后生成未声明的 native
-		// read/shell，Claude Code 只能看到 mid-response 错误。
-		def = append(def, protoMessage(3, encodeMCPInputSchema(schema))...)
-		mcpTools = append(mcpTools, protoMessage(1, def)...)
+		mcpTools = append(mcpTools, protoMessage(1, encodeMCPToolDefinition(tool))...)
 	}
 	run = append(run, protoMessage(4, mcpTools)...)
 	run = append(run, protoMessage(9, requested)...)
+	if len(in.Images) > 0 {
+		// client_supports_inline_images(19)：上游只有在客户端声明支持时才读取
+		// SelectedImage.data（KonghaYao agent_json.ts:193、YeautyYE client.rs:2305、
+		// greenSheep chat_build.go:111 均在带图时置 true）。
+		run = append(run, protoBool(19, true)...)
+	}
 	return protoMessage(1, run)
+}
+
+// encodeMCPToolDefinition 编码一个 agent.v1.McpToolDefinition。run_request 的
+// mcp_tools(4) 与 mcp_state 应答共用它：两处报告的工具目录必须逐字节一致。
+func encodeMCPToolDefinition(tool ToolDef) []byte {
+	wireName := toolWireName(tool)
+	schema := tool.InputSchema
+	if strings.TrimSpace(schema) == "" {
+		schema = `{"type":"object","properties":{}}`
+	}
+	def := protoString(1, wireName)
+	// Claude Code 的客户端工具由本地网关执行，使用 Cursor agent.v1
+	// 约定的 provider_identifier，不能伪装成 Anthropic 服务端工具。
+	def = append(def, protoString(4, mcpProviderIdentifier)...)
+	def = append(def, protoString(5, wireName)...)
+	def = append(def, protoString(2, tool.Description)...)
+	// agent.v1.McpToolDefinition.input_schema 是
+	// google.protobuf.Value(Struct)，不是 JSON 字符串。错误地放到
+	// field 6 会使 Cursor 忽略 MCP 目录，随后生成未声明的 native
+	// read/shell，Claude Code 只能看到 mid-response 错误。
+	def = append(def, protoMessage(3, encodeMCPInputSchema(schema))...)
+	return def
 }
 
 // encodeMCPInputSchema 将 Anthropic/OpenAI 的 JSON Schema 编码为
@@ -477,6 +507,10 @@ func encodeProtoStruct(value map[string]any) []byte {
 // encodeSelectedImages 按 agent.v1.UserMessage.selected_context.selected_images 编码图片。
 // 线协议字段与当前 Cursor agent.v1 schema 对齐：uuid=2、path=3、dimension=4、
 // mime_type=7、data=8 bytes。不要改成其他版本的 data 字段，也不要把图片历史轮重新发送。
+//
+// ⚠️ 带 data 时 path 必须留空，不能合成：官方 CLI 在内联 data 时不填 path，
+// 合成的 path 会让上游去查一个不存在的资源并报 "Image not found [internal]"
+// （YeautyYE request.rs:2078-2082 的实测结论）。只有客户端自己给了真实 path 才透传。
 func encodeSelectedImages(images []ImageAttachment) []byte {
 	var selectedContext []byte
 	for _, image := range images {
@@ -488,9 +522,6 @@ func encodeSelectedImages(images []ImageAttachment) []byte {
 			uuid = attachmentUUID(image.Data, image.Path)
 		}
 		path := strings.TrimSpace(image.Path)
-		if path == "" {
-			path = "claude-image-" + uuid + ".img"
-		}
 		mimeType := strings.TrimSpace(image.MIMEType)
 		if mimeType == "" {
 			mimeType = http.DetectContentType(image.Data)
@@ -664,21 +695,23 @@ func (c *Client) runAgentSSEStream(ctx context.Context, agentHTTP *http.Client, 
 		return false, fmt.Errorf("RunSSE HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
+	// BidiAppend 必须串行：社区实测并发 append 会让本轮卡死（hofund 设计文档）。
+	// consumeAgentResponse 在读循环里同步调用 send，天然串行。
 	var seqno uint64 = 1
-	sendContext := func(execParts []pbPart) error {
-		if err := c.bidiAppend(ctx, agentHTTP, a, requestID, seqno, clientType, buildRequestContextResult(execParts)); err != nil {
+	send := func(message []byte) error {
+		if err := c.bidiAppend(ctx, agentHTTP, a, requestID, seqno, clientType, message); err != nil {
 			return err
 		}
 		seqno++
 		return nil
 	}
-	return c.consumeAgentResponse(ctx, resp, requestID, traceID, reqStart, toolByLower, in.ReadFileContent,
-		sendContext, onText, onReasoning, onTool)
+	return c.consumeAgentResponse(ctx, resp, requestID, traceID, reqStart, toolByLower, in,
+		newAgentServerResponder(in.Tools), send, onText, onReasoning, onTool)
 }
 
 // runAgentBidiStream 使用 AgentService/Run 的长连接双向流。每条客户端帧通过
-// 同一个 HTTP 请求体发送：首帧是 run_request，随后按需回 request_context_result，
-// 并周期性发送 tag 7 client_heartbeat。该实现不混用 BidiAppend / RunSSE。
+// 同一个 HTTP 请求体发送：首帧是 run_request，随后应答服务端的 exec/kv/query
+// 请求（见 agent_server_requests.go），并周期性发送 tag 7 client_heartbeat。该实现不混用 BidiAppend / RunSSE。
 func (c *Client) runAgentBidiStream(ctx context.Context, agentHTTP *http.Client, a *Account, in AgentRequest,
 	model, clientType, requestID, traceID string, reqStart time.Time, toolByLower map[string]ToolDef,
 	onText func(string), onReasoning func(string), onTool func(ToolCall)) (bool, error) {
@@ -783,11 +816,8 @@ func (c *Client) runAgentBidiStream(ctx context.Context, agentHTTP *http.Client,
 		}
 	}()
 
-	sendContext := func(execParts []pbPart) error {
-		return queueFrame(buildRequestContextResult(execParts))
-	}
-	return c.consumeAgentResponse(ctx, resp, requestID, traceID, reqStart, toolByLower, in.ReadFileContent,
-		sendContext, onText, onReasoning, onTool)
+	return c.consumeAgentResponse(ctx, resp, requestID, traceID, reqStart, toolByLower, in,
+		newAgentServerResponder(in.Tools), queueFrame, onText, onReasoning, onTool)
 }
 
 func shouldFallbackAgentRun(err error) bool {
@@ -830,9 +860,15 @@ type agentFrameMessage struct {
 	err     error
 }
 
+// consumeAgentResponse 读取一次 agent.v1 Run 的服务端流，直到本轮明确结束。
+//
+// 本轮只承认三种结束信号：interaction_update.turn_ended(14)、Connect trailer、
+// 工具调用就绪（tool-call-ready）。其余任何形式的「停了」都是异常，见下方计时器。
+//
+// send 必须同步、按调用顺序发出客户端帧：SSE 回退路径的 BidiAppend 不允许并发。
 func (c *Client) consumeAgentResponse(ctx context.Context, resp *http.Response, requestID, traceID string,
-	reqStart time.Time, toolByLower map[string]ToolDef, readFileContent map[string]string,
-	sendContext func([]pbPart) error, onText func(string), onReasoning func(string), onTool func(ToolCall)) (bool, error) {
+	reqStart time.Time, toolByLower map[string]ToolDef, in AgentRequest, responder *agentServerResponder,
+	send func([]byte) error, onText func(string), onReasoning func(string), onTool func(ToolCall)) (bool, error) {
 	defer func() { _ = resp.Body.Close() }()
 	reader := NewStreamReader(resp.Body)
 	frames := make(chan agentFrameMessage, 16)
@@ -860,18 +896,40 @@ func (c *Client) consumeAgentResponse(ctx context.Context, resp *http.Response, 
 	if c.firstToken > 0 {
 		firstTokenHard = c.firstToken
 	}
-	const silenceGap = 45 * time.Second // 完全静默(连帧都收不到)=死连接; 大上下文/reasoning 间隔需足够
-	const idleGap = 30 * time.Second    // 首字后静默这么久=轮次结束; coding agent 工具/文本间隔可达 10-20s
+	// 两类静默计时器，含义不同，不能合并：
+	//   - liveness：任何帧（含服务端心跳 interaction_update.heartbeat=13）都会重置。
+	//     触发 = 连接上一个字节都没有了，只能是传输层已经死掉。
+	//   - progress：只有真实进展（正文/思考/工具/服务端请求…）才重置，心跳不算。
+	//     触发 = 上游只剩心跳、不再推进。社区实证这种挂起真实存在
+	//     （opencodex 只有心跳 90s 判死，hofund 按官方 CLI 的 240s）。
+	//
+	// ⚠️ 这里曾把「首字后 30s 无帧」当作正常结束（idle-gap → end_turn）。那会把
+	// 断流/卡死伪装成一次完整回复：客户端拿到截断的答案和 message_stop，
+	// Claude Code 不会重试。现在正文后的任何停滞都按不完整流报错。
+	livenessGap := agentLivenessGap
+	reasoningLivenessGap := agentReasoningLivenessGap
+	progressGap := agentProgressGap
+	toolBatchQuiet := agentToolBatchQuiet
+
 	hard := time.NewTimer(hardTimeout)
 	defer hard.Stop()
 	firstByte := time.NewTimer(firstTokenHard)
 	defer firstByte.Stop()
-	activity := time.NewTimer(silenceGap)
-	defer activity.Stop()
+	liveness := time.NewTimer(livenessGap)
+	defer liveness.Stop()
+	progress := time.NewTimer(progressGap)
+	defer progress.Stop()
+	var toolQuiet *time.Timer
+	var toolQuietC <-chan time.Time
+	defer func() {
+		if toolQuiet != nil {
+			toolQuiet.Stop()
+		}
+	}()
 
-	contextSent := false
 	producedText := false
 	producedReasoning := false
+	listedToolCalls := 0
 	var toolAcc []ToolCall
 	var loopErr error
 	firstFrameMS := int64(-1)
@@ -879,8 +937,24 @@ func (c *Client) consumeAgentResponse(ctx context.Context, resp *http.Response, 
 	firstToolMS := int64(-1)
 	firstTextMS := int64(-1)
 
-	// 上下文握手必须"被动"响应: 等服务器发来 request_context_args 再回空上下文。
-	// (实测提前预发会导致上游永不产出→首字超时, 故不可预发。)
+	resetLiveness := func() {
+		if producedReasoning {
+			liveness.Reset(reasoningLivenessGap)
+		} else {
+			liveness.Reset(livenessGap)
+		}
+	}
+	sendAll := func(messages [][]byte) error {
+		for _, message := range messages {
+			if err := send(message); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// 服务端请求一律「被动」应答：等上游发来再回。
+	// (实测提前预发 request_context 会导致上游永不产出→首字超时, 故不可预发。)
 	startAt := time.Now()
 	exitReason := "eos"
 	frameCount := 0
@@ -901,31 +975,48 @@ loop:
 				loopErr = fmt.Errorf("首字超时: %v 内未产出任何内容", firstTokenHard)
 				break loop
 			}
-		case <-activity.C:
+		case <-toolQuietC:
+			exitReason = "tool-call-ready"
+			break loop
+		case <-liveness.C:
 			switch {
-			case producedText || len(toolAcc) > 0:
-				exitReason = "idle-gap" // 正常结束
+			case producedText:
+				exitReason = "stream-stalled"
+				loopErr = fmt.Errorf("%w: 正文后连接静默", ErrIncompleteUpstreamStream)
 			case producedReasoning:
 				exitReason = "reasoning-stall"
-				loopErr = fmt.Errorf("上游思考后静默: %v 内未产出正文", silenceGap)
+				loopErr = fmt.Errorf("上游思考后静默: %v 内无任何数据帧", reasoningLivenessGap)
 			default:
 				exitReason = "silence-timeout"
-				loopErr = fmt.Errorf("上游静默: %v 内无任何数据帧", silenceGap)
+				loopErr = fmt.Errorf("上游静默: %v 内无任何数据帧", livenessGap)
+			}
+			break loop
+		case <-progress.C:
+			switch {
+			case producedText:
+				exitReason = "heartbeat-only-stall"
+				loopErr = fmt.Errorf("%w: 正文后上游只剩心跳", ErrIncompleteUpstreamStream)
+			case producedReasoning:
+				exitReason = "reasoning-stall"
+				loopErr = fmt.Errorf("上游思考后停滞: %v 内只有心跳", progressGap)
+			default:
+				exitReason = "heartbeat-only-stall"
+				loopErr = fmt.Errorf("上游停滞: %v 内只有心跳", progressGap)
 			}
 			break loop
 		case fm := <-frames:
 			frameCount++
 			if fm.err != nil {
 				if errors.Is(fm.err, io.EOF) || errors.Is(fm.err, io.ErrUnexpectedEOF) {
-					// 只有 interaction_update.field14、tool-call-ready 或明确
-					// trailer 才能结束本轮。正文后的直接/截断 EOF 仍是不完整流，
-					// 不得按 idle-gap 或成功 end_turn 处理。
+					// 只有 turn_ended、tool-call-ready 或明确 trailer 才能结束本轮。
+					// 正文后的直接/截断 EOF 仍是不完整流，不得按成功 end_turn 处理。
 					loopErr = ErrIncompleteUpstreamStream
 				} else {
 					loopErr = fm.err
 				}
 				break loop
 			}
+			resetLiveness()
 			if firstFrameMS < 0 {
 				firstFrameMS = time.Since(reqStart).Milliseconds()
 				logAgentDebug(traceID, "+%dms first_frame flag=%d len=%d request_id=%s",
@@ -939,11 +1030,6 @@ loop:
 			}
 			parts, perr := pbParse(fm.payload)
 			if perr != nil {
-				if producedText || len(toolAcc) > 0 {
-					activity.Reset(idleGap)
-				} else {
-					activity.Reset(silenceGap)
-				}
 				continue
 			}
 			logAgentDebug(traceID, "+%s frame flag=%d len=%d pb=%s",
@@ -951,19 +1037,43 @@ loop:
 			for _, p := range parts {
 				switch p.Num {
 				case 2: // exec_server_message
+					progress.Reset(progressGap)
 					execParts, e := pbParse(p.Data)
 					if e != nil {
 						continue
 					}
-					if _, ok := pbFirst(execParts, 10); ok && !contextSent { // request_context_args
-						if err := sendContext(execParts); err != nil {
+					replies, kind := responder.handleExec(execParts)
+					if err := sendAll(replies); err != nil {
+						loopErr = err
+						break loop
+					}
+					logAgentDebug(traceID, "+%s exec answered kind=%s replies=%d",
+						time.Since(reqStart).Truncate(time.Millisecond), kind, len(replies))
+				case 4: // kv_server_message
+					progress.Reset(progressGap)
+					if reply, kind := responder.handleKV(p.Data); reply != nil {
+						if err := send(reply); err != nil {
 							loopErr = err
 							break loop
 						}
-						contextSent = true
-						logAgentDebug(traceID, "+%s context握手已回", time.Since(reqStart).Truncate(time.Millisecond))
+						logAgentDebug(traceID, "kv answered kind=%s", kind)
 					}
+				case 7: // interaction_query
+					progress.Reset(progressGap)
+					if reply, kind := responder.handleQuery(p.Data); reply != nil {
+						if err := send(reply); err != nil {
+							loopErr = err
+							break loop
+						}
+						logAgentDebug(traceID, "interaction_query rejected kind=%s", kind)
+					}
+				case 3, 5: // conversation_checkpoint_update / exec_server_control_message(abort)
+					progress.Reset(progressGap)
 				case 1: // interaction_update
+					if isInteractionHeartbeat(p.Data) {
+						continue
+					}
+					progress.Reset(progressGap)
 					if piece := parseInteractionText(p.Data); piece != "" {
 						if agentDebug && !producedText {
 							firstTextMS = time.Since(reqStart).Milliseconds()
@@ -980,11 +1090,12 @@ loop:
 							logAgentDebug(traceID, "+%dms first_reasoning text_bytes=%d", firstReasoningMS, len(rtext))
 						}
 						producedReasoning = true
+						resetLiveness()
 						if onReasoning != nil && rtext != "" {
 							onReasoning(rtext)
 						}
 					}
-					updates, toolErr := parseInteractionToolUpdatesWithContext(p.Data, toolByLower, traceID, readFileContent)
+					updates, toolErr := parseInteractionToolUpdatesWithContext(p.Data, toolByLower, traceID, in.ReadFileContent)
 					if toolErr != nil {
 						// 上游已进入等待工具结果的状态；把未声明工具交给下游会造成
 						// Claude Code 的 Unknown tool 循环，而静默忽略又会一直等待。
@@ -999,37 +1110,48 @@ loop:
 						logAgentDebug(traceID, "tool update name=%s completed=%v input_bytes=%d",
 							update.Call.Name, update.Completed, len(update.Call.Input))
 					}
-					if len(updates) > 0 && firstToolMS < 0 {
-						firstToolMS = time.Since(reqStart).Milliseconds()
-						logAgentDebug(traceID, "+%dms first_tool updates=%d", firstToolMS, len(updates))
-					}
-					// Cursor 在工具调用已可解析后会等待客户端执行工具；此时不再保证发送
-					// field14 的最终统计帧。继续等会让 Anthropic 下游永远收不到 tool_use。
-					// 已验证的 tool-start/tool-completed update 均携带完整 call id、名称和参数，
-					// 因此应立即结束本轮，让下游返回 tool_use 后开启下一轮。
 					if len(updates) > 0 {
+						if firstToolMS < 0 {
+							firstToolMS = time.Since(reqStart).Milliseconds()
+							logAgentDebug(traceID, "+%dms first_tool updates=%d", firstToolMS, len(updates))
+						}
+						// Cursor 在工具调用可解析后会等待客户端执行，不再保证发送 turn_ended。
+						// 已验证的 tool-start/tool-completed update 均携带完整 call id、名称和
+						// 参数，所以不等 turn_ended；只再给同批并行调用一个短窗口。
+						if toolQuiet == nil {
+							toolQuiet = time.NewTimer(toolBatchQuiet)
+							toolQuietC = toolQuiet.C
+						} else {
+							toolQuiet.Reset(toolBatchQuiet)
+						}
+					}
+					if n, ok := parseToolRequestsListed(p.Data); ok {
+						listedToolCalls = n
+					}
+					if listedToolCalls > 0 && len(toolAcc) >= listedToolCalls {
 						exitReason = "tool-call-ready"
 						break loop
 					}
-					if isInteractionFinal(p.Data) && (producedText || producedReasoning || len(toolAcc) > 0) {
-						exitReason = "final-usage"
+					if usage, ok := parseTurnEnded(p.Data); ok {
+						if in.OnUpstreamUsage != nil {
+							in.OnUpstreamUsage(usage)
+						}
+						if producedText || producedReasoning || len(toolAcc) > 0 {
+							exitReason = "turn-ended"
+						} else {
+							exitReason = "turn-ended-empty"
+							loopErr = fmt.Errorf("上游本轮已结束但未产出任何内容")
+						}
 						break loop
 					}
 				default:
 				}
 			}
-			if producedText || len(toolAcc) > 0 {
-				activity.Reset(idleGap)
-			} else if producedReasoning {
-				activity.Reset(120 * time.Second) // reasoning 阶段用更长窗口: 复杂思考块间隔可达 1-2 分钟
-			} else {
-				activity.Reset(silenceGap)
-			}
 		}
 	}
-	logAgentDebug(traceID, "exit reason=%s elapsed=%s frames=%d text=%v reasoning=%v tools=%d first_frame_ms=%d first_reasoning_ms=%d first_tool_ms=%d first_text_ms=%d err=%v",
+	logAgentDebug(traceID, "exit reason=%s elapsed=%s frames=%d text=%v reasoning=%v tools=%d listed=%d first_frame_ms=%d first_reasoning_ms=%d first_tool_ms=%d first_text_ms=%d err=%v",
 		exitReason, time.Since(startAt).Truncate(time.Millisecond), frameCount, producedText, producedReasoning,
-		len(toolAcc), firstFrameMS, firstReasoningMS, firstToolMS, firstTextMS, loopErr)
+		len(toolAcc), listedToolCalls, firstFrameMS, firstReasoningMS, firstToolMS, firstTextMS, loopErr)
 	for i := range toolAcc {
 		if onTool != nil {
 			onTool(toolAcc[i])
@@ -1040,7 +1162,10 @@ loop:
 
 // ---------- interaction_update 解析 ----------
 
-// parseInteractionText 取正文增量(field1 text_delta -> {1=text})
+// parseInteractionText 取正文增量(field1 text_delta -> {1=text, 2=is_server_notice})。
+//
+// ⚠️ is_server_notice=true 的是 Cursor 客户端 UI 公告（如 "Switched to …"），
+// 不是模型输出，混进正文会被下游当成助手回复的一部分（cpa-cursor response.go:46-48 丢弃）。
 func parseInteractionText(data []byte) string {
 	iu, err := pbParse(data)
 	if err != nil {
@@ -1048,6 +1173,9 @@ func parseInteractionText(data []byte) string {
 	}
 	if td, ok := pbFirst(iu, 1); ok {
 		if tdp, e := pbParse(td.Data); e == nil {
+			if notice, ok := pbFirst(tdp, 2); ok && notice.Wire == 0 && notice.Value != 0 {
+				return ""
+			}
 			if txt, ok := pbFirst(tdp, 1); ok && txt.Wire == 2 {
 				return string(txt.Data)
 			}
@@ -1056,15 +1184,109 @@ func parseInteractionText(data []byte) string {
 	return ""
 }
 
-// isInteractionFinal 识别 agent.v1 本轮结束统计帧。
-// 实测 Cursor 在正文完成后发送 interaction_update.field14，随后连接仍可能持续心跳。
-func isInteractionFinal(data []byte) bool {
+// isInteractionHeartbeat 判断 interaction_update 是否只是服务端心跳(13)。
+// message_started_at_ms(25) 是信封元数据，可能伴随任意更新出现，不算进展。
+func isInteractionHeartbeat(data []byte) bool {
 	iu, err := pbParse(data)
-	if err != nil {
+	if err != nil || len(iu) == 0 {
 		return false
 	}
-	_, ok := pbFirst(iu, 14)
-	return ok
+	heartbeat := false
+	for _, part := range iu {
+		switch part.Num {
+		case 13:
+			heartbeat = true
+		case 25:
+		default:
+			return false
+		}
+	}
+	return heartbeat
+}
+
+// parseToolRequestsListed 读取 tool_requests_listed(27){ call_count(1) }：
+// 上游在发出一批工具调用前宣告本批数量。
+func parseToolRequestsListed(data []byte) (int, bool) {
+	iu, err := pbParse(data)
+	if err != nil {
+		return 0, false
+	}
+	listed, ok := pbFirst(iu, 27)
+	if !ok || listed.Wire != 2 {
+		return 0, false
+	}
+	parts, err := pbParse(listed.Data)
+	if err != nil {
+		return 0, false
+	}
+	count, ok := pbFirst(parts, 1)
+	if !ok || count.Wire != 0 {
+		return 0, true
+	}
+	return int(count.Value), true
+}
+
+// UpstreamUsage 是 interaction_update.turn_ended(14) 携带的上游 token 计数。
+//
+// ⚠️ 只用于对账，不能直接计费：
+//   - 社区对口径互相矛盾——input 是否已含 cache_read（greenSheep 认为含，
+//     cpa-cursor 认为不含），只有真实账号对账才能定；
+//   - 一个 run 内的多个内部 step 会累加（raine 实测 27k 上下文报成 240k）；
+//   - input 恒含 Cursor 自带的约 11k agent 提示，计到用户头上不公平；
+//   - 等待工具结果的那一轮常为 0（KonghaYao 实测）。
+//
+// Present 区分「上游没给任何计数」与「给了 0」。
+type UpstreamUsage struct {
+	InputTokens      int64
+	OutputTokens     int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+	ReasoningTokens  int64
+	Present          bool
+}
+
+// parseTurnEnded 识别本轮结束帧 turn_ended(14) 并解析其中的用量：
+//
+//	TurnEndedUpdate{ input_tokens(1), output_tokens(2), cache_read_tokens(3),
+//	   cache_write_tokens(4), reasoning_tokens(5) }  // 均为 optional int64
+//
+// 实测 Cursor 在正文完成后发送 turn_ended，随后连接仍可能持续心跳。
+func parseTurnEnded(data []byte) (UpstreamUsage, bool) {
+	iu, err := pbParse(data)
+	if err != nil {
+		return UpstreamUsage{}, false
+	}
+	ended, ok := pbFirst(iu, 14)
+	if !ok {
+		return UpstreamUsage{}, false
+	}
+	var usage UpstreamUsage
+	if ended.Wire != 2 {
+		return usage, true
+	}
+	parts, err := pbParse(ended.Data)
+	if err != nil {
+		return usage, true
+	}
+	for _, part := range parts {
+		if part.Wire != 0 {
+			continue
+		}
+		value := int64(part.Value)
+		switch part.Num {
+		case 1:
+			usage.InputTokens, usage.Present = value, true
+		case 2:
+			usage.OutputTokens, usage.Present = value, true
+		case 3:
+			usage.CacheReadTokens, usage.Present = value, true
+		case 4:
+			usage.CacheWriteTokens, usage.Present = value, true
+		case 5:
+			usage.ReasoningTokens, usage.Present = value, true
+		}
+	}
+	return usage, true
 }
 
 // parseInteractionReasoning 判断是否携带思考(field4 -> {1=text}); ok=true 表示确有 reasoning 结构。

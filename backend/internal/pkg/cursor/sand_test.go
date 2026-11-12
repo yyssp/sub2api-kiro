@@ -662,3 +662,73 @@ func TestSandSurfaceUsesInferenceStream(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Sand 面的 InferenceStreamResponse 有自己的 oneof：thinking_part(9)、usage(3)/
+// extended_usage(5)、error(8)。曾经只认 text(1)/tool(2)：思考被整段丢弃，
+// 流内错误被静默跳过、随后的 trailer 让本轮「正常结束」。
+func TestSandStreamForwardsThinkingUsageAndStreamErrors(t *testing.T) {
+	serve := func(t *testing.T, frames ...[]byte) (string, string, *UpstreamUsage, bool, error) {
+		t.Helper()
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/connect+proto")
+			w.WriteHeader(http.StatusOK)
+			for _, frame := range frames {
+				_, _ = w.Write(frame)
+			}
+			_, _ = w.Write([]byte{0x02, 0, 0, 0, 0})
+		}))
+		t.Cleanup(server.Close)
+		ConfigureUpstream(server.URL, "")
+		ConfigureSandModels([]string{"cursor-grok-4.5-medium"})
+		t.Cleanup(func() {
+			ConfigureUpstream("", "")
+			ConfigureSandModels(nil)
+		})
+		client := NewClient()
+		client.shared = server.Client()
+		client.agentTimeout = 3 * time.Second
+		client.firstToken = 3 * time.Second
+		var text, thinking strings.Builder
+		var usage *UpstreamUsage
+		produced, err := client.RunAgentStream(context.Background(), &Account{AccessToken: "test-token"},
+			AgentRequest{Model: "cursor-grok-4.5-medium", Message: "hi",
+				OnUpstreamUsage: func(u UpstreamUsage) { usage = &u }},
+			func(s string) { _, _ = text.WriteString(s) },
+			func(s string) { _, _ = thinking.WriteString(s) }, nil)
+		return text.String(), thinking.String(), usage, produced, err
+	}
+
+	t.Run("thinking and extended usage", func(t *testing.T) {
+		thinkingPart := protoString(1, "let me think")
+		usage := pbField(1, 0, pbVarint(3672))
+		usage = append(usage, pbField(2, 0, pbVarint(91))...)
+		usage = append(usage, pbField(3, 0, pbVarint(3616))...)
+		text, thinking, got, produced, err := serve(t,
+			wrapFrame(protoMessage(9, thinkingPart)),
+			wrapFrame(protoMessage(1, protoString(1, "answer"))),
+			wrapFrame(protoMessage(5, usage)),
+		)
+		if err != nil || !produced || text != "answer" {
+			t.Fatalf("text=%q produced=%v err=%v", text, produced, err)
+		}
+		if thinking != "let me think" {
+			t.Fatalf("Sand thinking must reach onReasoning, got %q", thinking)
+		}
+		want := UpstreamUsage{InputTokens: 3672, OutputTokens: 91, CacheReadTokens: 3616, Present: true}
+		if got == nil || *got != want {
+			t.Fatalf("usage=%+v want %+v", got, want)
+		}
+	})
+
+	t.Run("in-stream error is a failure", func(t *testing.T) {
+		streamErr := protoString(1, "Grok Bot usage limit reached")
+		streamErr = append(streamErr, protoString(2, "resource_exhausted")...)
+		_, _, _, _, err := serve(t,
+			wrapFrame(protoMessage(1, protoString(1, "partial"))),
+			wrapFrame(protoMessage(8, streamErr)),
+		)
+		if err == nil || !strings.Contains(err.Error(), "usage limit reached") {
+			t.Fatalf("in-stream error(8) must fail the request with its message, got %v", err)
+		}
+	})
+}

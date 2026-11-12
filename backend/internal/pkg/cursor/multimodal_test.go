@@ -555,3 +555,39 @@ func TestBuildAgentClientMessageEncodesMCPInputSchemaAsProtoValue(t *testing.T) 
 		t.Fatalf("first schema map key=%q, want properties", key.Data)
 	}
 }
+
+// 内联图片不能合成 path（会触发 "Image not found"），并且必须声明
+// client_supports_inline_images(19)，否则上游不读 SelectedImage.data。
+func TestBuildAgentClientMessage_InlineImagesHaveNoSyntheticPathAndDeclareSupport(t *testing.T) {
+	wire := buildAgentClientMessage("claude-sonnet", AgentRequest{
+		Message: "look",
+		Images:  []ImageAttachment{{Data: testPNG100x100(), MIMEType: "image/png"}},
+	})
+	outer, _ := pbParse(wire)
+	run, _ := pbFirst(outer, 1)
+	runParts, _ := pbParse(run.Data)
+	if flag, ok := pbFirst(runParts, 19); !ok || flag.Value != 1 {
+		t.Fatal("run_request with images must set client_supports_inline_images(19)=true")
+	}
+	action, _ := pbFirst(runParts, 2)
+	actionParts, _ := pbParse(action.Data)
+	userAction, _ := pbFirst(actionParts, 1)
+	userActionParts, _ := pbParse(userAction.Data)
+	user, _ := pbFirst(userActionParts, 1)
+	userParts, _ := pbParse(user.Data)
+	selected, _ := pbFirst(userParts, 3)
+	selectedParts, _ := pbParse(selected.Data)
+	image, _ := pbFirst(selectedParts, 1)
+	imageParts, _ := pbParse(image.Data)
+	if path, ok := pbFirst(imageParts, 3); ok {
+		t.Fatalf("inline image must not carry a synthetic path, got %q", path.Data)
+	}
+
+	plain := buildAgentClientMessage("claude-sonnet", AgentRequest{Message: "no images"})
+	outer, _ = pbParse(plain)
+	run, _ = pbFirst(outer, 1)
+	runParts, _ = pbParse(run.Data)
+	if _, ok := pbFirst(runParts, 19); ok {
+		t.Fatal("client_supports_inline_images must only be set when images are attached")
+	}
+}

@@ -59,8 +59,7 @@ func TestPreStreamHeartbeat_KeepsWritingUntilFirstEvent(t *testing.T) {
 	}, 2*time.Second, 5*time.Millisecond, "心跳没有持续续写，长首字等待会被反代掐断")
 }
 
-// 首个真实事件开始推送后，心跳必须停：此后流本身在持续产生字节，
-// 继续插注释只是噪音。
+// 首个真实事件开始推送后，不再写注释：注释只服务于「还能换号」的阶段。
 func TestPreStreamHeartbeat_StopsOnceStreamStarted(t *testing.T) {
 	var buf syncBuffer
 	e := newCursorAnthropicEmitter(func(string, any) error { return nil }, "claude-sonnet-4.5", time.Now())
@@ -119,4 +118,58 @@ func TestPreStreamHeartbeat_DisabledWhenIntervalNonPositive(t *testing.T) {
 	defer stop()
 
 	require.Empty(t, buf.String())
+}
+
+// 流开始后若长时间没有事件（正文之后上游只发心跳的长思考），必须补 ping，
+// 否则下游最长 240s 收不到字节，先被反代按空闲掐断。
+func TestStreamHeartbeat_PingsWhenIdleAfterStart(t *testing.T) {
+	var mu sync.Mutex
+	var events []string
+	e := newCursorAnthropicEmitter(func(event string, _ any) error {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, event)
+		return nil
+	}, "claude-sonnet-4.5", time.Now())
+
+	var buf syncBuffer
+	stop := e.startPreStreamHeartbeat(context.Background(), &buf, 20*time.Millisecond)
+	defer stop()
+	e.OnText("hello")
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, ev := range events {
+			if ev == "ping" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 10*time.Millisecond, "流开始后空闲时没有补 ping")
+}
+
+// 持续出字时不插 ping：ping 只用于真正的空闲期。
+func TestStreamHeartbeat_NoPingWhileStreamIsBusy(t *testing.T) {
+	var mu sync.Mutex
+	pings := 0
+	e := newCursorAnthropicEmitter(func(event string, _ any) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if event == "ping" {
+			pings++
+		}
+		return nil
+	}, "claude-sonnet-4.5", time.Now())
+
+	var buf syncBuffer
+	stop := e.startPreStreamHeartbeat(context.Background(), &buf, 80*time.Millisecond)
+	defer stop()
+	for i := 0; i < 30; i++ {
+		e.OnText("x")
+		time.Sleep(10 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	require.Zero(t, pings, "持续出字期间不应插入 ping")
 }

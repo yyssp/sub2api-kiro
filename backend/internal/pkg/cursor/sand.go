@@ -328,9 +328,14 @@ func sandCatalogModelID(model string) string {
 
 type sandResponseEvent struct {
 	Text      string
+	Thinking  string
 	Model     string
 	RequestID string
 	ToolParts []sandToolPart
+	// Usage 来自 usage(3) / extended_usage(5)，只用于对账（见 UpstreamUsage）。
+	Usage UpstreamUsage
+	// StreamError 来自 error(8)：上游在流内报错，必须当失败处理。
+	StreamError string
 }
 
 type sandToolPart struct {
@@ -400,6 +405,60 @@ func parseSandInferenceResponse(data []byte) (sandResponseEvent, error) {
 			if requestID, ok := pbFirst(nested, 1); ok && requestID.Wire == 2 {
 				event.RequestID = string(requestID.Data)
 			}
+		case 9: // thinking_part{ text(1), signature(2)?, is_final(3) }
+			nested, nestedErr := pbParse(part.Data)
+			if nestedErr != nil {
+				continue
+			}
+			if text, ok := pbFirst(nested, 1); ok && text.Wire == 2 {
+				event.Thinking += string(text.Data)
+			}
+		case 3, 5:
+			// usage(3){ prompt_tokens(1), completion_tokens(2) }
+			// extended_usage(5){ input(1), output(2), cache_read(3), cache_write(4) }
+			nested, nestedErr := pbParse(part.Data)
+			if nestedErr != nil {
+				continue
+			}
+			for _, field := range nested {
+				if field.Wire != 0 {
+					continue
+				}
+				value := int64(field.Value)
+				switch field.Num {
+				case 1:
+					event.Usage.InputTokens, event.Usage.Present = value, true
+				case 2:
+					event.Usage.OutputTokens, event.Usage.Present = value, true
+				case 3:
+					if part.Num == 5 {
+						event.Usage.CacheReadTokens, event.Usage.Present = value, true
+					}
+				case 4:
+					if part.Num == 5 {
+						event.Usage.CacheWriteTokens, event.Usage.Present = value, true
+					}
+				}
+			}
+		case 8: // error{ message(1), code(2), is_input_token_limit_error(3), is_output_token_limit_error(4) }
+			nested, nestedErr := pbParse(part.Data)
+			if nestedErr != nil {
+				event.StreamError = "InferenceService/Stream: malformed stream error"
+				continue
+			}
+			var message, code string
+			if m, ok := pbFirst(nested, 1); ok && m.Wire == 2 {
+				message = string(m.Data)
+			}
+			if c, ok := pbFirst(nested, 2); ok && c.Wire == 2 {
+				code = string(c.Data)
+			}
+			detail := strings.TrimSpace(strings.Join([]string{code, message}, ": "))
+			detail = strings.Trim(detail, ": ")
+			if detail == "" {
+				detail = "upstream stream error"
+			}
+			event.StreamError = "InferenceService/Stream: " + detail
 		}
 	}
 	return event, nil
@@ -471,7 +530,6 @@ func (c *Client) runSandStream(ctx context.Context, agentHTTP *http.Client, a *A
 	model, requestID, traceID string, reqStart time.Time, onText func(string),
 	onReasoning func(string), onTool func(ToolCall)) (bool, error) {
 	_ = requestID
-	_ = onReasoning
 	body := wrapFrame(buildSandInferenceRequest(model, in, requestID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cursorAPIURL(sandStreamURL), bytes.NewReader(body))
 	if err != nil {
@@ -546,6 +604,7 @@ func (c *Client) runSandStream(ctx context.Context, agentHTTP *http.Client, a *A
 	}()
 
 	produced := false
+	sawThinking := false
 	var toolParts []sandToolPart
 	firstC := first.C
 loop:
@@ -559,7 +618,8 @@ loop:
 			return produced, fmt.Errorf("上游静默: %v 内无任何数据帧", silenceGap)
 		case firstEvent := <-firstC:
 			_ = firstEvent
-			if !produced {
+			// 与 AgentService 路径同口径：思考也算「上游已在干活」，长思考不能被首字超时误杀。
+			if !produced && !sawThinking {
 				return false, fmt.Errorf("首字超时: %v 内未产出任何内容", firstTokenTimeout)
 			}
 		case result := <-frameCh:
@@ -579,6 +639,22 @@ loop:
 			if parseErr != nil {
 				activity.Reset(silenceGap)
 				continue
+			}
+			if event.StreamError != "" {
+				// ⚠️ 流内 error(8) 曾被当作未知分支静默跳过，随后的 trailer 让本轮
+				// 「正常结束」——上游明确报错的请求被当成功返回半截或空内容。
+				return produced, sandUpstreamError(event.StreamError)
+			}
+			if event.Usage.Present && in.OnUpstreamUsage != nil {
+				in.OnUpstreamUsage(event.Usage)
+			}
+			if event.Thinking != "" {
+				// 思考不算「产出」：只有思考没有正文/工具的轮次仍按空响应处理，
+				// 与 AgentService 路径口径一致。思考计入输出计费由下游 emitter 负责。
+				sawThinking = true
+				if onReasoning != nil {
+					onReasoning(event.Thinking)
+				}
 			}
 			if event.Text != "" {
 				produced = true

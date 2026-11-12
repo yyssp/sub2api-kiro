@@ -192,17 +192,24 @@ type cursorAnthropicEmitter struct {
 
 	firstTokenAt time.Time
 	start        time.Time
+	// lastEventAt 是最近一次写出 SSE 事件的时刻，心跳据此只在真正空闲时补 ping。
+	lastEventAt time.Time
 }
 
 func newCursorAnthropicEmitter(write func(string, any) error, model string, start time.Time) *cursorAnthropicEmitter {
-	return &cursorAnthropicEmitter{
-		write:      write,
+	e := &cursorAnthropicEmitter{
 		model:      model,
 		msgID:      fmt.Sprintf("msg_%d", time.Now().UnixNano()),
 		blockIdx:   -1,
 		stopReason: "end_turn",
 		start:      start,
 	}
+	// 所有事件都经 e.write 写出且调用方均持有 e.mu，在这里统一记时间即可。
+	e.write = func(event string, data any) error {
+		e.lastEventAt = time.Now()
+		return write(event, data)
+	}
+	return e
 }
 
 // cursorUsageTextCap 是为计费缓冲的输出原文上限（字节）。
@@ -240,19 +247,25 @@ func trimToRuneBoundary(s string, n int) int {
 	return n
 }
 
-// cursorSSEHeartbeatInterval 是首字到达前的 SSE 保活间隔。
+// cursorSSEHeartbeatInterval 是下游 SSE 保活间隔。
 // 取 15s：远小于反代常见的 100s 空闲窗口，也不至于把日志刷爆。
 const cursorSSEHeartbeatInterval = 15 * time.Second
 
-// startPreStreamHeartbeat 在首个真实事件到达之前周期性写入 SSE 注释行保活，
-// 返回停止函数（幂等，必须在 RunAgentStream 返回后立即调用）。
+// startPreStreamHeartbeat 在整条流期间保活下游连接，返回停止函数（幂等，必须在
+// RunAgentStream 返回后立即调用）。
+//
+// 两个阶段写的东西不同：
+//   - 首个真实事件之前：SSE 注释行（": processing"）。注释不是事件，handler 判断
+//     「能否换号」只看是否推出过语义内容，注释不影响换号。
+//   - 首个真实事件之后：Anthropic 标准的 ping 事件，且只在已空闲满一个间隔时才补。
+//     协议层判定本轮结束只认 turn_ended / trailer / 工具就绪，正文之后上游可能
+//     长时间只发心跳（长思考），最长要等 240s 才判停滞；这段时间下游一个字节都
+//     收不到的话，会先被反代按 100s 空闲掐断。ping 是官方 API 本就会发的事件，
+//     SDK 与 Claude Code 都会忽略它。
 //
 // ⚠️ 必须和内容事件共用 e.mu：心跳跑在独立 goroutine 上，与 OnText/OnReasoning
 // 并发写同一个 http.ResponseWriter。不加锁会把注释行插进某个 data 帧中间，
 // 产生客户端无法解析的半截事件。
-//
-// ⚠️ 首个真实事件发出后就不再写心跳：此后流本身就在持续产生字节，
-// 继续插注释只是噪音；ensureStarted 置 started 即为分界。
 func (e *cursorAnthropicEmitter) startPreStreamHeartbeat(
 	ctx context.Context, w io.Writer, interval time.Duration,
 ) func() {
@@ -284,15 +297,18 @@ func (e *cursorAnthropicEmitter) startPreStreamHeartbeat(
 				return
 			case <-ticker.C:
 				e.mu.Lock()
+				var err error
 				if e.started {
-					// 真实事件已经开始推送，心跳完成使命。
-					e.mu.Unlock()
-					return
-				}
-				_, err := io.WriteString(w, ": processing\n\n")
-				if err == nil {
-					if f, ok := w.(http.Flusher); ok {
-						f.Flush()
+					// 流已开始：只有真正空闲才补 ping，持续出字时不插任何东西。
+					if time.Since(e.lastEventAt) >= interval {
+						err = e.write("ping", map[string]any{"type": "ping"})
+					}
+				} else {
+					_, err = io.WriteString(w, ": processing\n\n")
+					if err == nil {
+						if f, ok := w.(http.Flusher); ok {
+							f.Flush()
+						}
 					}
 				}
 				e.mu.Unlock()
@@ -578,6 +594,26 @@ func (s *GatewayService) forwardCursorMessages(ctx context.Context, c *gin.Conte
 	agentReq.TraceID = cursorTraceIDFromContext(ctx)
 
 	inputTokens := estimateCursorInputTokens(agentReq)
+
+	// 上游 turn_ended 自报的用量只记日志对账，不进计费：口径未定（input 是否含
+	// cache_read 社区说法相反）、多 step 会累加、且含 Cursor 自带的约 11k 提示。
+	// 先攒够真实样本、确认口径后再决定是否采信（见 cursor.UpstreamUsage）。
+	agentReq.OnUpstreamUsage = func(u cursor.UpstreamUsage) {
+		if !u.Present {
+			return
+		}
+		logger.L().Info("cursor: upstream turn usage (reconciliation only)",
+			zap.Int64("account_id", account.ID),
+			zap.String("upstream_model", agentReq.Model),
+			zap.Int("estimated_input_tokens", inputTokens),
+			zap.Int64("upstream_input_tokens", u.InputTokens),
+			zap.Int64("upstream_output_tokens", u.OutputTokens),
+			zap.Int64("upstream_cache_read_tokens", u.CacheReadTokens),
+			zap.Int64("upstream_cache_write_tokens", u.CacheWriteTokens),
+			zap.Int64("upstream_reasoning_tokens", u.ReasoningTokens),
+		)
+	}
+
 	cachePlan := prepareCachePlanForContext(
 		ctx, c, account, parsed.Group, body, mappedModel,
 		"anthropic_messages", inputTokens,
