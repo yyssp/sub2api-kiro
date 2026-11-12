@@ -18,7 +18,28 @@ const (
 	// cursorErrorProtocol 是终端协议错误：请求的协议形状本身不可服务。
 	// 既不是账号故障，也不可重试——换号只会把同一个坏请求打给整个号池。
 	cursorErrorProtocol = "protocol_error"
+	// cursorErrorOutdatedClient 是网关配置的 Cursor 客户端版本被上游整体拒绝。
+	// 号池里每个账号都会得到同样的结果：不换号、不写任何账号状态，只能由
+	// 管理员更新 CURSOR_CLIENT_VERSION。
+	cursorErrorOutdatedClient = "outdated_client"
+	// cursorErrorUserRateLimit 是账号自身的用户级/套餐级限流：该账号短暂冷却后
+	// 自动恢复，不是额度耗尽（不标桶），也不是号池瞬时故障（不同号重试）。
+	cursorErrorUserRateLimit = "user_rate_limited"
+	// cursorErrorRegionBlocked 是账号出口地区被上游拒绝：换一个出口不同的账号
+	// 可能就能服务，该账号对该模型冷却，提示检查代理出口。
+	cursorErrorRegionBlocked = "region_blocked"
 )
+
+// cursorOutdatedClientMessage 是版本过旧时对外的固定文案。
+//
+// ⚠️ 不透传上游原文：上游原文是写给桌面端用户的「请升级 Cursor」，对网关的
+// 调用方毫无意义；真正需要动作的是网关管理员。
+const cursorOutdatedClientMessage = "Cursor upstream rejected the gateway's client version; " +
+	"the administrator must update CURSOR_CLIENT_VERSION"
+
+// cursorRegionBlockedMessage 是地区封锁时对外的固定文案。
+const cursorRegionBlockedMessage = "Cursor upstream rejected this account's network region; " +
+	"check the egress region of the account's proxy"
 
 // cursorErrorClassification 是一次 Cursor 上游失败的归类结果。
 //
@@ -30,6 +51,12 @@ const (
 //	kind=ErrQuota               → 429 rate_limit_error
 //	kind=ErrAuth                → 503 api_error
 //	kind=ErrTransient           → 503 api_error
+//
+// 后续按真实上游错误码补充的三类（不在原五条断言之内）：
+//
+//	outdated_client   → 502 api_error（固定文案，不换号）
+//	user_rate_limited → 429 rate_limit_error（账号冷却 + 换号）
+//	region_blocked    → 403 permission_error（账号×模型冷却 + 换号）
 type cursorErrorClassification struct {
 	Category   string
 	StatusCode int
@@ -42,6 +69,11 @@ type cursorErrorClassification struct {
 	// Terminal 表示这是终端协议错误：不是账号问题，换号重试无意义。
 	// 调度层据此跳过 failover，并且不得把它计入账号失败。
 	Terminal bool
+	// CooldownModel 是需要按「账号 × 模型」冷却时的模型键（目前只有地区封锁使用）。
+	// 取值为 forwardCursorMessages 传入的 mappedModel，即账号级映射之后的模型名——
+	// 与选号时 modelRateLimitKeysForRequest 的 GetMappedModel(requestedModel) 同一口径，
+	// 写进去的冷却才会被选号读到。
+	CooldownModel string
 }
 
 // classifyCursorRunError 是 RunAgentStream 返回错误的归类入口。
@@ -101,6 +133,21 @@ func classifyCursorErrorForRequest(model string, tools []cursor.ToolDef, text st
 	raw := strings.TrimSpace(text)
 	trimmed := sanitizeUpstreamErrorMessage(raw)
 
+	// 0) 客户端版本过旧：必须先于一切判定。
+	//
+	// 上游借用 ..._RATE_LIMIT 错误码承载它，正文还可能带 "usage" 一类措辞，
+	// 落到后面任何一个分支都是错的：判成限流会换号把整个号池烧一遍，判成额度
+	// 会把健康账号的桶标满。号池里每个账号结果都一样，这是网关自身的配置问题。
+	if cursor.IsOutdatedClientErr(raw) {
+		return cursorErrorClassification{
+			Category:   cursorErrorOutdatedClient,
+			StatusCode: http.StatusBadGateway,
+			ErrorType:  "api_error",
+			Message:    cursorOutdatedClientMessage,
+			Kind:       cursor.ErrTransient,
+		}
+	}
+
 	// 1) 模型不可用：换模型可恢复，不得计入额度。
 	if cursor.IsBadModelErr(raw) {
 		return cursorErrorClassification{
@@ -121,6 +168,34 @@ func classifyCursorErrorForRequest(model string, tools []cursor.ToolDef, text st
 			ErrorType:  "invalid_request_error",
 			Message:    trimmed,
 			Kind:       cursor.ErrTransient,
+		}
+	}
+
+	// 3) 用户级/套餐级限流：必须先于额度关键词。
+	//
+	// ERROR_PRO_USER_RATE_LIMIT_EXCEEDED 的正文带 "exceeded your usage limit"，
+	// 落到额度分支会把桶永久标满——而它只是一个会自动结束的限流窗口。
+	// 处置是「该账号短暂冷却 + 换号」，见 cursorUserRateLimitCooldown。
+	if cursor.IsUserRateLimitErr(raw) {
+		return cursorErrorClassification{
+			Category:   cursorErrorUserRateLimit,
+			StatusCode: http.StatusTooManyRequests,
+			ErrorType:  "rate_limit_error",
+			Message:    trimmed,
+			Kind:       cursor.ErrTransient,
+		}
+	}
+
+	// 4) 地区封锁：必须先于通用兜底——它常被包成 "Connect error 403"，
+	// 通用兜底会因 "403" 判成凭证失效而把健康账号停掉。
+	if cursor.IsRegionBlockedErr(raw) {
+		return cursorErrorClassification{
+			Category:      cursorErrorRegionBlocked,
+			StatusCode:    http.StatusForbidden,
+			ErrorType:     "permission_error",
+			Message:       cursorRegionBlockedMessage,
+			Kind:          cursor.ErrTransient,
+			CooldownModel: strings.TrimSpace(model),
 		}
 	}
 

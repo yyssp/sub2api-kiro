@@ -142,6 +142,20 @@ func cursorFailoverError(c cursorErrorClassification, realOutputWritten bool) *U
 		err.NextAccountAction = NextAccountStop
 		err.Scope = GatewayFailureScopeRequest
 
+	// 客户端版本过旧：网关配置的版本号被上游整体拒绝，号池里每个账号结果都一样。
+	// ⚠️ 不换号，也不归因到账号（Scope=provider）：换号只会把整个号池烧一遍，
+	// 归因到账号会让调度器在管理员更新版本号之后仍持续避开这批健康账号。
+	case c.Category == cursorErrorOutdatedClient:
+		err.NextAccountAction = NextAccountStop
+		err.Scope = GatewayFailureScopeProvider
+
+	// 用户级限流 / 地区封锁：都是「这个账号此刻不行，别的账号可能行」。
+	// 冷却已由 recordCursorFailure 落库，这里只负责换号。
+	// ⚠️ 不可同账号重试：限流窗口和出口地区都不会在几百毫秒内变化。
+	case c.Category == cursorErrorUserRateLimit, c.Category == cursorErrorRegionBlocked:
+		err.NextAccountAction = NextAccountRetry
+		err.Scope = GatewayFailureScopeAccount
+
 	// 凭证失效：该号已被 SetError 停用，必须换号。
 	case c.Kind == cursor.ErrAuth:
 		err.NextAccountAction = NextAccountRetry

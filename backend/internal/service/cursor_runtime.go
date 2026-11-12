@@ -824,10 +824,17 @@ func (s *GatewayService) recordCursorFailure(ctx context.Context, c *gin.Context
 
 	// 终端协议错误只上报，不落任何账号状态：它描述的是请求本身不可服务，
 	// 账号是健康的。写账号状态会让一个坏请求污染号池的可调度性。
-	if classified.Terminal {
+	//
+	// 客户端版本过旧同理：是网关配置问题，号池里每个账号都一样健康。
+	if classified.Terminal || classified.Category == cursorErrorOutdatedClient {
 		return
 	}
 
+	// 用户级限流 / 地区封锁只落冷却（见 applyCursorErrorCooldown），
+	// 既不停号也不标桶：它们会自愈，停号或标桶都会把健康账号长期摘掉。
+	if s.applyCursorErrorCooldown(ctx, account, classified) {
+		return
+	}
 	if cursorShouldDisableAccount(classified) && s.accountRepo != nil {
 		_ = s.accountRepo.SetError(ctx, account.ID, safeErr)
 		return
