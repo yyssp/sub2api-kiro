@@ -67,6 +67,7 @@ export default {
       cursorImportFile: 'Credential file',
       cursorImportSelectFile: 'Please select a credential file',
       cursorImportContent: 'Credential content',
+      cursorImportStepTitle: 'Import Cursor Credentials',
       cursorImportParse: 'Parse & Preview',
       cursorImportPreview: 'Parsed result ({count} account(s))',
       cursorImportSkipDisabled: 'Skip disabled credentials',

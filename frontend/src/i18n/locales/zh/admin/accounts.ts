@@ -67,6 +67,7 @@ export default {
       cursorImportFile: '凭证文件',
       cursorImportSelectFile: '请选择凭证文件',
       cursorImportContent: '凭证内容',
+      cursorImportStepTitle: '导入 Cursor 凭证',
       cursorImportParse: '解析并预览',
       cursorImportPreview: '解析结果（共 {count} 个账号）',
       cursorImportSkipDisabled: '跳过已禁用的凭证',

@@ -1190,3 +1190,80 @@ describe('CreateAccountModal Vertex API key auth', () => {
     expect(wrapper.find('[data-testid="vertex-api-key-input"]').exists()).toBe(false)
   })
 })
+
+// 顶部步骤条的第二步标题必须跟随平台。曾经 Cursor 没有对应分支，落到 Claude
+// 兜底文案「Claude 账号授权」——而 Cursor 根本没有 OAuth 授权，只有凭证导入。
+describe('CreateAccountModal step indicator title', () => {
+  const stepTitles = (wrapper: ReturnType<typeof mountModal>) =>
+    wrapper.findAll('span.ml-2.text-sm.font-medium').map((node) => node.text())
+
+  it.each([
+    ['Cursor', 'admin.accounts.cursorImportStepTitle'],
+    ['OpenAI', 'admin.accounts.oauth.openai.title'],
+    ['Gemini', 'admin.accounts.oauth.gemini.title'],
+  ])('shows the %s-specific second step title', async (label, expected) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, label)
+    const titles = stepTitles(wrapper)
+    expect(titles).toContain(expected)
+    expect(titles).not.toContain('admin.accounts.oauth.title')
+  })
+
+  it('keeps the Claude title for Anthropic OAuth', async () => {
+    const wrapper = mountModal()
+    expect(stepTitles(wrapper)).toContain('admin.accounts.oauth.title')
+  })
+})
+
+// 选择 Kiro 后默认给出与 Claude 平台一致的模型白名单（去掉 fable 族），
+// 不再自动塞一整张默认映射表。
+describe('CreateAccountModal Kiro default models', () => {
+  beforeEach(() => {
+    createAccountMock.mockReset()
+    createAccountMock.mockResolvedValue({ id: 42, platform: 'kiro', type: 'apikey' })
+    probeUpstreamBillingMock.mockReset()
+  })
+
+  it('defaults to the Claude whitelist without the fable family and without mappings', async () => {
+    const { claudeModels } = await import('@/composables/useModelWhitelist')
+    await submitApiKeyAccount('kiro')
+
+    const mapping = createAccountMock.mock.calls[0]?.[0]?.credentials?.model_mapping as Record<string, string>
+    expect(mapping).toBeDefined()
+    const expected = claudeModels.filter((m) => !m.startsWith('claude-fable-') && !m.startsWith('claude-mythos-'))
+    expect(Object.keys(mapping).sort()).toEqual([...expected].sort())
+    // 白名单是自映射：没有任何 a→b 的改名映射被自动加进来
+    for (const [from, to] of Object.entries(mapping)) {
+      expect(to).toBe(from)
+    }
+    expect(Object.keys(mapping).some((m) => m.startsWith('claude-fable-'))).toBe(false)
+    expect(Object.keys(mapping).some((m) => m.startsWith('claude-mythos-'))).toBe(false)
+    // 旧的默认映射表里的 gpt-5.6 系列不应再出现
+    expect(mapping).not.toHaveProperty('gpt-5.6-sol')
+  })
+
+  it('starts in whitelist mode with no auto-filled mapping rows', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Kiro')
+    expect(wrapper.find('[data-testid="kiro-model-whitelist"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="kiro-model-mode-mapping"]').trigger('click')
+    const mappingInputs = wrapper
+      .findAll('input')
+      .filter((input) => input.attributes('placeholder') === 'admin.accounts.requestModel')
+    expect(mappingInputs).toHaveLength(0)
+  })
+
+  it('submits no model_mapping when the user switches to an empty mapping list', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Kiro')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('[data-testid="kiro-model-mode-mapping"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('kiro account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).not.toHaveProperty('model_mapping')
+  })
+})

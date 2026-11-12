@@ -144,6 +144,19 @@ const antigravityModels = [
   'tab_flash_lite_preview'
 ]
 
+// Kiro 新建账号时默认勾选的模型白名单：与 Claude（anthropic）平台的默认清单一致，
+// 但排除 fable 族（含同族的 mythos，后端 Bedrock 映射把它归在 "Claude Fable" 下）——
+// Kiro 上游不提供这些模型，勾上只会让请求被调度过来再失败。
+// 白名单以 model_mapping 自映射（a→a）落库，后端 kiro.MapModel 负责把
+// claude-opus-4-8 这类写法归一成 Kiro 上游的 claude-opus-4.8。
+const kiroExcludedClaudeFamilies = ['claude-fable-', 'claude-mythos-']
+
+export function getKiroDefaultWhitelistModels(): string[] {
+  return claudeModels.filter(
+    (model) => !kiroExcludedClaudeFamilies.some((family) => model.startsWith(family))
+  )
+}
+
 const kiroModels = [
   'gpt-5.6-sol',
   'gpt-5.6-terra',

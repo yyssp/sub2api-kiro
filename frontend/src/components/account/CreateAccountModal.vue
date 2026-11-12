@@ -161,7 +161,7 @@
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
             ]"
           >
-            <Icon name="terminal" size="sm" />
+            <PlatformIcon platform="kiro" size="sm" />
             Kiro
           </button>
           <button
@@ -1685,10 +1685,51 @@
         </div>
       </div>
 
-      <!-- Kiro 只支持模型映射模式，不支持白名单模式 -->
+      <!-- Kiro 模型限制：默认白名单（Claude 清单去掉 fable 族），也可切到映射模式 -->
       <div v-if="form.platform === 'kiro'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
-        <div>
+        <div class="mb-4 flex gap-2">
+          <button
+     type="button"
+            data-testid="kiro-model-mode-whitelist"
+     @click="kiroModelRestrictionMode = 'whitelist'"
+     :class="[
+       'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+kiroModelRestrictionMode === 'whitelist'
+  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+     ]"
+          >
+     {{ t('admin.accounts.modelWhitelist') }}
+   </button>
+   <button
+     type="button"
+     data-testid="kiro-model-mode-mapping"
+            @click="kiroModelRestrictionMode = 'mapping'"
+     :class="[
+       'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+       kiroModelRestrictionMode === 'mapping'
+         ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+     ]"
+          >
+     {{ t('admin.accounts.modelMapping') }}
+          </button>
+        </div>
+
+ <div v-if="kiroModelRestrictionMode === 'whitelist'" data-testid="kiro-model-whitelist">
+   <ModelWhitelistSelector
+     v-model="kiroWhitelistModels"
+     :available-models="claudeModels"
+     :show-sync-button="false"
+   />
+   <p class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.selectedModels', { count: kiroWhitelistModels.length }) }}
+     <span v-if="kiroWhitelistModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
+          </p>
+        </div>
+
+        <div v-else>
           <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
             <p class="text-xs text-purple-700 dark:text-purple-400">
               {{ t('admin.accounts.mapRequestModels') }}
@@ -4708,7 +4749,7 @@ import {
   commonErrorCodes,
   buildModelMappingObject,
   fetchAntigravityDefaultMappings,
-  fetchKiroDefaultMappings,
+  getKiroDefaultWhitelistModels,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 import { adminAPI } from '@/api/admin'
@@ -4847,6 +4888,10 @@ const oauthStepTitle = computed(() => {
       : t('admin.accounts.oauth.kiro.title')
   }
   if (form.platform === 'grok') return t('admin.accounts.oauth.grok.title')
+  // Cursor 只有凭证导入一条路（isCursorImportMode），第二步不是任何 OAuth 授权。
+  // 漏掉这一支会落到下面的 Claude 兜底文案，用户以为选错了平台。
+  if (form.platform === 'cursor') return t('admin.accounts.cursorImportStepTitle')
+  // ⚠️ 兜底只属于 anthropic：新增走 oauth-based 的平台必须在上面补一支。
   return t('admin.accounts.oauth.title')
 })
 
@@ -5392,6 +5437,21 @@ const cursorImporter = useCursorCredentialImport()
 const cursorCreating = ref(false)
 const cursorCreateError = ref('')
 const kiroModelMappings = ref<ModelMapping[]>([])
+// Kiro 新建账号默认走白名单：与 Claude 平台默认清单一致但去掉 fable 族。
+// 过去这里会自动塞一整张默认映射表（gpt-5.6、claude-*-thinking 等十几条），
+// 用户看到一堆并不需要的映射；映射模式仍保留给真正需要改名的场景。
+const kiroModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
+const kiroWhitelistModels = ref<string[]>(getKiroDefaultWhitelistModels())
+/** Kiro 落库用的 model_mapping：白名单为自映射，映射模式为用户填写的映射。 */
+const buildKiroModelMapping = () =>
+  kiroModelRestrictionMode.value === 'whitelist'
+    ? buildModelMappingObject('whitelist', kiroWhitelistModels.value, [])
+    : buildModelMappingObject('mapping', [], kiroModelMappings.value)
+const resetKiroModelRestriction = () => {
+  kiroModelRestrictionMode.value = 'whitelist'
+  kiroWhitelistModels.value = getKiroDefaultWhitelistModels()
+  kiroModelMappings.value = []
+}
 const kiroCreditUnitPriceUsd = ref(0)
 const kiroPresetMappings = computed(() => getPresetMappingsByPlatform('kiro'))
 const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
@@ -5783,9 +5843,7 @@ watch(
         })
         antigravityWhitelistModels.value = []
       } else if (form.platform === 'kiro') {
-        fetchKiroDefaultMappings().then(mappings => {
-          kiroModelMappings.value = [...mappings]
-        })
+        resetKiroModelRestriction()
       } else {
         antigravityWhitelistModels.value = []
         antigravityModelMappings.value = []
@@ -5880,9 +5938,7 @@ watch(
       accountCategory.value = 'oauth-based'
       antigravityAccountType.value = 'oauth'
     } else if (newPlatform === 'kiro') {
-      fetchKiroDefaultMappings().then(mappings => {
-        kiroModelMappings.value = [...mappings]
-      })
+      resetKiroModelRestriction()
       accountCategory.value = 'oauth-based'
       kiroAccountType.value = 'oauth'
       kiroLoginProvider.value = 'google'
@@ -6439,9 +6495,7 @@ const resetForm = () => {
   kiroImporter.resetAll()
   cursorImporter.resetAll()
   kiroCreditUnitPriceUsd.value = 0
-  fetchKiroDefaultMappings().then(mappings => {
-    kiroModelMappings.value = [...mappings]
-  })
+  resetKiroModelRestriction()
   poolModeEnabled.value = false
   poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
   poolModeRetryStatusCodesInput.value = ''
@@ -6912,7 +6966,7 @@ const handleSubmit = async () => {
       api_region: kiroAPIRegion.value.trim() || 'us-east-1'
     }
 
-    const modelMapping = buildModelMappingObject('mapping', [], kiroModelMappings.value)
+    const modelMapping = buildKiroModelMapping()
     if (modelMapping) {
       credentials.model_mapping = modelMapping
     }
@@ -6951,7 +7005,7 @@ const handleSubmit = async () => {
       base_url: apiKeyBaseUrl.value.trim()
     }
 
-    const modelMapping = buildModelMappingObject('mapping', [], kiroModelMappings.value)
+    const modelMapping = buildKiroModelMapping()
     if (modelMapping) {
       credentials.model_mapping = modelMapping
     }
@@ -8090,7 +8144,7 @@ const handleAntigravityExchange = async (authCode: string) => {
 
 const buildKiroCredentials = (tokenInfo: Parameters<typeof kiroOAuth.buildCredentials>[0]) => {
   const credentials = kiroOAuth.buildCredentials(tokenInfo)
-  const modelMapping = buildModelMappingObject('mapping', [], kiroModelMappings.value)
+  const modelMapping = buildKiroModelMapping()
   if (modelMapping) {
     credentials.model_mapping = modelMapping
   }
@@ -8099,7 +8153,7 @@ const buildKiroCredentials = (tokenInfo: Parameters<typeof kiroOAuth.buildCreden
 
 const buildKiroImportedAPIKeyCredentials = (entry: KiroImportEntry) => {
   const credentials = kiroOAuth.buildImportedAPIKeyCredentials(entry)
-  const modelMapping = buildModelMappingObject('mapping', [], kiroModelMappings.value)
+  const modelMapping = buildKiroModelMapping()
   if (modelMapping) {
     credentials.model_mapping = modelMapping
   }
