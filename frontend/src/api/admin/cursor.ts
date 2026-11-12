@@ -11,13 +11,16 @@ import type { Account, CreateAccountRequest } from '@/types'
 
 /** 一条解析出来的 Cursor 凭证（与后端 service.CursorImportEntry 一致）。 */
 export interface CursorImportEntry {
+  /** API Key 条目（token_type=api_key）在预览阶段为空，建号时由 api_key 兑换。 */
   access_token: string
+  /** Cursor Dashboard API Key（crsr_ 前缀）；建号时经账号代理兑换出 access_token。 */
+  api_key?: string
   refresh_token?: string
   session?: string
   email?: string
   machine_id?: string
   /**
-   * JWT 的 type 声明：session / web / unknown。
+   * JWT 的 type 声明：session / web / unknown；API Key 条目为 api_key。
    * web 寿命只有几小时，必须在预览里显著提示用户尽快使用。
    */
   token_type: string

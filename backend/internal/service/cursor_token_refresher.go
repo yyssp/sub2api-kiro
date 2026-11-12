@@ -38,7 +38,9 @@ func (r *CursorTokenRefresher) NeedsRefresh(account *Account, _ time.Duration) b
 	if !r.CanRefresh(account) {
 		return false
 	}
-	if strings.TrimSpace(account.GetCredential(CursorCredRefreshToken)) == "" {
+	// API Key（crsr_）账号没有 refresh_token，靠 key 重新兑换续期。
+	if !isCursorAPIKeyAccount(account.Credentials) &&
+		strings.TrimSpace(account.GetCredential(CursorCredRefreshToken)) == "" {
 		return false
 	}
 	if strings.TrimSpace(account.GetCredential(CursorCredAccessToken)) == "" {
@@ -51,7 +53,7 @@ func (r *CursorTokenRefresher) NeedsRefresh(account *Account, _ time.Duration) b
 	// 这类账号由请求路径上的 401 强刷兜底。
 	pa := cursorProtocolAccount(account)
 	now := time.Now()
-	return cursor.AuthRefreshExpired(pa, now) || cursor.AuthRefreshDue(pa, now, cursorRefreshWindow)
+	return cursorAccessTokenDue(account, pa, now, cursorRefreshWindow)
 }
 
 // Refresh 返回合并后的 credentials 供上层落库。
@@ -63,6 +65,18 @@ func (r *CursorTokenRefresher) Refresh(ctx context.Context, account *Account) (m
 	if !r.CanRefresh(account) {
 		return nil, errors.New("cursor refresher: not a refreshable cursor account")
 	}
+	// API Key（crsr_）账号：重新兑换。只返回凭证改动、不在这里落库——落库由调用方统一完成。
+	if isCursorAPIKeyAccount(account.Credentials) {
+		updates, err := cursorAPIKeyExchangeUpdates(
+			strings.TrimSpace(account.GetCredential(CursorCredAPIKey)), cursorAccountProxyURL(account))
+		if err != nil {
+			return nil, err
+		}
+		merged := MergeCredentials(account.Credentials, updates)
+		delete(merged, CursorCredRefreshToken)
+		return EnsureMachineID(merged), nil
+	}
+
 	refreshToken := strings.TrimSpace(account.GetCredential(CursorCredRefreshToken))
 	if refreshToken == "" {
 		return nil, errors.New("cursor refresher: missing refresh_token")

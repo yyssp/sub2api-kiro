@@ -8451,7 +8451,10 @@ const handleCursorImport = async () => {
     const accounts: CursorImportAccountPayload[] = []
     for (const { entry, name, note } of selected) {
       // 凭证字段名与后端 service 的 CursorCred* 常量一一对应。
-      const credentials: Record<string, unknown> = { access_token: entry.access_token }
+      // crsr_ API Key 条目没有 access_token，由后端建号时经账号代理兑换。
+      const credentials: Record<string, unknown> = entry.api_key
+        ? { api_key: entry.api_key }
+        : { access_token: entry.access_token }
       if (entry.refresh_token) credentials.refresh_token = entry.refresh_token
       if (entry.session) credentials.session = entry.session
       if (entry.email) credentials.email = entry.email

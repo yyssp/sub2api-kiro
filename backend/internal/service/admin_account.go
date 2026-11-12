@@ -552,6 +552,12 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	input.Credentials = SanitizeStoredCredentials(input.Platform, input.Credentials)
 	// Cursor 短效 web token 在真正建号时兑换成长效 session token（导入预览不联网）。
 	input.Credentials = s.exchangeCursorWebTokenOnCreate(ctx, input)
+	// Cursor Dashboard API Key（crsr_）在建号时兑换出 access token；兑换失败拒绝建号。
+	creds, err := s.exchangeCursorAPIKeyOnCreate(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	input.Credentials = creds
 
 	account, err := buildAccountForCreate(input, accountExtra)
 	if err != nil {

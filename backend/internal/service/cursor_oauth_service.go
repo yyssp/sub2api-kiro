@@ -246,7 +246,10 @@ type CursorImportInput struct {
 // 字段直接对应前端预览表的列，不含任何需要联网才能得到的信息：
 // 预览阶段不联网是刻意的，见 ImportCursorCredentials 的说明。
 type CursorImportEntry struct {
-	AccessToken  string `json:"access_token"`
+	AccessToken string `json:"access_token"`
+	// APIKey 是 Dashboard API Key（crsr_），只在 token_type=api_key 时有值；
+	// 预览不联网，access_token 要到真正建号时才由它兑换出来。
+	APIKey       string `json:"api_key,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 	Session      string `json:"session,omitempty"`
 	Email        string `json:"email,omitempty"`
@@ -309,6 +312,7 @@ func (s *CursorOAuthService) ImportCursorCredentials(ctx context.Context, input 
 	for _, cred := range parsed.Credentials {
 		entry := &CursorImportEntry{
 			AccessToken:  cred.AccessToken,
+			APIKey:       cred.APIKey,
 			RefreshToken: cred.RefreshToken,
 			Session:      cred.Session,
 			Email:        cred.Email,

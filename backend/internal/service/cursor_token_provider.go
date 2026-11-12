@@ -67,8 +67,19 @@ func (p *CursorTokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	// AuthRefreshDue 返回 false——宁可等 401 再强刷，也不要对每个
 	// 未知有效期的账号无条件打刷新接口。
 	needsRefresh := accessToken == "" ||
-		cursor.AuthRefreshExpired(protoAccount, now) ||
-		cursor.AuthRefreshDue(protoAccount, now, cursorTokenRefreshSkew)
+		cursorAccessTokenDue(account, protoAccount, now, cursorTokenRefreshSkew)
+
+	// API Key（crsr_）账号没有 refresh_token：临期时用 key 重新兑换。
+	if needsRefresh && isCursorAPIKeyAccount(account.Credentials) {
+		refreshed, err := p.ForceRefreshAccessToken(ctx, account)
+		if err != nil {
+			if accessToken != "" && !cursor.AuthRefreshExpired(protoAccount, now) {
+				return accessToken, nil
+			}
+			return "", err
+		}
+		return refreshed, nil
+	}
 
 	if needsRefresh && strings.TrimSpace(account.GetCredential(CursorCredRefreshToken)) != "" {
 		refreshed, err := p.ForceRefreshAccessToken(ctx, account)
@@ -118,6 +129,16 @@ func (p *CursorTokenProvider) ForceRefreshAccessToken(ctx context.Context, accou
 				return token, nil
 			}
 		}
+	}
+
+	// API Key（crsr_）账号：重新兑换，而不是走 /oauth/token（对 api_key_token 返回 shouldLogout）。
+	if isCursorAPIKeyAccount(account.Credentials) {
+		accessToken, err := refreshCursorAPIKeyAccessToken(ctx, p.accountRepo, account)
+		if err != nil {
+			return "", err
+		}
+		p.cacheAccessToken(ctx, account, accessToken)
+		return accessToken, nil
 	}
 
 	refreshToken := strings.TrimSpace(account.GetCredential(CursorCredRefreshToken))

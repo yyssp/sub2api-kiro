@@ -32,9 +32,14 @@ type ImportCredential struct {
 	AccessToken string `json:"access_token"`
 	// Session 是 uid::JWT（cursor.com 面板 cookie 值）。
 	Session string `json:"session"`
-	// TokenType 取自 JWT 的 type 声明：session / web / unknown。
+	// TokenType 取自 JWT 的 type 声明：session / web / unknown；
+	// Dashboard API Key（crsr_）条目固定为 api_key。
 	// web 表示这条寿命只有几小时，前端要显著提示"需尽快兑换"。
 	TokenType string `json:"token_type"`
+	// APIKey 是 Dashboard API Key（crsr_ 前缀）。它是长期凭证：AccessToken 由它
+	// 在建号时经账号代理兑换得到（60 分钟有效），之后也只能靠它重新兑换续期。
+	// 预览阶段不兑换（不联网），因此 APIKey 条目的 AccessToken 为空。
+	APIKey string `json:"api_key,omitempty"`
 	// RefreshToken 仅在导出文件里带了才有；纯文本粘贴拿不到。
 	RefreshToken string `json:"refresh_token,omitempty"`
 	Email        string `json:"email,omitempty"`
@@ -214,8 +219,14 @@ func trimCookieAttributes(s string) string {
 	return s
 }
 
+// TokenTypeAPIKeyEntry 是 crsr_ 条目在导入预览中的 token_type。
+const TokenTypeAPIKeyEntry = "api_key"
+
 // newImportCredential 从一个 token 字符串构造条目。
 func newImportCredential(rawToken string) (*ImportCredential, error) {
+	if IsAPIKey(rawToken) {
+		return &ImportCredential{APIKey: strings.TrimSpace(rawToken), TokenType: TokenTypeAPIKeyEntry}, nil
+	}
 	access, session, _ := NormalizeToken(rawToken)
 	access = strings.TrimSpace(access)
 	if access == "" {
@@ -328,6 +339,8 @@ func extractImportItems(value json.RawMessage) []json.RawMessage {
 var importTokenKeys = []string{
 	"accesstoken", "token", "session", "sessiontoken",
 	"workoscursorsessiontoken", "cookie", "jwt",
+	// Dashboard API Key（crsr_）；放最后：同一条目同时带 JWT 时优先用 JWT。
+	"apikey", "cursorapikey", "key",
 }
 
 func importObjectHasToken(obj map[string]json.RawMessage) bool {
@@ -449,7 +462,11 @@ func dedupeImportResult(result *ImportParseResult) *ImportParseResult {
 	seen := make(map[string]struct{}, len(result.Credentials))
 	kept := make([]*ImportCredential, 0, len(result.Credentials))
 	for i, cred := range result.Credentials {
-		if _, dup := seen[cred.AccessToken]; dup {
+		key := cred.AccessToken
+		if key == "" {
+			key = cred.APIKey
+		}
+		if _, dup := seen[key]; dup {
 			result.Skipped = append(result.Skipped, &ImportSkipped{
 				Index:  i + 1,
 				Reason: "与前面的条目是同一个 token，已跳过",
@@ -457,7 +474,7 @@ func dedupeImportResult(result *ImportParseResult) *ImportParseResult {
 			})
 			continue
 		}
-		seen[cred.AccessToken] = struct{}{}
+		seen[key] = struct{}{}
 		kept = append(kept, cred)
 	}
 	result.Credentials = kept

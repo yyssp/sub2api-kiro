@@ -613,6 +613,11 @@ func (c *Client) RunAgentStream(ctx context.Context, a *Account, in AgentRequest
 		logAgentDebug(traceID, "tools inferred name=%s reason=claude-code-native-task-compat", inferred.Name)
 	}
 	directSand := useSandInferenceServiceForRequest(model, effectiveTools)
+	// crsr_ API Key 兑换出的 api_key_token 不被 Sand InferenceService 接受（实测返回
+	// ERROR_NOT_LOGGED_IN），只能走 AgentService——官方 @cursor/sdk 也只走这条路。
+	if directSand && TokenType(a.AccessToken) == TokenTypeAPIKey {
+		directSand = false
+	}
 	upstreamClientType := quotaSurface
 	if !directSand {
 		upstreamClientType = agentServiceClientTypeForModel(model)

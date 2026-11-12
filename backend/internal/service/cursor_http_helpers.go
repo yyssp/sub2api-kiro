@@ -20,6 +20,10 @@ const (
 	CursorCredMachineID    = "machine_id"    // 设备指纹种子，参与 x-cursor-checksum
 	CursorCredEmail        = "email"
 	CursorCredMembership   = "membership" // 套餐，决定命名模型/Sand 能力
+	// CursorCredAPIKey 是 Cursor Dashboard API Key（crsr_ 前缀）。它是这类账号的长期凭证：
+	// access_token 由它经 /auth/exchange_user_api_key 兑换（60 分钟有效），续期也只能
+	// 重新兑换——/oauth/token 对 api_key_token 返回 shouldLogout。
+	CursorCredAPIKey = "api_key"
 )
 
 // CursorExtraQuotaKey 是三桶额度在 accounts.extra 里的唯一 key（决策 D1：extra JSONB）。

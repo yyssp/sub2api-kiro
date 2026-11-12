@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -86,6 +87,7 @@ var (
 	ErrCursorNotCursorAccount       = infraerrors.BadRequest("CURSOR_NOT_CURSOR_ACCOUNT", "目标账号不是 Cursor 账号")
 	ErrCursorMissingAccessToken     = infraerrors.BadRequest("CURSOR_MISSING_ACCESS_TOKEN", "缺少 access_token")
 	ErrCursorCredentialUserMismatch = infraerrors.BadRequest("CURSOR_CREDENTIAL_USER_MISMATCH", "凭证与目标账号不属于同一 Cursor 用户")
+	ErrCursorAPIKeyRejected         = infraerrors.BadRequest("CURSOR_API_KEY_REJECTED", "Cursor API Key 无效或已被删除")
 )
 
 // CursorCredentialUpdate 是重复导入时写回已有账号的凭证增量。
@@ -134,6 +136,23 @@ func cursorImportCredentialUpdates(in CursorCredentialUpdate) map[string]any {
 func (s *CursorOAuthService) ImportedCredentialUpdates(existing *Account, incoming map[string]any) (map[string]any, error) {
 	if existing == nil || existing.Platform != PlatformCursor {
 		return nil, ErrCursorNotCursorAccount
+	}
+	// API Key（crsr_）重复导入：预览阶段没有 access_token，先兑换出来再做同一用户校验。
+	if isCursorAPIKeyAccount(incoming) {
+		key, _ := incoming[CursorCredAPIKey].(string)
+		updates, err := cursorAPIKeyExchangeUpdates(strings.TrimSpace(key), cursorAccountProxyURL(existing))
+		if err != nil {
+			if errors.Is(err, cursor.ErrAPIKeyRejected) {
+				return nil, ErrCursorAPIKeyRejected
+			}
+			return nil, fmt.Errorf("cursor API key exchange failed: %w", err)
+		}
+		existingUID := cursorAccountUserID(existing.Credentials)
+		if existingUID == "" || existingUID != cursorAccountUserID(updates) {
+			return nil, ErrCursorCredentialUserMismatch
+		}
+		updates[CursorCredAPIKey] = strings.TrimSpace(key)
+		return updates, nil
 	}
 	access, _ := incoming[CursorCredAccessToken].(string)
 	if strings.TrimSpace(access) == "" {

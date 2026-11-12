@@ -57,11 +57,11 @@ export default {
       cursorImportTabToken: 'Token text',
       cursorImportTabJson: 'JSON',
       cursorImportHintToken:
-        'One credential per line. Accepts a bare JWT, `uid::JWT`, or a full `WorkosCursorSessionToken=...` cookie (attributes such as Path are tolerated). Optionally append a refresh token: `token----refreshToken`; either `----` or `|` works as the separator, and omitting it imports the access token only. Only accounts carrying a refresh token can be renewed automatically. Account names are generated automatically (email preferred) and avoid existing ones. Lines starting with # are treated as comments.',
+        'One credential per line. Accepts a bare JWT, `uid::JWT`, or a full `WorkosCursorSessionToken=...` cookie (attributes such as Path are tolerated). Optionally append a refresh token: `token----refreshToken`; either `----` or `|` works as the separator, and omitting it imports the access token only. Only accounts carrying a refresh token can be renewed automatically. Cursor dashboard API keys (starting with `crsr_`) are also accepted; they are exchanged through the account proxy when the account is created and renew automatically. Account names are generated automatically (email preferred) and avoid existing ones. Lines starting with # are treated as comments.',
       cursorImportHintJson:
         'Automatically detects single objects, arrays, multi-line JSONL, and accounts / credentials wrappers. Keys may be camelCase or snake_case, and accessToken / token / session / cookie are all recognized; refreshToken, machineId, email, note and the disabled flag are carried over. Only accounts carrying a refreshToken can be renewed automatically.',
       cursorImportPlaceholderToken:
-        '# access token only (re-import required once it expires)\neyJhbGciOi...\n\n# with a refresh token (renews automatically)\neyJhbGciOi...----rt_9f3a7c21b5e8\n\n# or use a pipe separator\nuser_01ABC::eyJhbGciOi...|rt_9f3a7c21b5e8\n\nWorkosCursorSessionToken=user_01ABC::eyJhbGciOi...',
+        '# access token only (re-import required once it expires)\neyJhbGciOi...\n\n# with a refresh token (renews automatically)\neyJhbGciOi...----rt_9f3a7c21b5e8\n\n# or use a pipe separator\nuser_01ABC::eyJhbGciOi...|rt_9f3a7c21b5e8\n\nWorkosCursorSessionToken=user_01ABC::eyJhbGciOi...\n\n# Cursor dashboard API key (renews automatically)\ncrsr_0123456789abcdef...',
       cursorImportPlaceholderJson:
         `[\n  {'{'}\n    "accessToken": "eyJhbGciOi...",\n    "refreshToken": "rt_9f3a7c21b5e8",\n    "email": "a{'@'}example.com"\n  {'}'},\n  {'{'} "accessToken": "eyJhbGciOi..." {'}'}\n]`,
       cursorImportFile: 'Credential file',
@@ -80,6 +80,7 @@ export default {
       cursorImportRefreshYes: 'Has refresh token',
       cursorImportRefreshOnExchange: 'After exchange',
       cursorImportRefreshNo: 'None',
+      cursorImportRefreshByApiKey: 'Renews via API key',
       cursorImportNotePlaceholder: 'Empty = form note',
       cursorImportExisting: 'Exists #{id}, will update',
       cursorImportExistingTitle: 'An account for the same Cursor user already exists. Confirming only replaces its token; name, groups, proxy and other settings stay unchanged.',

@@ -57,11 +57,11 @@ export default {
       cursorImportTabToken: 'Token 文本',
       cursorImportTabJson: 'JSON',
       cursorImportHintToken:
-        '每行一个凭证，支持裸 JWT、`uid::JWT`，以及整段 `WorkosCursorSessionToken=...` cookie（含 Path 等属性也能识别）。可追加 refresh token：`token----refreshToken`，分隔符用 `----` 或 `|` 均可，不写则只导入 access token。带 refresh token 的账号才能自动续期。账号名自动生成（优先用邮箱）并避开已有账号，井号开头的行视为注释。',
+        '每行一个凭证，支持裸 JWT、`uid::JWT`，以及整段 `WorkosCursorSessionToken=...` cookie（含 Path 等属性也能识别）。可追加 refresh token：`token----refreshToken`，分隔符用 `----` 或 `|` 均可，不写则只导入 access token。带 refresh token 的账号才能自动续期。也支持 Cursor 后台创建的 API Key（`crsr_` 开头），建号时会经账号代理兑换并自动续期。账号名自动生成（优先用邮箱）并避开已有账号，井号开头的行视为注释。',
       cursorImportHintJson:
         '自动识别单个对象、数组、JSONL 多行，以及 accounts / credentials 包装格式。字段支持 camelCase / snake_case，accessToken、token、session、cookie 等写法均可；refreshToken、machineId、email、备注与停用状态会一并沿用。带 refreshToken 的账号才能自动续期。',
       cursorImportPlaceholderToken:
-        '# 仅 access token（到期后需重新导入）\neyJhbGciOi...\n\n# 带 refresh token（可自动续期）\neyJhbGciOi...----rt_9f3a7c21b5e8\n\n# 也可用竖线分隔\nuser_01ABC::eyJhbGciOi...|rt_9f3a7c21b5e8\n\nWorkosCursorSessionToken=user_01ABC::eyJhbGciOi...',
+        '# 仅 access token（到期后需重新导入）\neyJhbGciOi...\n\n# 带 refresh token（可自动续期）\neyJhbGciOi...----rt_9f3a7c21b5e8\n\n# 也可用竖线分隔\nuser_01ABC::eyJhbGciOi...|rt_9f3a7c21b5e8\n\nWorkosCursorSessionToken=user_01ABC::eyJhbGciOi...\n\n# Cursor 后台 API Key（自动续期）\ncrsr_0123456789abcdef...',
       cursorImportPlaceholderJson:
         `[\n  {'{'}\n    "accessToken": "eyJhbGciOi...",\n    "refreshToken": "rt_9f3a7c21b5e8",\n    "email": "a{'@'}example.com"\n  {'}'},\n  {'{'} "accessToken": "eyJhbGciOi..." {'}'}\n]`,
       cursorImportFile: '凭证文件',
@@ -80,6 +80,7 @@ export default {
       cursorImportRefreshYes: '有 refresh token',
       cursorImportRefreshOnExchange: '兑换后获得',
       cursorImportRefreshNo: '无',
+      cursorImportRefreshByApiKey: 'API Key 自动续期',
       cursorImportNotePlaceholder: '留空用表单备注',
       cursorImportExisting: '已存在 #{id}，将更新',
       cursorImportExistingTitle: '库中已有同一 Cursor 用户的账号，确认后只更新它的 token，名称、分组、代理等配置不变',

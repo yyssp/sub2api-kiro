@@ -46,7 +46,7 @@ export function buildCursorEntryName(
   if (email) return email
 
   const base = String(prefix || '').trim() || 'cursor'
-  const seed = String(entry.access_token || entry.session || '')
+  const seed = String(entry.access_token || entry.session || entry.api_key || '')
   return seed ? `${base}_${shortHash(seed)}` : `${base}-${idx + 1}`
 }
 
@@ -190,7 +190,9 @@ export function useCursorCredentialImport() {
   /** 没带 refresh_token 的条目（web token 建号时会尝试兑换出 refresh_token，不计在内）。 */
   const withoutRefreshCount = computed(
     () =>
-      creatableEntries.value.filter((entry) => !entry.refresh_token && !isShortLivedEntry(entry)).length
+      creatableEntries.value.filter(
+        (entry) => !entry.refresh_token && !entry.api_key && !isShortLivedEntry(entry)
+      ).length
   )
 
   /** 库里已有同一用户的条目：确认后更新原账号的 token，而不是新建。 */

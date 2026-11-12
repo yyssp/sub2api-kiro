@@ -135,6 +135,10 @@
                 <span v-if="entry.refresh_token" class="text-emerald-600 dark:text-emerald-400">
                   {{ t('admin.accounts.cursorImportRefreshYes') }}
                 </span>
+                <!-- crsr_ API Key 没有 refresh_token，靠 key 本身重新兑换续期。 -->
+                <span v-else-if="entry.token_type === 'api_key'" class="text-emerald-600 dark:text-emerald-400">
+                  {{ t('admin.accounts.cursorImportRefreshByApiKey') }}
+                </span>
                 <span v-else-if="entry.token_type === 'web'" class="text-amber-600 dark:text-amber-400">
                   {{ t('admin.accounts.cursorImportRefreshOnExchange') }}
                 </span>
