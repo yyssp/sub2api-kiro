@@ -929,6 +929,7 @@ var ProviderSet = wire.NewSet(
 	ProvideCursorTokenProvider,
 	ProvideCursorOAuthService,
 	ProvideCursorWiring,
+	ProvideCursorQuotaRefreshService,
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
 	ProvideGrokTokenProvider,

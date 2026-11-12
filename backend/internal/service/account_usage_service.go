@@ -370,7 +370,7 @@ type AccountUsageService struct {
 	agentIdentityTaskMu     sync.Mutex
 	agentIdentityWS         agentIdentityWSConnectionInvalidator
 	cursorTokenProvider     *CursorTokenProvider
-	cursorFetcher           *CursorUsageFetcher
+	cursorFetcher           cursorQuotaFetcher
 }
 
 // NewAccountUsageService 创建AccountUsageService实例

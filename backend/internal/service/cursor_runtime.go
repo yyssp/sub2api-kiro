@@ -801,12 +801,22 @@ func (s *GatewayService) recordCursorFailure(ctx context.Context, c *gin.Context
 	}
 }
 
-// markCursorBucketExhausted 只把命中的那个桶标成耗尽并落库。
+// markCursorBucketExhausted 只把命中的那个桶标成耗尽并原子落库。
+//
+// ⚠️ 必须以库里的最新快照为底再改，不能用请求开始时载入的 account：
+// 流式请求可能已经跑了好几分钟，期间别的请求标过别的桶、后台刷新也可能
+// 写过新快照，拿旧快照整体写回会把它们抹掉。cursor_quota 在 extra 里是
+// 单个 key，UpdateExtra 的 JSONB 合并只到顶层，所以这里的重读把竞争窗口
+// 从「整个请求时长」收窄到「一次读写之间」。重读失败时退回内存快照。
 func (s *GatewayService) markCursorBucketExhausted(ctx context.Context, account *Account, bucket string) {
-	if s.accountRepo == nil {
+	if s.accountRepo == nil || account == nil {
 		return
 	}
-	q := readCursorQuota(account)
+	base := account
+	if fresh, err := s.accountRepo.GetByID(ctx, account.ID); err == nil && fresh != nil {
+		base = fresh
+	}
+	q := readCursorQuota(base)
 	now := time.Now().UTC()
 	switch bucket {
 	case cursor.QuotaBucketCursor:
@@ -819,8 +829,7 @@ func (s *GatewayService) markCursorBucketExhausted(ctx context.Context, account 
 		return
 	}
 	q.FetchedAt = &now
-	writeCursorQuota(account, q)
-	if err := s.accountRepo.Update(ctx, account); err != nil {
+	if err := persistCursorQuota(ctx, s.accountRepo, account, q); err != nil {
 		logger.L().Warn("cursor: failed to persist exhausted quota bucket",
 			zap.Int64("account_id", account.ID), zap.String("bucket", bucket), zap.Error(err))
 	}

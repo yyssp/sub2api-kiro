@@ -131,7 +131,7 @@ func cursorBucketFromSand(su cursor.SandUsage) CursorBucketQuota {
 
 // getCursorUsage 是 AccountUsageService 的 Cursor 分支实现。
 //
-// 拉取成功后把快照写回 extra（经唯一写口 writeCursorQuota）并落库，
+// 拉取成功后把快照写回 extra 并原子落库（refreshCursorQuota），
 // 让调度器的 CursorAccountUsableForModel 读到最新状态。
 func (s *AccountUsageService) getCursorUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
 	if account == nil || account.Platform != PlatformCursor {
@@ -145,44 +145,106 @@ func (s *AccountUsageService) getCursorUsage(ctx context.Context, account *Accou
 		CursorMembership: strings.TrimSpace(account.GetCredential(CursorCredMembership)),
 	}
 
-	var accessToken string
+	// ⚠️ 判 nil 必须在装进接口之前：nil 的 *CursorTokenProvider 装进接口后
+	// 接口本身不为 nil，refreshCursorQuota 会对它调方法。
+	var tokens cursorQuotaTokenSource
 	if s.cursorTokenProvider != nil {
-		token, err := s.cursorTokenProvider.GetAccessToken(ctx, account)
-		if err != nil {
-			// 降级返回而非 500：额度拉不到不该让管理台整页报错。
-			cached := readCursorQuota(account)
-			info.CursorQuota = &cached
-			info.Error = err.Error()
-			info.ErrorCode = "unauthenticated"
-			return info, nil
-		}
-		accessToken = token
+		tokens = s.cursorTokenProvider
 	}
-
-	quota, err := s.cursorUsageFetcher().Fetch(ctx, account, accessToken)
-	if err != nil {
-		info.CursorQuota = &quota
-		info.Error = err.Error()
+	res := refreshCursorQuota(ctx, s.accountRepo, tokens, s.cursorUsageFetcher(), account)
+	info.CursorQuota = &res.Quota
+	switch {
+	case res.TokenErr != nil:
+		// 降级返回而非 500：额度拉不到不该让管理台整页报错。
+		info.Error = res.TokenErr.Error()
+		info.ErrorCode = "unauthenticated"
+		return info, nil
+	case res.FetchErr != nil:
+		info.Error = res.FetchErr.Error()
 		info.ErrorCode = "network_error"
 		return info, nil
+	case res.PersistErr != nil:
+		// 落库失败不影响本次返回值，只是下次还得重拉。
+		info.Error = res.PersistErr.Error()
 	}
 
-	writeCursorQuota(account, quota)
-	if s.accountRepo != nil {
-		if updateErr := s.accountRepo.Update(ctx, account); updateErr != nil {
-			// 落库失败不影响本次返回值，只是下次还得重拉。
-			info.Error = updateErr.Error()
-		}
-	}
-
-	info.CursorQuota = &quota
 	s.tryClearRecoverableAccountError(ctx, account)
 	return info, nil
 }
 
+// cursorQuotaTokenSource 是额度刷新取 token 的最小依赖（*CursorTokenProvider 实现）。
+type cursorQuotaTokenSource interface {
+	GetAccessToken(ctx context.Context, account *Account) (string, error)
+}
+
+// cursorQuotaFetcher 是额度刷新拉取上游的最小依赖（*CursorUsageFetcher 实现）。
+type cursorQuotaFetcher interface {
+	Fetch(ctx context.Context, account *Account, accessToken string) (CursorQuota, error)
+}
+
+// cursorQuotaRefreshResult 是一次额度刷新的结果。三个 error 互斥地描述
+// 失败停在哪一步，调用方据此决定怎么呈现，而不是自己再推一遍。
+type cursorQuotaRefreshResult struct {
+	Quota      CursorQuota
+	TokenErr   error // 取 token 失败：未拉取、未落库，Quota 为库里的旧快照
+	FetchErr   error // 两个端点都失败：未落库，Quota 为本次失败结构
+	PersistErr error // 拉到了但落库失败：内存已更新
+}
+
+// refreshCursorQuota 是「取 token → 拉两个 dashboard 端点 → 原子落库」的唯一实现，
+// 管理台手动查看（getCursorUsage）与后台自动刷新（CursorQuotaRefreshService）共用。
+//
+// ⚠️ 取 token 失败绝不写成额度耗尽：凭证问题由 token provider 自己判定并停号，
+// 这里把它记成"桶满"会让账号在凭证恢复后仍被额度闸门挡住。
+//
+// ⚠️ 两个端点都失败时不落库：失败结构里全是 request_failed，写进去会覆盖掉
+// 上一次真实读到的快照（含刚标记的 exhausted），且 FetchedAt 被刷新后
+// 下一轮刷新还会把它当成"新鲜"跳过。
+func refreshCursorQuota(
+	ctx context.Context,
+	repo AccountRepository,
+	tokens cursorQuotaTokenSource,
+	fetcher cursorQuotaFetcher,
+	account *Account,
+) cursorQuotaRefreshResult {
+	var accessToken string
+	if tokens != nil {
+		token, err := tokens.GetAccessToken(ctx, account)
+		if err != nil {
+			return cursorQuotaRefreshResult{Quota: readCursorQuota(account), TokenErr: err}
+		}
+		accessToken = token
+	}
+
+	quota, err := fetcher.Fetch(ctx, account, accessToken)
+	if err != nil {
+		return cursorQuotaRefreshResult{Quota: quota, FetchErr: err}
+	}
+	return cursorQuotaRefreshResult{Quota: quota, PersistErr: persistCursorQuota(ctx, repo, account, quota)}
+}
+
+// persistCursorQuota 把额度快照写进内存 account 并原子落库。
+//
+// ⚠️ 必须走 UpdateExtra（JSONB 合并），不能 Update 整行写回：
+//   - 整行写回会把管理员同期在后台做的修改（分组、并发、代理……）覆盖回旧值；
+//   - 并发请求各自标记不同的桶时，整行写回是 last-writer-wins，先写的那个桶
+//     会被后写的那份旧快照抹掉。
+//
+// 内存里的 account.Extra 仍同步更新：同一请求后续可能还会读它。
+func persistCursorQuota(ctx context.Context, repo AccountRepository, account *Account, q CursorQuota) error {
+	if account == nil {
+		return nil
+	}
+	writeCursorQuota(account, q)
+	if repo == nil {
+		return nil
+	}
+	return repo.UpdateExtra(ctx, account.ID, map[string]any{CursorExtraQuotaKey: cursorQuotaPayload(q)})
+}
+
 // cursorUsageFetcher 惰性构造，避免给 AccountUsageService 的构造函数加参数
 // （加参数会改 Wire provider 签名，放大与上游的合并冲突面）。
-func (s *AccountUsageService) cursorUsageFetcher() *CursorUsageFetcher {
+func (s *AccountUsageService) cursorUsageFetcher() cursorQuotaFetcher {
 	if s.cursorFetcher == nil {
 		s.cursorFetcher = NewCursorUsageFetcher()
 	}

@@ -99,6 +99,14 @@ func writeCursorQuota(account *Account, q CursorQuota) {
 	if account.Extra == nil {
 		account.Extra = make(map[string]any)
 	}
+	account.Extra[CursorExtraQuotaKey] = cursorQuotaPayload(q)
+}
+
+// cursorQuotaPayload 生成 extra["cursor_quota"] 的落库形状。
+//
+// 内存写口（writeCursorQuota）与原子落库（persistCursorQuota）共用这一份，
+// 两边一旦分叉，readCursorQuota 读回的就不是刚写进去的东西。
+func cursorQuotaPayload(q CursorQuota) map[string]any {
 	payload := map[string]any{
 		cursor.QuotaBucketCursor:  writeCursorBucket(q.Cursor),
 		cursor.QuotaBucketOther:   writeCursorBucket(q.Other),
@@ -107,7 +115,7 @@ func writeCursorQuota(account *Account, q CursorQuota) {
 	if q.FetchedAt != nil {
 		payload["fetched_at"] = q.FetchedAt.UTC().Format(time.RFC3339)
 	}
-	account.Extra[CursorExtraQuotaKey] = payload
+	return payload
 }
 
 func readCursorBucket(m map[string]any, key string) CursorBucketQuota {
