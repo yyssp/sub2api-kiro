@@ -30,6 +30,13 @@ import {
   resolveProviderAccountMode,
   type CnApiProtocol
 } from '../credentialsBuilder'
+import { supportsUpstreamModelSync as supportsCatalogUpstreamModelSync } from '@/constants/platformCatalog'
+
+describe('provider model discovery support', () => {
+  it.each(['cursor', 'kiro'])('enables manual upstream model sync for %s', (platform) => {
+    expect(supportsCatalogUpstreamModelSync(platform)).toBe(true)
+  })
+})
 
 // ===== 改为读取平台清单之前的实现，作为等价基准（补入之后内置登记的 Command Code） =====
 
