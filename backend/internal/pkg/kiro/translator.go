@@ -426,66 +426,99 @@ type kiroSemanticEvent struct {
 }
 
 func MapModel(model string) string {
-	switch strings.TrimSpace(strings.ToLower(model)) {
+	model = strings.TrimSpace(strings.ToLower(model))
+	switch model {
 	case "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
-		return strings.TrimSpace(strings.ToLower(model))
-	case "claude-opus-4-8", "claude-opus-4-8-thinking", "claude-opus-4.8":
-		return "claude-opus-4.8"
-	case "claude-opus-4-7", "claude-opus-4-7-thinking", "claude-opus-4.7":
-		return "claude-opus-4.7"
-	case "claude-opus-4-6", "claude-opus-4-6-thinking", "claude-opus-4.6":
-		return "claude-opus-4.6"
-	case "claude-opus-5", "claude-opus-5-thinking":
-		return "claude-opus-5"
-	case "claude-sonnet-5", "claude-sonnet-5-thinking":
-		return "claude-sonnet-5"
-	case "claude-sonnet-4-6", "claude-sonnet-4-6-thinking", "claude-sonnet-4.6":
-		return "claude-sonnet-4.6"
-	case "claude-opus-4-5-20251101", "claude-opus-4-5-20251101-thinking", "claude-opus-4.5":
-		return "claude-opus-4.5"
-	case "claude-sonnet-4-5-20250929", "claude-sonnet-4-5-20250929-thinking", "claude-sonnet-4.5":
-		return "claude-sonnet-4.5"
-	case "claude-haiku-4-5-20251001", "claude-haiku-4-5-20251001-thinking", "claude-haiku-4.5":
-		return "claude-haiku-4.5"
-	default:
-		// P3: 通用 Claude 版本号归一化 — 将 claude-{family}-{major}-{minor} 中的
-		// 最后一段短横线转为点号（如 claude-opus-4-9 → claude-opus-4.9），
-		// 兼容不支持 "." 的客户端（如 Claude Code 会把 "4.6" 写成 "4-6"）。
-		// 仅对 version >= 4.6 做归一化（4.5 及以下有带日期后缀的 case，不应该歧义匹配）。
-		normalized := normalizeClaudeVersionNumber(strings.TrimSpace(strings.ToLower(model)))
-		if normalized != strings.TrimSpace(strings.ToLower(model)) {
-			return normalized
-		}
+		return model
+	}
+	clientModel := NormalizeClientModel(model)
+	if clientModel == "" {
 		return ""
 	}
+	parsed, _ := parseClaudeClientModel(clientModel)
+	if !parsed.MinorPresent {
+		return fmt.Sprintf("claude-%s-%d", parsed.Family, parsed.Major)
+	}
+	return fmt.Sprintf("claude-%s-%d.%d", parsed.Family, parsed.Major, parsed.Minor)
 }
 
-// normalizeClaudeVersionNumber 将 claude-{family}-{major}-{minor} 格式中的最后一段
-// 版本短横线转为点号。仅适用于 version >= 4.6（避免歧义匹配 4-5 等旧格式）。
-// 例如：claude-opus-4-9 → claude-opus-4.9, claude-opus-4-9-thinking → claude-opus-4.9
-var claudeVersionNormalizePattern = regexp.MustCompile(
-	`^(claude-(?:sonnet|haiku|opus))-(\d+)-(\d{1,2})(?:-thinking)?$`,
+type claudeClientModel struct {
+	Family       string
+	Major        int
+	Minor        int
+	MinorPresent bool
+}
+
+var claudeClientModelPattern = regexp.MustCompile(
+	`^claude-(opus|sonnet|haiku)-(\d+)(?:[-.](\d{1,2}))?(?:-(\d{8}))?$`,
 )
+
+func parseClaudeClientModel(model string) (claudeClientModel, bool) {
+	model = strings.TrimSpace(strings.ToLower(model))
+	model = strings.TrimSuffix(model, "[1m]")
+	model = strings.TrimSuffix(model, "-thinking")
+	model = strings.TrimSuffix(model, "[1m]")
+	matches := claudeClientModelPattern.FindStringSubmatch(model)
+	if matches == nil {
+		return claudeClientModel{}, false
+	}
+	// A release date without a minor version is an old full Anthropic ID,
+	// not a Kiro client alias (for example claude-opus-4-20250514).
+	if matches[3] == "" && matches[4] != "" {
+		return claudeClientModel{}, false
+	}
+	major, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return claudeClientModel{}, false
+	}
+	parsed := claudeClientModel{Family: matches[1], Major: major}
+	if matches[3] != "" {
+		minor, err := strconv.Atoi(matches[3])
+		if err != nil {
+			return claudeClientModel{}, false
+		}
+		parsed.Minor, parsed.MinorPresent = minor, true
+	}
+	return parsed, true
+}
+
+// NormalizeClientModel 返回调度白名单使用的 Claude 规范客户端名。
+// 它去除大小写、发布日期、[1m]、-thinking，并统一版本分隔符为短横线。
+// GPT-5.6 三个 Kiro 名称原样返回；未知或非 Claude/GPT 名称返回空串。
+func NormalizeClientModel(model string) string {
+	model = strings.TrimSpace(strings.ToLower(model))
+	switch model {
+	case "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
+		return model
+	}
+	parsed, ok := parseClaudeClientModel(model)
+	if !ok {
+		return ""
+	}
+	if !parsed.MinorPresent && parsed.Major < 5 {
+		return ""
+	}
+	if !parsed.MinorPresent {
+		return fmt.Sprintf("claude-%s-%d", parsed.Family, parsed.Major)
+	}
+	return fmt.Sprintf("claude-%s-%d-%d", parsed.Family, parsed.Major, parsed.Minor)
+}
+
+func normalizeClaudeVersionNumber(model string) string {
+	clientModel := NormalizeClientModel(model)
+	if clientModel == "" || !strings.HasPrefix(clientModel, "claude-") {
+		return model
+	}
+	parsed, ok := parseClaudeClientModel(clientModel)
+	if !ok || !parsed.MinorPresent {
+		return clientModel
+	}
+	return fmt.Sprintf("claude-%s-%d.%d", parsed.Family, parsed.Major, parsed.Minor)
+}
 
 var claudeDottedVersionPattern = regexp.MustCompile(
 	`^(claude-(?:sonnet|haiku|opus))-(\d+)\.(\d{1,2})(?:-thinking)?$`,
 )
-
-func normalizeClaudeVersionNumber(model string) string {
-	// 去除 -thinking 后缀做匹配
-	base := strings.TrimSuffix(model, "-thinking")
-	matches := claudeVersionNormalizePattern.FindStringSubmatch(base)
-	if matches == nil {
-		return model
-	}
-	major, _ := strconv.Atoi(matches[2])
-	minor, _ := strconv.Atoi(matches[3])
-	// 仅对 >= 4.6 做归一化；4.5 及以下有带日期后缀的明确 case，不应该在这里歧义匹配
-	if major < 4 || (major == 4 && minor < 6) {
-		return model
-	}
-	return matches[1] + "-" + matches[2] + "." + matches[3]
-}
 
 // requiresImplicitThinkingTagStripping 判断是否需要在客户端未显式请求 thinking 时
 // 仍开启流式/非流式解析器的 <thinking> tag 抽取。
@@ -497,10 +530,13 @@ func normalizeClaudeVersionNumber(model string) string {
 // 仅作用于解析阶段;不会触发 system prompt 注入 <thinking_mode> 前缀,
 // 也不会改写 inferenceConfig,避免改变上游请求语义。
 func requiresImplicitThinkingTagStripping(modelID string) bool {
-	switch strings.TrimSpace(strings.ToLower(modelID)) {
-	case "claude-opus-4.7", "claude-opus-4-7", "claude-opus-4-7-thinking",
-		"claude-opus-4.8", "claude-opus-4-8", "claude-opus-4-8-thinking",
-		"claude-opus-5", "claude-opus-5-thinking":
+	normalized := normalizeModelAlias(modelID)
+	switch normalized {
+	case "claude-opus-4-7", "claude-opus-4-8", "claude-opus-5":
+		return true
+	}
+	if parsed, ok := parseClaudeClientModel(normalized); ok && parsed.Family == "opus" &&
+		(parsed.Major > 4 || (parsed.Major == 4 && parsed.MinorPresent && parsed.Minor >= 7)) {
 		return true
 	}
 	return false
@@ -508,6 +544,9 @@ func requiresImplicitThinkingTagStripping(modelID string) bool {
 
 func normalizeModelAlias(model string) string {
 	base := strings.TrimSpace(strings.ToLower(model))
+	if normalized := NormalizeClientModel(base); normalized != "" {
+		return normalized
+	}
 	for {
 		next := strings.TrimSuffix(base, "-thinking")
 		if next == base {
@@ -540,10 +579,14 @@ func kiroMaxOutputTokensForModel(model string) int {
 		"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
 		return 128000
 	// 旧 Opus 4 / 4.1 的 Claude 能力表上限为 32000。
-	case "claude-opus-4", "claude-opus-4.0", "claude-opus-4-20250514",
-		"claude-opus-4-1", "claude-opus-4.1", "claude-opus-4-1-20250805":
+	case "claude-opus-4", "claude-opus-4-0", "claude-opus-4.0",
+		"claude-opus-4-1", "claude-opus-4.1", "claude-opus-4-20250514":
 		return kiroLegacyOpusMaxOutputTokens
 	default:
+		if parsed, ok := parseClaudeClientModel(normalized); ok && parsed.Family == "opus" && parsed.MinorPresent &&
+			(parsed.Major > 4 || (parsed.Major == 4 && parsed.Minor >= 6)) {
+			return 128000
+		}
 		// Opus 4.5、Sonnet 4.x/5.x 及未知兜底统一按 64000。
 		return kiroDefaultMaxOutputTokens
 	}
@@ -1697,6 +1740,11 @@ func thinkingDirectiveFromModel(model string) *thinkingDirective {
 			Effort:       "high",
 		}
 	default:
+		normalized := normalizeModelAlias(model)
+		if parsed, ok := parseClaudeClientModel(normalized); ok && parsed.Family == "opus" &&
+			(parsed.Major > 4 || (parsed.Major == 4 && parsed.MinorPresent && parsed.Minor >= 6)) {
+			return &thinkingDirective{Mode: "adaptive", BudgetTokens: 24576, Effort: "high"}
+		}
 		return &thinkingDirective{
 			Mode:         "enabled",
 			BudgetTokens: 20000,

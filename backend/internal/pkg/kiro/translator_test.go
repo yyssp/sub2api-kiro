@@ -2741,6 +2741,11 @@ func TestMapModel_MatchesKiroReferenceMapping(t *testing.T) {
 		"claude-sonnet-5-thinking":            "claude-sonnet-5",
 		"claude-opus-4-9":                     "claude-opus-4.9",
 		"claude-opus-4-9-thinking":            "claude-opus-4.9",
+		"claude-opus-5-5":                     "claude-opus-5.5",
+		"claude-opus-5.5":                     "claude-opus-5.5",
+		"claude-opus-5-5-20261001-thinking":   "claude-opus-5.5",
+		"claude-opus-5-5[1m]":                 "claude-opus-5.5",
+		"claude-opus-5.5-thinking[1m]":        "claude-opus-5.5",
 		"claude-sonnet-5-0-thinking":          "claude-sonnet-5.0",
 		"claude-sonnet-4-5-20250929":          "claude-sonnet-4.5",
 		"claude-sonnet-4-5-20250929-thinking": "claude-sonnet-4.5",
@@ -2774,15 +2779,44 @@ func TestMapModel_MatchesKiroReferenceMapping(t *testing.T) {
 		"claude-3-5-sonnet-20241022",
 		"claude-opus-4-20250514",
 		"claude-sonnet-4",
-		"claude-opus-4-5",
-		"claude-sonnet-4-5",
-		"claude-haiku-4-5",
 	}
 	for _, input := range rejected {
 		if got := MapModel(input); got != "" {
 			t.Fatalf("MapModel(%q) = %q, want empty", input, got)
 		}
 	}
+}
+
+func TestNormalizeClientModel(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		" Claude-Opus-5-5 ":                 "claude-opus-5-5",
+		"claude-opus-5.5":                   "claude-opus-5-5",
+		"claude-opus-5-5-20261001":          "claude-opus-5-5",
+		"claude-opus-5-5-20261001-thinking": "claude-opus-5-5",
+		"claude-opus-5-5-thinking[1m]":      "claude-opus-5-5",
+		"claude-sonnet-4-5-20250929[1m]":    "claude-sonnet-4-5",
+		"claude-haiku-4.5-thinking":         "claude-haiku-4-5",
+		"gpt-5.6-sol":                       "gpt-5.6-sol",
+	}
+	for input, want := range cases {
+		require.Equal(t, want, NormalizeClientModel(input), input)
+	}
+	for _, input := range []string{"gpt-4o", "auto", "claude-fable-5", "claude-opus-5-5-chat"} {
+		require.Empty(t, NormalizeClientModel(input), input)
+	}
+}
+
+func TestNormalizeClientModelFeedsThinkingAndGPTCapabilities(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, IsKiroGPTModel("gpt-5.6-sol"))
+	require.False(t, IsKiroGPTModel("gpt-5.6"))
+	require.Equal(t, 128000, kiroMaxOutputTokensForModel("claude-opus-4-6-20260205-thinking[1m]"))
+	require.True(t, requiresImplicitThinkingTagStripping("claude-opus-4-8-20261001[1m]"))
+	require.True(t, isOutputConfigPathModel("claude-opus-5-5-thinking[1m]"))
+	require.Equal(t, "adaptive", thinkingDirectiveFromModel("claude-opus-5-5-thinking[1m]").Mode)
 }
 
 func TestKiroMaxOutputTokensForGPT56Models(t *testing.T) {

@@ -293,6 +293,29 @@ func cursorProtocolAccount(account *Account) cursor.Account {
 	return out
 }
 
+// cursorModelCatalog returns the last manually fetched directory for this
+// account. It never consults Cursor's process-wide compatibility cache.
+func cursorModelCatalog(account *Account) []cursor.ModelMeta {
+	if account == nil || account.Extra == nil {
+		return nil
+	}
+	payload, err := json.Marshal(account.Extra[CursorModelCatalogExtraKey])
+	if err != nil {
+		return nil
+	}
+	var entry struct {
+		RawCatalog json.RawMessage `json:"raw_catalog"`
+	}
+	if json.Unmarshal(payload, &entry) != nil || len(entry.RawCatalog) == 0 {
+		return nil
+	}
+	var models []cursor.ModelMeta
+	if json.Unmarshal(entry.RawCatalog, &models) != nil {
+		return nil
+	}
+	return models
+}
+
 // cursorAccessTokenExpiry 返回 access token 自身的到期时刻，直接从 JWT exp 反解。
 //
 // ⚠️ 绝不能改用 accounts.expires_at：那一列的语义是「账号/订阅有效期」，
@@ -323,7 +346,7 @@ func CursorAccountUsableForModel(account *Account, model string) bool {
 	if account == nil {
 		return false
 	}
-	return cursor.AccountUsableForModel(cursorProtocolAccount(account), cursor.StripPrefix(model))
+	return cursor.AccountUsableForModelFromModels(cursorProtocolAccount(account), cursorModelCatalog(account), model)
 }
 
 // ValidateCursorQuotaFromExtra 校验管理端传入的 extra["cursor_quota"] 形状。

@@ -16,7 +16,10 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
+	"github.com/google/uuid"
 )
 
 const (
@@ -26,10 +29,13 @@ const (
 	UpstreamModelMetadataExtraKey             = "upstream_model_metadata"
 	UpstreamModelMetadataIncompleteCode       = "upstream_model_metadata_incomplete"
 	UpstreamModelMetadataPartialCode          = "upstream_model_metadata_partial"
+	CursorModelCatalogExtraKey                = "cursor_model_catalog"
+	KiroModelCatalogExtraKey                  = "kiro_model_catalog"
 
 	vertexPublisherModelsPageSize    = 300
 	vertexPublisherModelsMaxPages    = 20
 	vertexGooglePublisherModelPrefix = "publishers/google/models/"
+	kiroAvailableModelsMaxPages      = 20
 )
 
 type UpstreamModelMetadata struct {
@@ -53,11 +59,21 @@ type UpstreamModelMetadataSnapshot struct {
 }
 
 type UpstreamModelCatalog struct {
-	Models               []string                         `json:"models"`
+	Models []string `json:"models"`
+	// RawCatalog is returned for provider-specific clients that need wire fields.
+	// The persisted copy lives under the account-specific extra key.
+	RawCatalog           json.RawMessage                  `json:"raw_catalog,omitempty"`
 	Metadata             map[string]UpstreamModelMetadata `json:"metadata,omitempty"`
 	Warnings             []UpstreamModelSyncWarning       `json:"warnings,omitempty"`
 	DiscoverySource      string                           `json:"discovery_source,omitempty"`
 	GrokModelDiagnostics *GrokModelDiagnostics            `json:"grok_model_diagnostics,omitempty"`
+}
+
+type upstreamModelCatalogExtra struct {
+	Source     string          `json:"source"`
+	SyncedAt   string          `json:"synced_at"`
+	Models     []string        `json:"models"`
+	RawCatalog json.RawMessage `json:"raw_catalog,omitempty"`
 }
 
 // upstreamModelListFetchResult is the live model list plus an optional Grok
@@ -261,6 +277,11 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 		return nil, newUpstreamModelSyncInternalError("Failed to save upstream model catalog", saveErr)
 	}
 	catalog := &UpstreamModelCatalog{Models: models, Metadata: make(map[string]UpstreamModelMetadata)}
+	if account != nil && (account.IsCursor() || account.IsKiro()) && len(body) > 0 {
+		// Provider-specific fields (variants, parameter schemas, token limits) are
+		// deliberately kept separate from the normalized whitelist response.
+		catalog.RawCatalog = json.RawMessage(append([]byte(nil), body...))
+	}
 	if account != nil && account.IsGrok() {
 		if grokObservation != nil && grokObservation.Attempt.Status == grokCatalogStatusConfiguredFallback {
 			catalog.DiscoverySource = "configured_fallback"
@@ -346,6 +367,30 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 		}
 		account.SetUpstreamModelMetadataSnapshot(snapshot)
 		persistedCapabilities = true
+	}
+	if account != nil && account.ID > 0 && len(catalog.RawCatalog) > 0 && s.accountRepo != nil {
+		key := ""
+		switch {
+		case account.IsCursor():
+			key = CursorModelCatalogExtraKey
+		case account.IsKiro():
+			key = KiroModelCatalogExtraKey
+		}
+		if key != "" {
+			snapshot := upstreamModelCatalogExtra{
+				Source:     "upstream",
+				SyncedAt:   time.Now().UTC().Format(time.RFC3339),
+				Models:     append([]string(nil), catalog.Models...),
+				RawCatalog: catalog.RawCatalog,
+			}
+			if saveErr := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{key: snapshot}); saveErr != nil {
+				return nil, newUpstreamModelSyncInternalError("Failed to save upstream model catalog", saveErr)
+			}
+			if account.Extra == nil {
+				account.Extra = make(map[string]any)
+			}
+			account.Extra[key] = snapshot
+		}
 	}
 
 	if upstreamCatalogNeedsRegistry(capabilityIDs, catalog.Metadata) {
@@ -802,6 +847,15 @@ func (s *AccountTestService) fetchUpstreamModelListRequest(ctx context.Context, 
 		return nil, nil, nil, newUpstreamModelSyncConfigError("Account is required", nil)
 	}
 
+	if account.IsCursor() {
+		models, body, err := s.fetchCursorAvailableModels(ctx, account)
+		return models, body, nil, err
+	}
+	if account.IsKiro() && isKiroDirectModeAccount(account) {
+		models, body, err := s.fetchKiroAvailableModels(ctx, account)
+		return models, body, nil, err
+	}
+
 	if account.Platform == PlatformAntigravity && account.Type != AccountTypeAPIKey {
 		models, body, err := s.fetchAntigravityOAuthUpstreamModels(ctx, account)
 		return models, body, nil, err
@@ -842,6 +896,210 @@ func (s *AccountTestService) fetchUpstreamModelListRequest(ctx context.Context, 
 	}
 
 	return models, body, req, nil
+}
+
+// fetchCursorAvailableModels uses an account-scoped client. It intentionally
+// does not update cursor's process-wide live model cache: manual sync must not
+// change routing for other accounts.
+func (s *AccountTestService) fetchCursorAvailableModels(ctx context.Context, account *Account) ([]string, []byte, error) {
+	proto := cursorProtocolAccount(account)
+	if s != nil && s.cursorTokenProvider != nil {
+		accessToken, err := s.cursorTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Failed to get Cursor access token", err)
+		}
+		proto.AccessToken = strings.TrimSpace(accessToken)
+	}
+	models, err := cursor.NewClient().ListModelsFull(&proto)
+	if err != nil {
+		return nil, nil, newUpstreamModelSyncUpstreamError("Failed to fetch Cursor available models", err)
+	}
+	if len(models) == 0 {
+		return nil, nil, newUpstreamModelSyncUpstreamError("Cursor returned no supported models", nil)
+	}
+	ids := cursor.ClientModelIDsFromModels(models)
+	if len(ids) == 0 {
+		return nil, nil, newUpstreamModelSyncUpstreamError("Cursor returned no supported model IDs", nil)
+	}
+	body, err := json.Marshal(models)
+	if err != nil {
+		return nil, nil, newUpstreamModelSyncUpstreamError("Failed to encode Cursor model catalog", err)
+	}
+	return ids, body, nil
+}
+
+// fetchKiroAvailableModels reads the account's native ListAvailableModels
+// catalog through the configured upstream transport and account proxy.
+func (s *AccountTestService) fetchKiroAvailableModels(ctx context.Context, account *Account) ([]string, []byte, error) {
+	if s == nil || s.httpUpstream == nil {
+		return nil, nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
+	}
+	token := ""
+	if account.Type == AccountTypeAPIKey {
+		token = firstKiroCredential(account, "kiro_api_key", "kiroApiKey", "api_key")
+	} else if s.kiroTokenProvider != nil {
+		var err error
+		token, err = s.kiroTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Failed to get Kiro access token", err)
+		}
+	} else {
+		token = firstKiroCredential(account, "access_token", "api_key")
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil, nil, newUpstreamModelSyncConfigError("No Kiro access token is available", nil)
+	}
+	region := kiroAPIRegion(account)
+	base := ""
+	if account.Type == AccountTypeAPIKey {
+		base = fmt.Sprintf("https://management.%s.kiro.dev/List-Available-Models", region)
+	} else {
+		base = fmt.Sprintf("https://q.%s.amazonaws.com/ListAvailableModels", region)
+	}
+	accountKey := buildKiroAccountKey(account)
+	machineID := buildKiroMachineID(account)
+	baseQuery := url.Values{"origin": {"AI_EDITOR"}, "maxResults": {"200"}}
+	if account.Type != AccountTypeAPIKey {
+		if profile := kiroResolveRequestProfileArn(account); profile != "" {
+			baseQuery.Set("profileArn", profile)
+		}
+	}
+
+	type kiroModelsPayload struct {
+		Models       []json.RawMessage `json:"models"`
+		DefaultModel json.RawMessage   `json:"defaultModel"`
+		NextToken    string            `json:"nextToken"`
+	}
+
+	ids := make([]string, 0)
+	var firstBody []byte
+	var rawPages []json.RawMessage
+	var rawModels []json.RawMessage
+	var firstDefaultModel json.RawMessage
+	seenTokens := make(map[string]struct{})
+	nextToken := ""
+	for page := 0; page < kiroAvailableModelsMaxPages; page++ {
+		if nextToken != "" {
+			if _, exists := seenTokens[nextToken]; exists {
+				return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list pagination repeated a token", nil)
+			}
+			seenTokens[nextToken] = struct{}{}
+		}
+		query := make(url.Values, len(baseQuery))
+		for key, values := range baseQuery {
+			query[key] = append([]string(nil), values...)
+		}
+		if nextToken != "" {
+			query.Set("nextToken", nextToken)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"?"+query.Encode(), nil)
+		if err != nil {
+			return nil, nil, newUpstreamModelSyncConfigError("Invalid Kiro model list URL", err)
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		applyKiroConditionalHeaders(req, account)
+		req.Header.Set("User-Agent", kiropkg.BuildRuntimeUserAgent(accountKey, machineID))
+		req.Header.Set("X-Amz-User-Agent", kiropkg.BuildRuntimeAmzUserAgent(accountKey, machineID))
+		req.Header.Set("x-amzn-kiro-agent-mode", "vibe")
+		req.Header.Set("x-amzn-codewhisperer-optout", "true")
+		req.Header.Set("Amz-Sdk-Request", "attempt=1; max=3")
+		req.Header.Set("Amz-Sdk-Invocation-Id", uuid.NewString())
+		if profile := kiroResolveRequestProfileArn(account); profile != "" {
+			req.Header.Set("x-amzn-kiro-profile-arn", profile)
+		}
+		resp, err := s.doUpstreamModelsRequest(req, kiroProxyURL(account), account)
+		if err != nil {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Failed to request Kiro model list", err)
+		}
+		if resp == nil || resp.Body == nil {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list request returned an empty response", nil)
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, upstreamModelsBodyLimit+1))
+		_ = resp.Body.Close()
+		if readErr != nil {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Failed to read Kiro model list", readErr)
+		}
+		if int64(len(body)) > upstreamModelsBodyLimit {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list response is too large", nil)
+		}
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return nil, nil, &UpstreamModelSyncError{Kind: UpstreamModelSyncErrorUpstream, Message: fmt.Sprintf("Kiro model list request failed with HTTP %d", resp.StatusCode), StatusCode: resp.StatusCode}
+		}
+		var payload kiroModelsPayload
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list response was not valid JSON", err)
+		}
+		var defaultModel struct {
+			ModelID string `json:"modelId"`
+			ID      string `json:"id"`
+		}
+		if len(payload.DefaultModel) > 0 && string(payload.DefaultModel) != "null" {
+			if err := json.Unmarshal(payload.DefaultModel, &defaultModel); err != nil {
+				return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list response was not valid JSON", err)
+			}
+		}
+		if page == 0 {
+			firstBody = append([]byte(nil), body...)
+			if len(payload.DefaultModel) > 0 && string(payload.DefaultModel) != "null" {
+				firstDefaultModel = json.RawMessage(append([]byte(nil), payload.DefaultModel...))
+			}
+		}
+		if len(rawPages) > 0 || strings.TrimSpace(payload.NextToken) != "" {
+			rawPages = append(rawPages, json.RawMessage(append([]byte(nil), body...)))
+		}
+		for _, rawItem := range payload.Models {
+			var item struct {
+				ModelID string `json:"modelId"`
+				ID      string `json:"id"`
+			}
+			if err := json.Unmarshal(rawItem, &item); err != nil {
+				continue
+			}
+			rawID := strings.TrimSpace(item.ModelID)
+			if rawID == "" {
+				rawID = strings.TrimSpace(item.ID)
+			}
+			if normalized := kiropkg.NormalizeClientModel(rawID); normalized != "" {
+				ids = append(ids, normalized)
+			}
+			if len(rawItem) > 0 {
+				rawModels = append(rawModels, append(json.RawMessage(nil), rawItem...))
+			}
+		}
+		rawDefaultID := strings.TrimSpace(defaultModel.ModelID)
+		if rawDefaultID == "" {
+			rawDefaultID = strings.TrimSpace(defaultModel.ID)
+		}
+		if normalized := kiropkg.NormalizeClientModel(rawDefaultID); normalized != "" {
+			ids = append(ids, normalized)
+		}
+		nextToken = strings.TrimSpace(payload.NextToken)
+		if nextToken == "" {
+			break
+		}
+		if page+1 == kiroAvailableModelsMaxPages {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list pagination did not finish", fmt.Errorf("more than %d pages", kiroAvailableModelsMaxPages))
+		}
+	}
+	ids = dedupeAndSortModelIDs(ids)
+	if len(ids) == 0 {
+		return nil, nil, newUpstreamModelSyncUpstreamError("Kiro returned no supported models", nil)
+	}
+	if len(rawPages) == 0 {
+		return ids, firstBody, nil
+	}
+	pageCatalog := struct {
+		Pages        []json.RawMessage `json:"pages"`
+		Models       []json.RawMessage `json:"models"`
+		DefaultModel json.RawMessage   `json:"defaultModel,omitempty"`
+	}{Pages: rawPages, Models: rawModels, DefaultModel: firstDefaultModel}
+	mergedBody, err := json.Marshal(pageCatalog)
+	if err != nil {
+		return nil, nil, newUpstreamModelSyncUpstreamError("Failed to encode Kiro model catalog", err)
+	}
+	return ids, mergedBody, nil
 }
 
 func (s *AccountTestService) saveGrokCatalogObservation(ctx context.Context, account *Account, observation *GrokCatalogObservation) error {

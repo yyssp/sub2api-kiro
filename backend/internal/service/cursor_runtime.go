@@ -53,6 +53,10 @@ func cursorTraceIDFromContext(ctx context.Context) string {
 // 误判问题调出来的，换成英文 "User:/Assistant:" 会让模型把历史当成
 // 用户粘贴的伪造 transcript 而拒答。
 func cursorRequestFromBody(body []byte, model string) cursor.AgentRequest {
+	return cursorRequestFromBodyWithModels(body, model, nil)
+}
+
+func cursorRequestFromBodyWithModels(body []byte, model string, models []cursor.ModelMeta) cursor.AgentRequest {
 	root := gjson.ParseBytes(body)
 
 	var msgs []cursor.ChatMessage
@@ -101,8 +105,9 @@ func cursorRequestFromBody(body []byte, model string) cursor.AgentRequest {
 	images, documents := cursor.CollectCurrentTurnAttachments(msgs)
 
 	// effort 档位决定 thinking 变体模型名，漏掉会让 output_config.effort 静默失效。
-	resolvedModel := cursor.ApplyClaudeEffortModel(
-		cursor.StripPrefix(model),
+	resolvedModel := cursor.ApplyClaudeEffortModelFromModels(
+		models,
+		cursor.StripPrefixFromModels(models, model),
 		root.Get("output_config.effort").String(),
 	)
 
@@ -571,6 +576,12 @@ func (s *GatewayService) forwardCursorMessages(ctx context.Context, c *gin.Conte
 		// 把整个号池烧一遍，每个号都失败在同一个原因上。
 		return nil, &BetaBlockedError{Message: cursorInvalidModelMessage(mappedModel, err)}
 	}
+	models := cursorModelCatalog(account)
+	if len(models) > 0 {
+		if err := cursor.ValidateDownstreamModelFromModels(models, mappedModel); err != nil {
+			return nil, &BetaBlockedError{Message: cursorInvalidModelMessage(mappedModel, err)}
+		}
+	}
 
 	body := parsed.Body.Bytes()
 
@@ -586,7 +597,15 @@ func (s *GatewayService) forwardCursorMessages(ctx context.Context, c *gin.Conte
 
 	protoAccount := cursorProtocolAccount(account)
 	protoAccount.AccessToken = token
-	agentReq := cursorRequestFromBody(body, mappedModel)
+	var agentReq cursor.AgentRequest
+	if len(models) == 0 {
+		// Keep the legacy construction path for accounts without a saved
+		// directory; it also preserves the source-level wiring contract that
+		// validation happens before the protocol request is built.
+		agentReq = cursorRequestFromBody(body, mappedModel)
+	} else {
+		agentReq = cursorRequestFromBodyWithModels(body, mappedModel, models)
+	}
 
 	// TraceID 串上网关请求 ID：协议层的 logAgentDebug 全部以它为前缀。
 	// 不串的话上游调试日志只会打 trace=none，一次线上排障拿到的几十条

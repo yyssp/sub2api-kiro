@@ -407,9 +407,10 @@ func (s *AccountTestService) testCursorAccountConnection(c *gin.Context, account
 
 	// 目标模型不在账号可用清单里时给出明确提示，而不是让用户在真实请求里才发现。
 	if model := strings.TrimSpace(modelID); model != "" {
-		if !cursor.AccountUsableForModel(pa, cursor.StripPrefix(model)) {
+		models := cursorModelCatalog(account)
+		if !cursor.AccountUsableForModelFromModels(pa, models, model) {
 			return fmt.Errorf("cursor: model %q is not available for this account (quota bucket %q)",
-				model, cursor.ModelToQuotaBucket(cursor.StripPrefix(model)))
+				model, cursor.ModelToQuotaBucket(cursor.StripPrefixFromModels(models, model)))
 		}
 	}
 	return nil

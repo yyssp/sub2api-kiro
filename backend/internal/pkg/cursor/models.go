@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -249,6 +250,10 @@ func IsCursorModel(model string) bool {
 // 优先 medium/default/high。已在清单中或找不到任何变体则原样返回。解决 Codex++ 等客户端用裸名导致的
 // ERROR_BAD_MODEL_NAME(继而被网关误当可重试而反复换号刷屏)。
 func normalizeCursorModel(model string) string {
+	return normalizeCursorModelFromModels(claudeResolutionModels(), model)
+}
+
+func normalizeCursorModelFromModels(models []ModelMeta, model string) string {
 	m := strings.ToLower(strings.TrimSpace(model))
 	// ⚠️ 这里曾把 "auto" 翻译成 Cursor 协议的 "default" 再发上游。已移除。
 	//
@@ -260,20 +265,25 @@ func normalizeCursorModel(model string) string {
 	//
 	// 因此网关一律要求显式模型：auto/default/composer 这类 Cursor 服务端选路
 	// 别名不再由我们代为构造，由 ValidateDownstreamModel 在进协议层之前拒绝。
-	if m == "" || inModelSet(m) {
-		return model
+	set := make(map[string]bool)
+	ids := make([]string, 0)
+	for _, meta := range resolutionModels(models) {
+		id := strings.ToLower(strings.TrimSpace(meta.ID))
+		if id == "" || set[id] {
+			continue
+		}
+		set[id] = true
+		ids = append(ids, id)
 	}
-	modelMu.RLock()
-	defer modelMu.RUnlock()
-	if liveSet == nil {
+	if m == "" || set[m] {
 		return model
 	}
 	for _, suf := range []string{"-medium", "-default", "-high", "-medium-fast", "-none", "-low", "-max"} {
-		if liveSet[m+suf] {
+		if set[m+suf] {
 			return m + suf
 		}
 	}
-	for id := range liveSet {
+	for _, id := range ids {
 		if strings.HasPrefix(id, m+"-") {
 			return id
 		}
@@ -300,6 +310,7 @@ var claudeCodeModelSpecs = []claudeCodeModelSpec{
 	{ID: "fable", Bases: []string{"claude-fable-5"}, Fallback: "claude-fable-5"},
 	{ID: "opusplan", Bases: []string{"claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-4-6-opus", "claude-4-5-opus"}, Fallback: "claude-opus-5"},
 	{ID: "claude-opus-5", Bases: []string{"claude-opus-5"}, Fallback: "claude-opus-5"},
+	{ID: "claude-opus-5-5", Bases: []string{"claude-opus-5-5"}, Fallback: "claude-opus-5-5"},
 	{ID: "claude-opus-4-8", Bases: []string{"claude-opus-4-8"}, Fallback: "claude-opus-4-8"},
 	{ID: "claude-opus-4-7", Bases: []string{"claude-opus-4-7"}, Fallback: "claude-opus-4-7"},
 	{ID: "claude-opus-4-6", Bases: []string{"claude-4-6-opus"}, Fallback: "claude-opus-4-6"},
@@ -307,13 +318,57 @@ var claudeCodeModelSpecs = []claudeCodeModelSpec{
 	{ID: "claude-opus-4-1", Bases: []string{"claude-opus-4-1"}, Fallback: "claude-opus-4-1"},
 	{ID: "claude-opus-4-0", Bases: []string{"claude-opus-4-0", "claude-4-opus"}, Fallback: "claude-opus-4-0"},
 	{ID: "claude-sonnet-5", Bases: []string{"claude-sonnet-5"}, Fallback: "claude-sonnet-5"},
+	{ID: "claude-sonnet-5-5", Bases: []string{"claude-sonnet-5-5"}, Fallback: "claude-sonnet-5-5"},
 	{ID: "claude-sonnet-4-6", Bases: []string{"claude-4-6-sonnet"}, Fallback: "claude-sonnet-4-6"},
 	{ID: "claude-sonnet-4-5", Bases: []string{"claude-4-5-sonnet"}, Fallback: "claude-sonnet-4-5"},
 	{ID: "claude-sonnet-4", Bases: []string{"claude-sonnet-4", "claude-4-sonnet"}, Fallback: "claude-sonnet-4"},
 	{ID: "claude-sonnet-4-0", Bases: []string{"claude-4-sonnet"}, Fallback: "claude-sonnet-4-0"},
 	{ID: "claude-haiku-4-5", Bases: []string{"claude-4-5-haiku"}, Fallback: "claude-haiku-4-5"},
+	{ID: "claude-haiku-5-5", Bases: []string{"claude-haiku-5-5"}, Fallback: "claude-haiku-5-5"},
+	{ID: "claude-fable-5-2", Alias: []string{"fable-5-2"}, Bases: []string{"claude-fable-5-2"}, Fallback: "claude-fable-5-2"},
 	{ID: "claude-fable-5-1", Alias: []string{"fable-5-1"}, Bases: []string{"claude-fable-5-1"}, Fallback: "claude-fable-5-1"},
 	{ID: "claude-fable-5", Bases: []string{"claude-fable-5"}, Fallback: "claude-fable-5"},
+}
+
+// resolutionModels returns an owned snapshot of an account-scoped directory.
+// An empty directory means that the caller has no account snapshot yet; use the
+// evidence-backed static compatibility catalog, without consulting liveModels.
+func resolutionModels(models []ModelMeta) []ModelMeta {
+	if len(models) == 0 {
+		models = DefaultModels
+	}
+	out := make([]ModelMeta, len(models))
+	copy(out, models)
+	return out
+}
+
+// stripClaudeModelDecorations removes client-side spelling decorations. The
+// [1m] suffix is a context selector, not part of Cursor's model ID.
+func stripClaudeModelDecorations(raw string) (string, map[string]string) {
+	raw = strings.TrimSpace(raw)
+	if strings.HasPrefix(strings.ToLower(raw), "cursor/") {
+		raw = strings.TrimSpace(raw[len("cursor/"):])
+	}
+	params := make(map[string]string)
+	for {
+		if strings.HasSuffix(strings.ToLower(raw), "[1m]") {
+			raw = strings.TrimSpace(raw[:len(raw)-len("[1m]")])
+			params["context"] = "1m"
+			continue
+		}
+		break
+	}
+	if i := strings.LastIndex(raw, "["); i >= 0 && strings.HasSuffix(raw, "]") {
+		body := raw[i+1 : len(raw)-1]
+		for _, item := range strings.Split(body, ",") {
+			parts := strings.SplitN(strings.TrimSpace(item), "=", 2)
+			if len(parts) == 2 && strings.TrimSpace(parts[0]) != "" {
+				params[strings.ToLower(strings.TrimSpace(parts[0]))] = strings.TrimSpace(parts[1])
+			}
+		}
+		raw = strings.TrimSpace(raw[:i])
+	}
+	return raw, params
 }
 
 func normalizeClaudeModelKey(model string) string {
@@ -358,13 +413,30 @@ func claudeResolutionModels() []ModelMeta {
 }
 
 func claudeModelIndex() map[string]string {
+	return claudeModelIndexFromModels(claudeResolutionModels())
+}
+
+func claudeModelIndexFromModels(models []ModelMeta) map[string]string {
 	index := make(map[string]string)
-	for _, m := range claudeResolutionModels() {
+	for _, m := range resolutionModels(models) {
 		if familyOf(m.ID) != "claude" {
 			continue
 		}
 		index[strings.ToLower(m.ID)] = m.ID
 		index[normalizeClaudeModelKey(m.ID)] = m.ID
+		for _, alias := range m.Aliases {
+			alias = strings.TrimSpace(alias)
+			if alias == "" {
+				continue
+			}
+			// Legacy slugs are concrete wire IDs; short names (opus/sonnet)
+			// remain aliases for the owning base and are never emitted directly.
+			if strings.HasPrefix(strings.ToLower(alias), "claude-") {
+				index[normalizeClaudeModelKey(alias)] = alias
+			} else {
+				index[normalizeClaudeModelKey(alias)] = m.ID
+			}
+		}
 	}
 	return index
 }
@@ -494,14 +566,12 @@ func claudeCandidateIDs(base, suffix string) []string {
 				add(b + "-" + s)
 			}
 		}
-		// A bare standard ID should use a stable non-thinking variant. If the
-		// requested tier is unavailable, fall through to other valid tiers.
-		defaultSuffixes := []string{"medium", "high", "low", "xhigh", "max", "none", "thinking-high", "high-thinking"}
-		if strings.Contains(suffix, "thinking") {
-			defaultSuffixes = []string{"thinking-high", "thinking-medium", "thinking-low", "thinking-xhigh", "thinking-max", "high-thinking", "max-thinking"}
-		}
-		for _, s := range defaultSuffixes {
-			add(b + "-" + s)
+		if suffix == "" {
+			// A bare standard ID uses a stable non-thinking variant. Explicit
+			// suffixes must never fall through to a nearby tier.
+			for _, s := range []string{"medium", "high", "low", "xhigh", "max", "none", "thinking-high", "high-thinking"} {
+				add(b + "-" + s)
+			}
 		}
 	}
 	return out
@@ -525,6 +595,16 @@ var ErrUnsupportedDownstreamModel = errors.New("cursor: unsupported model")
 //   - auto/default/composer 一律拒绝，理由见 ErrServerSideRoutedModel。
 //   - 只有能解析到标准 Claude 模型的名字放行；Cursor 协议内部名不对外暴露。
 func ValidateDownstreamModel(model string) error {
+	return validateDownstreamModelFromModels(nil, model)
+}
+
+// ValidateDownstreamModelFromModels validates against one account's catalog.
+// A non-empty catalog is authoritative; an empty catalog keeps static fallback.
+func ValidateDownstreamModelFromModels(models []ModelMeta, model string) error {
+	return validateDownstreamModelFromModels(models, model)
+}
+
+func validateDownstreamModelFromModels(models []ModelMeta, model string) error {
 	raw := strings.TrimSpace(model)
 	if raw == "" {
 		return fmt.Errorf("%w: model is required", ErrUnsupportedDownstreamModel)
@@ -535,11 +615,13 @@ func ValidateDownstreamModel(model string) error {
 	if isServerSideRoutedModelAlias(raw) {
 		return fmt.Errorf("%w: %q", ErrServerSideRoutedModel, model)
 	}
-	if _, ok := ResolveClaudeCodeModel(raw); ok {
+	if _, ok := ResolveClaudeCodeModelFromModels(models, raw); ok {
 		return nil
 	}
-	if _, ok := fallbackClaudeCodeModel(raw); ok {
-		return nil
+	if len(models) == 0 {
+		if _, ok := fallbackClaudeCodeModel(raw); ok {
+			return nil
+		}
 	}
 	return fmt.Errorf("%w: %q", ErrUnsupportedDownstreamModel, model)
 }
@@ -559,37 +641,141 @@ func isServerSideRoutedModelAlias(model string) bool {
 // ResolveClaudeCodeModel 将 Claude Code 标准模型名解析为当前动态 Cursor
 // 清单中的真实上游 ID。输入可带 cursor/ 前缀，也兼容旧 Cursor 变体。
 func ResolveClaudeCodeModel(model string) (string, bool) {
-	raw := strings.TrimSpace(model)
-	if strings.HasPrefix(strings.ToLower(raw), "cursor/") {
-		raw = strings.TrimSpace(raw[len("cursor/"):])
-	}
+	return ResolveClaudeCodeModelFromModels(claudeResolutionModels(), model)
+}
+
+// ResolveClaudeCodeModelFromModels 在指定账号的 AvailableModels 目录中解析
+// Claude Code 名称。该函数不读取全局 liveModels，适合请求按账号目录选路。
+// 目录里的每一个候选 ID 都必须真实存在；解析失败不会拼造一个目录外 ID。
+func ResolveClaudeCodeModelFromModels(models []ModelMeta, model string) (string, bool) {
+	raw, requested := stripClaudeModelDecorations(model)
 	if raw == "" {
 		return "", false
 	}
-	index := claudeModelIndex()
-	if id, ok := index[strings.ToLower(raw)]; ok {
-		return id, true
-	}
 	key := normalizeClaudeModelKey(raw)
-	if id, ok := index[key]; ok {
+	index := claudeModelIndexFromModels(models)
+	known := make(map[string]string, len(index))
+	for k, id := range index {
+		known[k] = id
+	}
+
+	// Exact IDs from the account directory (including future release-date IDs)
+	// are always preserved. Public standard names are resolved below so they
+	// receive a stable concrete variant when the directory provides one.
+	if id, ok := known[strings.ToLower(raw)]; ok && !isClaudePublicBase(key) {
 		return id, true
 	}
-	spec, matchedBase, suffix, ok := claudeSpecForKey(trimClaudeReleaseDate(key))
+	if id, ok := known[key]; ok && !isClaudePublicBase(key) {
+		return id, true
+	}
+
+	key = trimClaudeReleaseDate(key)
+	spec, matchedBase, suffix, ok := claudeSpecForKey(key)
 	if !ok {
 		return "", false
+	}
+	if paramsSuffix := claudeSuffixFromParameters(requested); paramsSuffix != "" {
+		suffix = paramsSuffix
 	}
 	bases := spec.Bases
 	if matchedBase != "" {
 		bases = []string{matchedBase}
 	}
+	if matchedBase == "" && !strings.HasPrefix(key, "claude-") && suffix != "" &&
+		!strings.Contains(suffix, "thinking") && !strings.HasSuffix(suffix, "-fast") {
+		for _, base := range spec.Bases {
+			for _, candidate := range claudeCandidateIDs(base, "") {
+				if id, exists := known[strings.ToLower(candidate)]; exists {
+					return id, true
+				}
+			}
+		}
+	}
+
+	// A catalog can expose a base model plus legacy slugs in Aliases. Prefer
+	// concrete slugs for a public base, then fall back to the base only when no
+	// variant is available (parameterized catalogs accept the base ID).
 	for _, base := range bases {
 		for _, candidate := range claudeCandidateIDs(base, suffix) {
-			if id, exists := index[candidate]; exists {
+			if id, exists := known[strings.ToLower(candidate)]; exists {
+				return id, true
+			}
+			if id, exists := known[normalizeClaudeModelKey(candidate)]; exists {
+				return id, true
+			}
+		}
+		if suffix == "" {
+			if id, exists := known[strings.ToLower(base)]; exists {
 				return id, true
 			}
 		}
 	}
+	// Historical short aliases (opus/sonnet/haiku) are selectors rather than
+	// concrete version IDs. If their requested tier is absent, preserve the
+	// alias's first available base variant; canonical claude-* names must fail
+	// instead of crossing releases or silently changing effort.
+	if matchedBase == "" && !strings.HasPrefix(key, "claude-") && suffix != "" {
+		for _, base := range spec.Bases {
+			for _, candidate := range claudeCandidateIDs(base, "") {
+				if id, exists := known[strings.ToLower(candidate)]; exists {
+					return id, true
+				}
+			}
+		}
+	}
+	if len(models) == 0 {
+		// No account snapshot is available during startup. Return only the
+		// evidence-backed canonical base fallback; a non-empty account directory
+		// deliberately never takes this path.
+		if fallback, ok := fallbackClaudeCodeModelFromModels(nil, model); ok {
+			return fallback, true
+		}
+	}
 	return "", false
+}
+
+func isClaudePublicBase(key string) bool {
+	key = normalizeClaudeModelKey(key)
+	for _, spec := range claudeCodeModelSpecs {
+		if key == spec.ID {
+			return true
+		}
+		for _, alias := range spec.Alias {
+			if key == alias {
+				return true
+			}
+		}
+		for _, base := range spec.Bases {
+			if key == base {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func claudeSuffixFromParameters(params map[string]string) string {
+	if len(params) == 0 {
+		return ""
+	}
+	effort := normalizeClaudeEffort(params["effort"])
+	if effort == "" {
+		effort = normalizeClaudeEffort(params["reasoning_effort"])
+	}
+	thinking := strings.EqualFold(params["thinking"], "true")
+	fast := strings.EqualFold(params["fast"], "true")
+	suffix := effort
+	if thinking {
+		if suffix == "" {
+			suffix = "thinking"
+		} else {
+			suffix = "thinking-" + suffix
+		}
+	}
+	if fast {
+		suffix += "-fast"
+	}
+	return strings.Trim(suffix, "-")
 }
 
 // fallbackClaudeCodeModel returns a stable public Claude model ID for the
@@ -597,10 +783,12 @@ func ResolveClaudeCodeModel(model string) (string, bool) {
 // transport fallback; callers still use ResolveClaudeCodeModel whenever an
 // exact live ID exists.
 func fallbackClaudeCodeModel(model string) (string, bool) {
+	return fallbackClaudeCodeModelFromModels(claudeResolutionModels(), model)
+}
+
+func fallbackClaudeCodeModelFromModels(models []ModelMeta, model string) (string, bool) {
 	raw := strings.TrimSpace(model)
-	if strings.HasPrefix(strings.ToLower(raw), "cursor/") {
-		raw = strings.TrimSpace(raw[len("cursor/"):])
-	}
+	raw, _ = stripClaudeModelDecorations(raw)
 	key := trimClaudeReleaseDate(normalizeClaudeModelKey(raw))
 	spec, matchedBase, _, ok := claudeSpecForKey(key)
 	if !ok {
@@ -620,6 +808,138 @@ func fallbackClaudeCodeModel(model string) (string, bool) {
 	return "", false
 }
 
+// StripPrefixFromModels is the account-scoped counterpart of StripPrefix.
+// It keeps the legacy API intact while allowing the service layer to pass the
+// directory belonging to the selected account.
+func StripPrefixFromModels(models []ModelMeta, model string) string {
+	raw := strings.TrimSpace(model)
+	if i := strings.IndexByte(raw, '/'); i >= 0 && strings.EqualFold(raw[:i], "cursor") {
+		raw = strings.TrimSpace(raw[i+1:])
+	}
+	if resolved, ok := ResolveClaudeCodeModelFromModels(models, raw); ok {
+		return resolved
+	}
+	if fallback, ok := fallbackClaudeCodeModelFromModels(models, raw); ok {
+		return fallback
+	}
+	return normalizeCursorModelFromModels(models, raw)
+}
+
+// ClaudeCodeModelIDsFromModels returns stable public Claude IDs resolvable by
+// the supplied account directory. It is the whitelist API for service layers.
+func ClaudeCodeModelIDsFromModels(models []ModelMeta) []string {
+	out := make([]string, 0, len(claudeCodeModelSpecs))
+	seen := make(map[string]bool)
+	for _, spec := range claudeCodeModelSpecs {
+		if !strings.HasPrefix(spec.ID, "claude-") {
+			continue
+		}
+		for _, base := range spec.Bases {
+			resolved, ok := ResolveClaudeCodeModelFromModels(models, base)
+			if ok && resolved != "" {
+				if !seen[spec.ID] {
+					out = append(out, spec.ID)
+					seen[spec.ID] = true
+				}
+				break
+			}
+		}
+	}
+	return out
+}
+
+// ClientModelIDsFromModels aggregates a raw account directory into canonical
+// client names. Only combinations represented by a real directory ID (or a
+// catalog variant with the same parameter values) are emitted; no effort/fast
+// suffix is fabricated for a missing variant.
+func ClientModelIDsFromModels(models []ModelMeta) []string {
+	models = resolutionModels(models)
+	seen := make(map[string]bool)
+	add := func(id string) {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+	}
+	for _, spec := range claudeCodeModelSpecs {
+		if !strings.HasPrefix(spec.ID, "claude-") {
+			continue
+		}
+		if resolved, ok := ResolveClaudeCodeModelFromModels(models, spec.ID); ok && resolved != "" {
+			add(spec.ID)
+		}
+	}
+	// Map each concrete raw ID to its public base and carry its actual suffix.
+	// This covers both flat directories and parameterized base+legacy-slug
+	// directories returned by AvailableModels.
+	for _, meta := range models {
+		for _, rawID := range append([]string{meta.ID}, meta.Aliases...) {
+			raw := strings.TrimSpace(rawID)
+			if !strings.HasPrefix(strings.ToLower(raw), "claude-") {
+				continue
+			}
+			key := trimClaudeReleaseDate(normalizeClaudeModelKey(raw))
+			for _, spec := range claudeCodeModelSpecs {
+				base, suffix, ok := publicBaseAndSuffix(spec, key)
+				if !ok {
+					continue
+				}
+				if suffix == "" {
+					add(base)
+					break
+				}
+				candidate := base + "-" + suffix
+				if _, ok := ResolveClaudeCodeModelFromModels(models, candidate); ok {
+					add(candidate)
+				}
+				break
+			}
+		}
+		for _, variant := range meta.Variants {
+			if variant.Slug == "" {
+				continue
+			}
+			if resolved, ok := ResolveClaudeCodeModelFromModels(models, variant.Slug); ok {
+				if spec, _, _, found := claudeSpecForKey(trimClaudeReleaseDate(normalizeClaudeModelKey(variant.Slug))); found {
+					add(spec.ID)
+				} else {
+					add(resolved)
+				}
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func publicBaseAndSuffix(spec claudeCodeModelSpec, key string) (string, string, bool) {
+	if !strings.HasPrefix(spec.ID, "claude-") {
+		return "", "", false
+	}
+	if key == spec.ID {
+		return spec.ID, "", true
+	}
+	for _, base := range spec.Bases {
+		if key == base {
+			return spec.ID, "", true
+		}
+		if strings.HasPrefix(key, base+"-") {
+			return spec.ID, strings.TrimPrefix(key, base+"-"), true
+		}
+		for _, alternate := range claudeCandidateIDs(base, "") {
+			if strings.HasPrefix(key, alternate+"-") {
+				return spec.ID, strings.TrimPrefix(key, alternate+"-"), true
+			}
+		}
+	}
+	return "", "", false
+}
+
 func normalizeClaudeEffort(effort string) string {
 	switch strings.ToLower(strings.TrimSpace(effort)) {
 	case "low", "medium", "high", "xhigh", "max":
@@ -633,11 +953,18 @@ func normalizeClaudeEffort(effort string) string {
 // variant from the live Cursor model list. It deliberately does not choose a
 // nearby tier: silently downgrading or upgrading effort would change semantics.
 func applyClaudeEffortModel(model, effort string) string {
+	return ApplyClaudeEffortModelFromModels(claudeResolutionModels(), model, effort)
+}
+
+// ApplyClaudeEffortModelFromModels selects the requested thinking effort only
+// from the supplied account directory. Missing tiers leave the model unchanged;
+// no nearby tier or invented ID is substituted.
+func ApplyClaudeEffortModelFromModels(models []ModelMeta, model, effort string) string {
 	effort = normalizeClaudeEffort(effort)
 	if effort == "" || familyOf(model) != "claude" {
 		return model
 	}
-	if meta, ok := claudeModelMeta(model); ok && meta.Think {
+	if meta, ok := claudeModelMetaFromModels(models, model); ok && meta.Think && isClaudeThinkingVariant(model) {
 		// An explicitly selected thinking model always wins over output_config.
 		return model
 	}
@@ -661,7 +988,7 @@ func applyClaudeEffortModel(model, effort string) string {
 
 	var best ModelMeta
 	bestSet := false
-	for _, candidate := range claudeResolutionModels() {
+	for _, candidate := range resolutionModels(models) {
 		if familyOf(candidate.ID) != "claude" || !candidate.Think ||
 			!claudeModelMatchesBase(candidate.ID, matchedBase) ||
 			claudeThinkingTier(candidate.ID) != effort {
@@ -680,9 +1007,18 @@ func applyClaudeEffortModel(model, effort string) string {
 	return model
 }
 
+func isClaudeThinkingVariant(model string) bool {
+	key := strings.TrimSuffix(normalizeClaudeModelKey(model), "-fast")
+	return strings.Contains(key, "-thinking") || strings.HasSuffix(key, "-thinking")
+}
+
 func claudeModelMeta(model string) (ModelMeta, bool) {
+	return claudeModelMetaFromModels(claudeResolutionModels(), model)
+}
+
+func claudeModelMetaFromModels(models []ModelMeta, model string) (ModelMeta, bool) {
 	want := strings.ToLower(strings.TrimSpace(model))
-	for _, candidate := range claudeResolutionModels() {
+	for _, candidate := range resolutionModels(models) {
 		if strings.ToLower(strings.TrimSpace(candidate.ID)) == want {
 			return candidate, true
 		}

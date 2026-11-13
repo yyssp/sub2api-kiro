@@ -113,6 +113,14 @@ func AccountUsableForModel(a Account, model string) bool {
 	return AccountUsableForSurface(a, model, cursorClientTypeForModel(model))
 }
 
+// AccountUsableForModelFromModels resolves the requested client name against
+// an account-scoped directory before applying the normal quota gate. It keeps
+// account selection independent from the process-wide compatibility cache.
+func AccountUsableForModelFromModels(a Account, models []ModelMeta, model string) bool {
+	resolved := StripPrefixFromModels(models, model)
+	return AccountUsableForModel(a, resolved)
+}
+
 // AccountUsableForSurface 在已知传输面(clientType)时做同样判断。
 func AccountUsableForSurface(a Account, model, clientType string) bool {
 	if accountCredentialUnavailable(a) {

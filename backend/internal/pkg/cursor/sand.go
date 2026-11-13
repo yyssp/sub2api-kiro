@@ -26,7 +26,10 @@ const (
 // two wire formats must not be mixed.
 func buildSandInferenceRequest(model string, in AgentRequest, conversationID string) []byte {
 	resolvedModel := sandResolvedModel(model)
-	selection := parseSandModelSelection(resolvedModel)
+	// Parse decorations from the client spelling before resolving the wire ID;
+	// otherwise `[1m]` and bracket parameters disappear during alias lookup.
+	selection := parseSandModelSelection(model)
+	selection.ModelID = sandCatalogModelID(resolvedModel)
 	wireModel := selection.ModelID
 	conversationID = strings.TrimSpace(conversationID)
 	if conversationID == "" {
@@ -49,7 +52,7 @@ func buildSandInferenceRequest(model string, in AgentRequest, conversationID str
 	// field 8 是 conversation_id；缺失时上游返回 invalid_argument。
 	body = append(body, protoString(8, conversationID)...)
 	body = append(body, protoMessage(7, buildSandRequestedModelWithParameters(
-		wireModel, selection.Parameters, selection.MaxMode || in.MaxMode,
+		wireModel, selection.Parameters, (selection.MaxMode || in.MaxMode) && !sandHasParameterID(selection.Parameters, "context"),
 	))...)
 	return body
 }
@@ -111,6 +114,10 @@ func parseSandModelSelection(model string) sandModelSelection {
 	if match := sandModelBracketRE.FindStringSubmatch(raw); len(match) == 3 {
 		raw = strings.TrimSpace(match[1])
 		for _, item := range strings.Split(match[2], ",") {
+			if strings.EqualFold(strings.TrimSpace(item), "1m") {
+				explicit = append(explicit, sandModelParameter{ID: "context", Value: "1m"})
+				continue
+			}
 			parts := strings.SplitN(strings.TrimSpace(item), "=", 2)
 			if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
 				continue
@@ -270,19 +277,29 @@ func sandWireModel(model string) string {
 }
 
 func sandResolvedModel(model string) string {
+	return SandResolvedModelFromModels(claudeResolutionModels(), model)
+}
+
+// SandResolvedModelFromModels resolves a Sand wire model from one account's
+// directory. It is the account-scoped counterpart of sandResolvedModel.
+func SandResolvedModelFromModels(models []ModelMeta, model string) string {
 	model = strings.TrimSpace(model)
-	if resolved, ok := ResolveClaudeCodeModel(model); ok {
+	if resolved, ok := ResolveClaudeCodeModelFromModels(models, model); ok {
 		return resolved
 	}
-	if fallback, ok := fallbackClaudeCodeModel(model); ok {
+	if fallback, ok := fallbackClaudeCodeModelFromModels(models, model); ok {
 		return fallback
 	}
-	return normalizeCursorModel(model)
+	return normalizeCursorModelFromModels(models, model)
 }
 
 func sandCatalogModelID(model string) string {
+	return sandCatalogModelIDFromModels(claudeResolutionModels(), model)
+}
+
+func sandCatalogModelIDFromModels(models []ModelMeta, model string) string {
 	model = strings.TrimSpace(model)
-	for _, meta := range claudeResolutionModels() {
+	for _, meta := range resolutionModels(models) {
 		for _, alias := range meta.Aliases {
 			if strings.EqualFold(alias, model) {
 				return meta.ID

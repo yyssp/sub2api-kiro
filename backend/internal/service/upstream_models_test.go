@@ -129,6 +129,94 @@ func TestBuildV1ModelsURL(t *testing.T) {
 	require.Equal(t, "https://gateway.example.com/antigravity/v1/models", buildV1ModelsURL("https://gateway.example.com/antigravity/"))
 }
 
+func TestFetchKiroAvailableModelsNormalizesIDsAndPreservesWireBody(t *testing.T) {
+	account := &Account{
+		ID:       42,
+		Platform: PlatformKiro,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":    "kiro-test-token",
+			"api_region": "us-east-1",
+		},
+		Concurrency: 1,
+	}
+	raw := `{"defaultModel":{"modelId":"claude-sonnet-5.5-20260101-thinking"},"models":[{"modelId":"claude-opus-5.5"},{"modelId":"gpt-5.6-sol"},{"modelId":"vendor-unknown"}]}`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(raw)),
+	}}
+	svc := &AccountTestService{httpUpstream: upstream}
+	models, body, err := svc.fetchKiroAvailableModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, []string{"claude-opus-5-5", "claude-sonnet-5-5", "gpt-5.6-sol"}, models)
+	require.JSONEq(t, raw, string(body))
+	require.Equal(t, "https://management.us-east-1.kiro.dev/List-Available-Models", upstream.lastReq.URL.Scheme+"://"+upstream.lastReq.URL.Host+upstream.lastReq.URL.Path)
+	require.Equal(t, "Bearer kiro-test-token", upstream.lastReq.Header.Get("Authorization"))
+}
+
+func TestFetchKiroAvailableModelsPaginatesAndPreservesRawPages(t *testing.T) {
+	account := &Account{
+		ID:       43,
+		Platform: PlatformKiro,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":    "kiro-test-token",
+			"api_region": "us-east-1",
+		},
+		Concurrency: 1,
+	}
+	first := `{"defaultModel":{"modelId":"claude-opus-5.5"},"models":[{"modelId":"claude-opus-5.5","description":"first"}],"nextToken":"page-2"}`
+	second := `{"models":[{"modelId":"gpt-5.6-luna","description":"second"}],"nextToken":null}`
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(first))},
+		{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(second))},
+	}}
+	svc := &AccountTestService{httpUpstream: upstream}
+
+	models, body, err := svc.fetchKiroAvailableModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, []string{"claude-opus-5-5", "gpt-5.6-luna"}, models)
+	require.Len(t, upstream.requests, 2)
+	require.Empty(t, upstream.requests[0].URL.Query().Get("nextToken"))
+	require.Equal(t, "page-2", upstream.requests[1].URL.Query().Get("nextToken"))
+
+	var merged struct {
+		Pages        []json.RawMessage `json:"pages"`
+		Models       []json.RawMessage `json:"models"`
+		DefaultModel json.RawMessage   `json:"defaultModel"`
+	}
+	require.NoError(t, json.Unmarshal(body, &merged))
+	require.Len(t, merged.Pages, 2)
+	require.Len(t, merged.Models, 2)
+	require.JSONEq(t, first, string(merged.Pages[0]))
+	require.JSONEq(t, second, string(merged.Pages[1]))
+	require.JSONEq(t, `{"modelId":"claude-opus-5.5"}`, string(merged.DefaultModel))
+}
+
+func TestFetchKiroAvailableModelsRejectsRepeatedPaginationToken(t *testing.T) {
+	account := &Account{
+		ID:       44,
+		Platform: PlatformKiro,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":    "kiro-test-token",
+			"api_region": "us-east-1",
+		},
+		Concurrency: 1,
+	}
+	page := `{"models":[{"modelId":"claude-opus-5.5"}],"nextToken":"same-token"}`
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(page))},
+		{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(page))},
+	}}
+	svc := &AccountTestService{httpUpstream: upstream}
+
+	_, _, err := svc.fetchKiroAvailableModels(context.Background(), account)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "repeated a token")
+	require.Len(t, upstream.requests, 2)
+}
+
 func TestBuildOpenAIModelsURL(t *testing.T) {
 	t.Parallel()
 
