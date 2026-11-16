@@ -184,6 +184,8 @@ func extractWebSearchTextFromContent(content gjson.Result) string {
 
 // handleWebSearchEmulation intercepts a web-search-only request,
 // calls a third-party search API, and constructs an Anthropic-format response.
+// The query is the client-authored text (before gateway prompt rules), and the
+// usage carries estimated input tokens plus Kiro cache emulation.
 func (s *GatewayService) handleWebSearchEmulation(
 	ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest,
 ) (*ForwardResult, error) {
@@ -216,9 +218,21 @@ type emulatedWebSearchRequest struct {
 func (s *GatewayService) writeEmulatedWebSearch(
 	ctx context.Context, c *gin.Context, account *Account, req emulatedWebSearchRequest,
 ) (*ForwardResult, error) {
+	model := req.Model
+	if model == "" {
+		model = defaultWebSearchModel
+	}
+	inputTokens := estimateKiroInputTokens(ctx, s.kiroMeteringAlgorithm(ctx), req.Body)
+	cacheUsage := s.buildCacheEmulationUsage(ctx, account, req.Group, req.Body, model, inputTokens)
+	return runEmulatedWebSearch(ctx, c, account, req.Query, model, req.Stream, inputTokens, cacheUsage)
+}
+
+func runEmulatedWebSearch(
+	ctx context.Context, c *gin.Context, account *Account, query, model string, stream bool,
+	inputTokens int, cacheUsage *cacheEmulationUsage,
+) (*ForwardResult, error) {
 	startTime := time.Now()
 
-	query := req.Query
 	if query == "" {
 		return nil, fmt.Errorf("web search emulation: no query found in messages")
 	}
@@ -241,14 +255,7 @@ func (s *GatewayService) writeEmulatedWebSearch(
 	slog.Info("web search emulation: search completed",
 		"provider", providerName, "results_count", len(resp.Results))
 
-	model := req.Model
-	if model == "" {
-		model = defaultWebSearchModel
-	}
-	inputTokens := estimateKiroInputTokens(ctx, req.Body)
-	cacheUsage := s.buildCacheEmulationUsage(ctx, account, req.Group, req.Body, model, inputTokens)
-
-	if req.Stream {
+	if stream {
 		return writeWebSearchStreamResponse(c, query, resp, model, startTime, inputTokens, cacheUsage)
 	}
 	return writeWebSearchNonStreamResponse(c, query, resp, model, startTime, inputTokens, cacheUsage)

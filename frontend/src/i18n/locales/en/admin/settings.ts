@@ -546,6 +546,17 @@ export default {
         openaiTTFTModeSemantic: 'Legacy-compatible (semantic event)',
         openaiTTFTModeVisible: 'Actual visible output',
         openaiTTFTModeHint: 'The default records first_token_ms at the first non-preamble semantic event. Actual visible output records it only when non-empty text, tool arguments, or image content arrives.',
+        kiroTokenizer: 'Kiro metering algorithm',
+        kiroTokenizerOfficial: 'Official (exact)',
+        kiroTokenizerCharClass: 'Character-class estimate',
+        kiroTokenizerWeighted: 'Weighted-character estimate',
+        kiroTokenizerHint: 'Controls the token counting basis for Kiro usage and billing. The default matches Anthropic\'s reference tokenizer; the two estimates count higher on CJK, JSON, and code-heavy content. Metering only — upstream requests and output truncation are unaffected.',
+        kiroCacheScopeClient: 'Scope Kiro cache emulation by API key + session',
+        kiroCacheScopeClientHint: 'When on, cache emulation is bucketed by API key and client session (the session in metadata.user_id), so switching upstream Kiro accounts keeps cache hits; without a session, a conversation id is derived from the system prompt and first user message so different conversations never share entries. When off, buckets are per Kiro account. Metering only; upstream requests are unaffected.',
+        fishImageMaxCropPixels: 'Fish native size-fit max crop',
+        fishImageMaxCropPixelsHint: 'Off-whitelist sizes are served by the nearest native tier with a centered crop. This caps the crop in delivered-image pixels (0-64). 0 disables cropping and only allows same-ratio scaling; default 4. Sizes that cannot be planned still fall back to relay. Native Fish accounts only.',
+        fishImageMaxUpscaleFactor: 'Fish native size-fit max upscale factor',
+        fishImageMaxUpscaleFactorHint: 'Upper bound (1-3, default 2) for local upscaling when the nearest native tier is smaller than the requested size. 1 forbids upscaling and only allows downscaling. Native Fish accounts only.',
         fingerprintUnification: 'Fingerprint Unification',
         fingerprintUnificationHint: 'Unify X-Stainless-* headers across users sharing the same OAuth account. Disabling passes through each client\'s original headers.',
         metadataPassthrough: 'Metadata Passthrough',
@@ -599,6 +610,28 @@ export default {
         claudeCodeVersionAutoSyncHint: 'Fetches the latest Claude Code client version from the official release channel every hour, so you never need to upgrade this service just to keep the version current. When disabled, fetching stops but the previously synced version remains available. The manual version above always takes priority.',
         claudeCodeVersionSyncedValue: 'Currently synced: {version}',
         codexHardeningTitle: "Codex Settings",
+        codexTicketEnabled: "Codex ticket harvest",
+        codexTicketEnabledDesc:
+          "When off, the gateway neither harvests nor injects x-codex-turn-state and forwards traffic as usual. When on, it harvests tickets in the background and overwrites that header on gated-model production requests.",
+        codexTicketFailClosed: "Block on missing ticket",
+        codexTicketFailClosedDesc:
+          "When on, accounts without a valid ticket for a gated model are paused for scheduling (avoids 429) and requests route to accounts holding tickets. When off, requests without a ticket are still forwarded (without the ticket header, more likely to hit upstream rate limits). Takes effect immediately after saving, no restart needed.",
+        codexTicketHarvestProxy: "Harvest proxy",
+        codexTicketHarvestProxyDesc:
+          "Used only for minting 292 tickets when the ticket feature is enabled. Changes apply to subsequent probes without a restart. Production traffic still uses each account's residential proxy. Paste a full HTTP or SOCKS5h proxy URL including username and password. The proxy provider must handle IP rotation. Leave blank when saving to keep the stored value.",
+        codexTicketHarvestProxyPlaceholder: "http://user:pass{'@'}proxy.example.com:1080",
+        codexTicketHarvestProxyConfigured: "Configured (password hidden). Paste a full new proxy URL to replace it.",
+        codexTicketDefaultLength: "Default ticket length",
+        codexTicketDefaultLengthDesc:
+          "Target ticket length used when no plan rule matches. Personal subscriptions are usually 292; changing it invalidates existing tickets of other lengths and re-harvests.",
+        codexTicketPlanLengths: "Plan-based length rules",
+        codexTicketPlanLengthsDesc:
+          "Ticket lengths matched by account plan_type; Team/Business subscriptions are usually 332. Matching is case-insensitive substring, first match wins top-down; accounts without a match use the default length.",
+        codexTicketPlanRulePlaceholder: "e.g. team / business",
+        codexTicketPlanRuleAdd: "Add plan rule",
+        codexTicketPlanRuleRemove: "Remove rule",
+        codexTicketPlanLengthsEmpty: "No plan rules; every account uses the default length.",
+
         codexClientRestrictionTitle: "Codex client restriction",
         codexHardeningDesc:
           "Only affects OpenAI OAuth accounts with 'Codex official clients only' enabled (global). Beyond User-Agent/Originator, harden the decision with a version range, an engine-fingerprint gate, and black/whitelists.",

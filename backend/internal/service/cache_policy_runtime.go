@@ -58,7 +58,7 @@ func cacheStrategySnapshotForAPIKey(apiKey *APIKey) (*int64, *string) {
 	return &id, &name
 }
 
-func cacheStrategyCacheKey(account *Account, group *Group, protocol, model string, body []byte) uint64 {
+func cacheStrategyCacheKey(account *Account, group *Group, protocol, model string, body []byte, scopeClient bool, apiKeyID int64) uint64 {
 	if group == nil || group.CacheStrategyID == nil || *group.CacheStrategyID <= 0 {
 		return 0
 	}
@@ -68,7 +68,12 @@ func cacheStrategyCacheKey(account *Account, group *Group, protocol, model strin
 	}
 	h := fnv.New64a()
 	_, _ = h.Write([]byte("cache-v2\x00"))
-	if strategy.Config.ScopeMode != CacheScopeModeGroupSession && account != nil {
+	clientScoped := scopeClient && account != nil && account.Platform == PlatformKiro && apiKeyID > 0
+	if clientScoped {
+		_, _ = h.Write([]byte("client-key:"))
+		_, _ = h.Write([]byte(stringID(apiKeyID)))
+	} else if (strategy.Config.ScopeMode != CacheScopeModeGroupSession ||
+		(scopeClient && account != nil && account.Platform == PlatformKiro)) && account != nil {
 		var buf [8]byte
 		binary.BigEndian.PutUint64(buf[:], cacheCredentialKey(account))
 		_, _ = h.Write(buf[:])
@@ -82,6 +87,21 @@ func cacheStrategyCacheKey(account *Account, group *Group, protocol, model strin
 	_, _ = h.Write([]byte("\x00model:"))
 	_, _ = h.Write([]byte(strings.TrimSpace(model)))
 	sessionKey := cacheSessionKey(body, strategy.Config.AllowDerivedSession)
+	if scopeClient && account != nil && account.Platform == PlatformKiro {
+		if apiKeyID > 0 {
+			sessionKey = kiroCacheSessionID(body)
+			if sessionKey == "" {
+				if derived := kiroCacheDerivedConversation(body); derived != "" {
+					sessionKey = "derived:" + derived
+				}
+			}
+			if sessionKey == "" {
+				return 0
+			}
+		} else if sessionID := kiroCacheSessionID(body); sessionID != "" {
+			sessionKey = sessionID
+		}
+	}
 	if sessionKey == "" {
 		// Every supported cache scope is session-bound. A request without a
 		// stable session identifier must remain raw unless the strategy

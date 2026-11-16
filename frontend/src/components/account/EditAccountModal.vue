@@ -26,8 +26,144 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
-      <!-- API Key fields (only for apikey type) -->
-      <div v-if="account.type === 'apikey'" class="space-y-4">
+      <!-- Fish：原生号更新 api_key；中转号走 base_url + api_key。
+           通用 apikey 区块对 fish 隐藏——其 base_url 默认值会把原生号误变成中转号。 -->
+      <div v-if="account.platform === 'fish' && account.type === 'apikey' && isFishRelayEdit" class="space-y-4">
+        <div>
+          <label class="input-label">Base URL（中转）</label>
+          <input v-model="editBaseUrl" type="text" class="input font-mono text-xs" placeholder="https://api.openai.com" />
+          <p class="input-hint">承接 fish 原生无法处理的请求；模型名经渠道映射改写。</p>
+        </div>
+        <div>
+          <label class="input-label">API Key（中转）</label>
+          <input v-model="editApiKey" type="password" class="input font-mono" placeholder="sk-..." />
+          <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
+        </div>
+      </div>
+      <div v-else-if="account.platform === 'fish' && account.type === 'apikey'" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.fish.tokenLabel') }}</label>
+          <textarea
+            v-model="fishTokenEdit"
+            rows="3"
+            class="input font-mono text-xs"
+            placeholder="留空保持不变；粘贴新 API Key 覆盖"
+            data-testid="fish-token-edit"
+          ></textarea>
+          <p class="input-hint">{{ t('admin.accounts.fish.tokenHint') }}</p>
+        </div>
+        <div data-testid="fish-max-quality-section">
+          <label class="input-label">{{ t('admin.accounts.fishMaxQuality') }}</label>
+          <Select v-model="fishMaxQuality" :options="fishMaxQualityOptions" data-testid="fish-max-quality" />
+          <p class="input-hint">{{ t('admin.accounts.fishMaxQualityHint') }}</p>
+        </div>
+      </div>
+
+      <!-- Fish 模型白名单 / 映射。token 号和中转号共用，不走其他平台的模型区块。 -->
+      <div
+        v-if="account.platform === 'fish' && account.type === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="fish-model-restriction-section"
+      >
+        <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+        <div class="mb-4 flex gap-2">
+          <button
+            type="button"
+            @click="modelRestrictionMode = 'whitelist'"
+            :class="[
+              'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+              modelRestrictionMode === 'whitelist'
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+            ]"
+          >
+            {{ t('admin.accounts.modelWhitelist') }}
+          </button>
+          <button
+            type="button"
+            @click="modelRestrictionMode = 'mapping'"
+            :class="[
+              'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+              modelRestrictionMode === 'mapping'
+                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+            ]"
+          >
+            {{ t('admin.accounts.modelMapping') }}
+          </button>
+        </div>
+        <div v-if="modelRestrictionMode === 'whitelist'">
+          <ModelWhitelistSelector
+            v-model="allowedModels"
+            :model-mappings="modelMappings"
+            platform="fish"
+            :account-id="account?.id"
+            :account-type="account?.type"
+          />
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+            <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
+              t('admin.accounts.supportsAllModels')
+            }}</span>
+          </p>
+        </div>
+        <div v-else>
+          <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+            <p class="text-xs text-purple-700 dark:text-purple-400">{{ t('admin.accounts.mapRequestModels') }}</p>
+          </div>
+          <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+            <div
+              v-for="(mapping, index) in modelMappings"
+              :key="'fish-' + getModelMappingKey(mapping)"
+              class="flex items-center gap-2"
+            >
+              <input
+                v-model="mapping.from"
+                type="text"
+                data-testid="fish-model-mapping-from"
+                class="input flex-1"
+                :placeholder="t('admin.accounts.requestModel')"
+              />
+              <span class="text-gray-400">→</span>
+              <input
+                v-model="mapping.to"
+                type="text"
+                data-testid="fish-model-mapping-to"
+                class="input flex-1"
+                :placeholder="t('admin.accounts.actualModel')"
+              />
+              <button
+                type="button"
+                @click="removeModelMapping(index)"
+                class="rounded-lg p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            @click="addModelMapping"
+            class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 dark:border-dark-500 dark:text-gray-400"
+          >
+            + {{ t('admin.accounts.addMapping') }}
+          </button>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="preset in presetMappings"
+              :key="'fish-' + preset.label"
+              type="button"
+              @click="addPresetMapping(preset.from, preset.to)"
+              :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+            >
+              + {{ preset.label }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- API Key fields (only for apikey type). Fish 有自己的凭据和模型区块。 -->
+      <div v-if="account.type === 'apikey' && account.platform !== 'fish'" class="space-y-4">
         <!-- Kiro 直连 AWS 账号不使用 Base URL,隐藏;Kiro 外部中转账号(已配 base_url)显示可编辑 -->
         <!-- 国产供应商 adaptive 协议下 Base URL 由各协议入口单独配置,此处隐藏 -->
         <div
@@ -276,7 +412,7 @@
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
 
-        <!-- Model Restriction Section（Antigravity 用独立的映射区域，其余平台共用） -->
+        <!-- Antigravity has a separate mapping section; other platforms share this section. -->
         <div
           v-if="account.platform !== 'antigravity'"
           class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -391,15 +527,20 @@
               :platform="account?.platform || 'anthropic'"
               :account-id="account?.id"
               :sync-overrides="syncUpstreamOverrides"
+              :account-type="account?.type"
               :show-sync-button="account.platform !== 'grok' || !account.id"
               @upstream-sync-finished="refreshGrokDiagnostics"
+              @update:kiroUpstreamIDs="mergeKiroUpstreamIDs"
             />
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
-                <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
+                <span v-if="allowedModels.length === 0 && modelMappings.length === 0 && account.platform === 'kiro'" data-testid="kiro-default-mapping-hint">{{
+                  t('admin.accounts.kiroUsesDefaultMapping')
+                }}</span>
+                <span v-else-if="allowedModels.length === 0 && modelMappings.length === 0">{{
                   t('admin.accounts.supportsAllModels')
                 }}</span>
               </p>
@@ -897,11 +1038,11 @@
         </div>
       </div>
 
-      <!-- OpenAI / Kiro / Grok / Cursor OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立区域) -->
+      <!-- OAuth model mapping needs its own section because OAuth accounts have no API-key container. -->
       <div
-        v-if="(account.platform === 'openai' || account.platform === 'kiro' || account.platform === 'grok' || account.platform === 'cursor') && account.type === 'oauth'"
+        v-if="((account.platform === 'openai' || account.platform === 'kiro' || account.platform === 'grok' || account.platform === 'cursor' || account.platform === 'leonardo') && account.type === 'oauth') || (account.platform === 'openai' && account.type === 'bps-oauth')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
-        :data-testid="account.platform === 'grok' ? 'grok-model-settings' : undefined"
+        :data-testid="account.platform === 'grok' ? 'grok-model-settings' : 'oauth-model-mapping-section'"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
@@ -913,7 +1054,6 @@
             {{ t('admin.accounts.openai.modelRestrictionDisabledByPassthrough') }}
           </p>
         </div>
-
 
         <template v-else>
           <!-- Mode Toggle -->
@@ -983,17 +1123,23 @@
             v-model="allowedModels"
             :model-mappings="modelMappings"
             :platform="account?.platform || 'anthropic'"
+            :available-models="isBPSOAuthAccount ? bpsCandidateModels : undefined"
             :account-id="account?.id"
             :sync-overrides="syncUpstreamOverrides"
+            :account-type="account?.type"
             :show-sync-button="account.platform !== 'grok' || !account.id"
             @upstream-sync-finished="refreshGrokDiagnostics"
+            @update:kiroUpstreamIDs="mergeKiroUpstreamIDs"
           />
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
-              <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
+              <span v-if="allowedModels.length === 0 && modelMappings.length === 0 && account.platform === 'kiro'" data-testid="kiro-default-mapping-hint">{{
+                t('admin.accounts.kiroUsesDefaultMapping')
+              }}</span>
+              <span v-else-if="allowedModels.length === 0 && modelMappings.length === 0">{{
                 t('admin.accounts.supportsAllModels')
               }}</span>
             </p>
@@ -1028,6 +1174,7 @@
                 <input
                   v-model="mapping.from"
                   type="text"
+                  data-testid="oauth-model-mapping-from"
                   :aria-label="account.platform === 'grok' ? t('admin.accounts.grokModelDiagnostics.mappingFromAria', { index: index + 1 }) : undefined"
                   :class="account.platform === 'grok' ? 'input min-w-0 w-full font-mono text-xs' : 'input flex-1'"
                   :placeholder="t('admin.accounts.requestModel')"
@@ -1056,12 +1203,14 @@
                 <input
                   v-model="mapping.to"
                   type="text"
+                  data-testid="oauth-model-mapping-to"
                   :aria-label="account.platform === 'grok' ? t('admin.accounts.grokModelDiagnostics.mappingTargetAria', { index: index + 1 }) : undefined"
                   :class="account.platform === 'grok' ? 'input min-w-0 w-full font-mono text-xs' : 'input flex-1'"
                   :placeholder="t('admin.accounts.actualModel')"
                 />
                 <button
                   type="button"
+                  data-testid="oauth-model-mapping-remove"
                   @click="removeModelMapping(index)"
                   :aria-label="account.platform === 'grok' ? t('admin.accounts.grokModelDiagnostics.removeMappingAria', { index: index + 1 }) : undefined"
                   :class="account.platform === 'grok'
@@ -1098,6 +1247,7 @@
                 v-for="preset in presetMappings"
                 :key="'oauth-' + preset.label"
                 type="button"
+                data-testid="oauth-preset-mapping"
                 @click="addPresetMapping(preset.from, preset.to)"
                 :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
               >
@@ -1120,6 +1270,57 @@
           data-testid="kiro-credit-unit-price-usd"
         />
         <p class="input-hint">{{ t('admin.accounts.kiroCreditUnitPriceUsdHint') }}</p>
+      </div>
+
+      <!-- Leonardo Cookie 账号的每积分单价：仅用于今日统计估算积分消耗金额，不参与计费 -->
+      <div v-if="isLeonardoCookieAccount" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label">{{ t('admin.accounts.leonardoCreditUnitPriceUsd') }}</label>
+        <input
+          v-model.number="leonardoCreditUnitPriceUsd"
+          type="number"
+          min="0"
+          step="0.0001"
+          class="input"
+          placeholder="0"
+          data-testid="leonardo-credit-unit-price-usd"
+        />
+        <p class="input-hint">{{ t('admin.accounts.leonardoCreditUnitPriceUsdHint') }}</p>
+      </div>
+
+      <!-- Leonardo Cookie 账号的出图上限：超过时按上限出图，再超分回请求尺寸，按交付尺寸计费 -->
+      <div v-if="isLeonardoCookieAccount" class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-600" data-testid="leonardo-image-limits">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.leonardoMaxQuality') }}</label>
+          <Select v-model="leonardoImageLimits.maxQuality" :options="leonardoMaxQualityOptions" data-testid="leonardo-max-quality" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.leonardoMaxShortEdge') }}</label>
+            <input
+              v-model.number="leonardoImageLimits.maxShortEdge"
+              type="number"
+              min="0"
+              step="16"
+              class="input"
+              placeholder="0"
+              data-testid="leonardo-max-short-edge"
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.leonardoMaxUpscaleFactor') }}</label>
+            <input
+              v-model.number="leonardoImageLimits.maxUpscaleFactor"
+              type="number"
+              min="1"
+              max="4"
+              step="0.1"
+              class="input"
+              placeholder="2"
+              data-testid="leonardo-max-upscale-factor"
+            />
+          </div>
+        </div>
+        <p class="input-hint">{{ t('admin.accounts.leonardoImageLimitsHint') }}</p>
       </div>
 
       <!-- Upstream fields (only for upstream type) -->
@@ -1252,7 +1453,14 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :model-mappings="modelMappings" :platform="account?.platform || 'anthropic'" :account-id="account?.id" :sync-overrides="syncUpstreamOverrides" />
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              :model-mappings="modelMappings"
+              :platform="account?.platform || 'anthropic'"
+              :account-id="account?.id"
+              :sync-overrides="syncUpstreamOverrides"
+              :account-type="account?.type"
+            />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -2166,7 +2374,7 @@
         </div>
       </div>
 
-      <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
+      <!-- OpenAI WS Mode（off/ctx_pool/passthrough/http_bridge/ws_bridge） -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -2561,7 +2769,7 @@
 
       <!-- OpenAI API 长上下文计费开关 -->
       <div
-        v-if="account?.platform === 'openai' && !isSparkShadow && !hideAccountLongContextBilling && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        v-if="account?.platform === 'openai' && !isSparkShadow && !hideAccountLongContextBilling && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey' || account?.type === 'bps-oauth')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -2589,6 +2797,35 @@
               ]"
             />
           </button>
+        </div>
+      </div>
+
+      <!-- Excel / BPS 协议区：BPS-only（BPS OAuth）账号只走 BPS，可服务的模型以上方模型限制为准 -->
+      <div
+        v-if="isBPSOAuthAccount && !isSparkShadow"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="excel-bps-section"
+      >
+        <label class="input-label mb-0">{{ t('admin.accounts.openai.excelBPS') }}</label>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.openai.excelBPSDesc') }}
+        </p>
+        <div class="mt-3 space-y-3">
+          <div>
+            <label class="flex items-center gap-2">
+              <input v-model="excelBPSIgnoreEncryptedContent" type="checkbox" data-testid="excel-bps-ignore-encrypted-content" />
+              <span class="text-sm">{{ t('admin.accounts.openai.excelBPSIgnoreEncryptedContent') }}</span>
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSIgnoreEncryptedContentDesc') }}</p>
+          </div>
+          <div class="mt-3">
+            <label class="flex items-center gap-2">
+              <input v-model="excelBPSCacheCreationAsInput" type="checkbox" data-testid="excel-bps-cache-creation-as-input" />
+              <span class="text-sm">{{ t('admin.accounts.openai.excelBPSCacheCreationAsInput') }}</span>
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSCacheCreationAsInputDesc') }}</p>
+          </div>
+          <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.excelBPSNotice') }}</p>
         </div>
       </div>
 
@@ -2647,6 +2884,30 @@
         </div>
       </div>
 
+      <!-- Codex 292 门票状态（仅 OpenAI OAuth / SetupToken） -->
+      <div
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && codexTurnTickets.length"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTurnTicket') }}</label>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.openai.codexTurnTicketDesc') }}
+        </p>
+        <div class="mt-3 space-y-1.5">
+          <div v-for="ticket in codexTurnTickets" :key="ticket.model" class="flex items-center justify-between text-sm">
+            <span class="font-medium">{{ ticket.model }}</span>
+            <span v-if="ticket.ready" class="text-emerald-600 dark:text-emerald-400">
+              {{ t('admin.accounts.openai.codexTurnTicketReady', { time: formatCodexTicketRemaining(ticket.remaining_seconds) }) }}
+              <span v-if="ticket.length" class="ml-1 opacity-70">({{ ticket.length }})</span>
+            </span>
+            <span v-else-if="ticket.blocked" class="text-amber-600 dark:text-amber-400">
+              {{ t('admin.accounts.openai.codexTurnTicketPaused') }}
+            </span>
+            <span v-else class="text-gray-500">{{ t('admin.accounts.openai.codexTurnTicketMissing') }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -2662,6 +2923,36 @@
           <div class="w-52 flex-shrink-0">
             <Select v-model="codexFingerprintMode" data-testid="edit-codex-fingerprint-mode-select" :options="codexFingerprintModeOptions" />
           </div>
+        </div>
+      </div>
+
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow && !isOpenAIAgentIdentity"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTelemetry') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.codexTelemetryDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="edit-codex-telemetry-toggle"
+            @click="codexTelemetryEnabled = !codexTelemetryEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              codexTelemetryEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                codexTelemetryEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
         </div>
       </div>
 
@@ -3441,6 +3732,14 @@ import type {
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import {
+  LEONARDO_MAX_QUALITY_VALUES,
+  applyLeonardoImageLimitsToExtra,
+  defaultLeonardoImageLimits,
+  leonardoImageLimitsFromExtra,
+  type LeonardoImageLimitsForm
+} from '@/utils/leonardoImageLimits'
+import { FISH_MAX_QUALITY_VALUES, applyFishMaxQualityToExtra, fishMaxQualityFromExtra } from '@/utils/fishImageLimits'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import CursorCredentialSection from '@/components/account/CursorCredentialSection.vue'
@@ -3524,6 +3823,7 @@ import {
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
   OPENAI_WS_MODE_HTTP_BRIDGE,
+  OPENAI_WS_MODE_WS_BRIDGE,
   isOpenAIWSModeEnabled,
   resolveOpenAIWSModeHintKey,
   type OpenAIWSMode,
@@ -3531,11 +3831,13 @@ import {
 } from '@/utils/openaiWsMode'
 import {
   getPresetMappingsByPlatform,
+  getBPSPresetMappings,
   commonErrorCodes,
   buildModelMappingObject,
   splitModelMappingObject,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
+import { useBPSCandidateModels } from '@/composables/useBPSCandidateModels'
 
 interface Props {
   show: boolean
@@ -3568,6 +3870,26 @@ const selectableGroups = computed(() => {
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
+
+// BPS-only（BPS OAuth）账号：官方 Excel 客户端授权，只能走 BPS。
+const isBPSOAuthAccount = computed(() =>
+  props.account?.platform === 'openai' && props.account?.type === 'bps-oauth'
+)
+
+const codexTurnTickets = computed(() => props.account?.codex_turn_tickets ?? [])
+
+function formatCodexTicketRemaining(seconds: number) {
+  const total = Math.max(0, Math.floor(seconds || 0))
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}m${String(s).padStart(2, '0')}s`
+}
+
+const isOpenAIAgentIdentity = computed(() => {
+  const creds = props.account?.credentials as Record<string, unknown> | undefined
+  const mode = String(creds?.auth_mode || '').trim().toLowerCase().replace(/[\s_-]+/g, '')
+  return mode === 'agentidentity'
+})
 
 const hideAccountLongContextBilling = computed(() => {
   return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
@@ -3679,6 +4001,14 @@ const isKiroRelay = computed(() => isKiroRelayAccount(props.account))
 // Kiro 直连 API Key 账号(apikey + 无 base_url):仅这类账号的推理区域由 api_region 控制。
 // OAuth/IdC 账号的 region 是 Identity Center 区域,不参与推理路由,故不展示本字段。
 const isKiroDirectApiKey = computed(() => isKiroDirectApiKeyAccount(props.account))
+// Leonardo Cookie 账号(oauth)消耗 Leonardo 积分;中转账号(apikey)不消耗,故只对前者展示积分单价。
+const isLeonardoCookieAccount = computed(() => props.account?.platform === 'leonardo' && props.account?.type === 'oauth')
+// Fish：凭据里有 base_url = 中转号；没有 base_url = 原生号（密钥在 api_key）。
+const isFishRelayEdit = computed(() => {
+  const credentials = (props.account?.credentials as Record<string, unknown>) || {}
+  return typeof credentials.base_url === 'string' && credentials.base_url.trim() !== ''
+})
+const fishTokenEdit = ref('')
 
 const resolveKiroAPIRegionInput = (credentials: Record<string, unknown>) => {
   const value = credentials.api_region
@@ -3706,6 +4036,17 @@ const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
 const editKiroAPIRegion = ref('us-east-1')
 const kiroCreditUnitPriceUsd = ref(0)
+const leonardoCreditUnitPriceUsd = ref(0)
+const leonardoImageLimits = ref<LeonardoImageLimitsForm>(defaultLeonardoImageLimits())
+const leonardoMaxQualityOptions = computed(() => [
+  { value: '', label: t('admin.accounts.leonardoMaxQualityUnlimited') },
+  ...LEONARDO_MAX_QUALITY_VALUES.map((value) => ({ value, label: value }))
+])
+const fishMaxQuality = ref('')
+const fishMaxQualityOptions = computed(() => [
+  { value: '', label: t('admin.accounts.fishMaxQualityUnlimited') },
+  ...FISH_MAX_QUALITY_VALUES.map((value) => ({ value, label: value }))
+])
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -3907,6 +4248,8 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+// BPS OAuth 账号的白名单候选只列 BPS 模型（含同步上游追加的）
+const { candidates: bpsCandidateModels, reset: resetBPSCandidateModels } = useBPSCandidateModels(allowedModels)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -4115,14 +4458,14 @@ const isGrokOAuthAccount = computed(
 )
 const grokMediaEligibilityMode = ref<GrokMediaEligibilityMode>('auto')
 const grokMediaEligibilityInitialMode = ref<GrokMediaEligibilityMode>('auto')
-const grokMediaEligibilityState = ref<GrokMediaEligibilityState | null>(null)
-const grokMediaEligibilityLoading = ref(false)
-const grokMediaEligibilityError = ref('')
-const grokMediaEligibilityOptions = computed(() => [
+const grokMediaEligibilityOptions = computed<Array<{ value: GrokMediaEligibilityMode; label: string }>>(() => [
   { value: 'auto', label: t('admin.accounts.grokMediaEligibility.auto') },
   { value: 'enabled', label: t('admin.accounts.grokMediaEligibility.enabled') },
   { value: 'disabled', label: t('admin.accounts.grokMediaEligibility.disabled') }
 ])
+const grokMediaEligibilityState = ref<GrokMediaEligibilityState | null>(null)
+const grokMediaEligibilityLoading = ref(false)
+const grokMediaEligibilityError = ref('')
 let grokMediaEligibilityRequestVersion = 0
 
 const modeFromGrokMediaExtra = (extra: Record<string, unknown> | undefined): GrokMediaEligibilityMode => {
@@ -4193,6 +4536,14 @@ const getOpenAICompactModelMappingKey = createStableObjectKeyResolver<ModelMappi
 const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-antigravity-model-mapping')
 const getTempUnschedRuleKey = createStableObjectKeyResolver<TempUnschedRuleForm>('edit-temp-unsched-rule')
 
+const kiroUpstreamIDs = ref<Record<string, string>>({})
+const mergeKiroUpstreamIDs = (ids: Record<string, string>) => {
+  kiroUpstreamIDs.value = { ...kiroUpstreamIDs.value, ...ids }
+}
+const kiroRestrictionOptions = () =>
+  props.account?.platform === 'kiro' && !isKiroRelay.value
+    ? { kiroDirect: true, kiroUpstreamIDs: kiroUpstreamIDs.value }
+    : undefined
 const showMixedChannelWarning = ref(false)
 const mixedChannelWarningDetails = ref<{ groupName: string; currentPlatform: string; otherPlatform: string } | null>(
   null
@@ -4257,6 +4608,8 @@ const openaiPassthroughEnabled = ref(false)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
+const excelBPSIgnoreEncryptedContent = ref(false)
+const excelBPSCacheCreationAsInput = ref(false)
 // OpenAI 订阅档位（Plus / Pro 20x / Pro 5x / Business Standard / Business Premium / Free）手动覆盖值,
 // 存于 credentials.plan_type;'' 表示清空/自动识别
 const editPlanType = ref<string>('')
@@ -4270,6 +4623,7 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
+const codexTelemetryEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
@@ -4314,7 +4668,8 @@ const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
   { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') },
-  { value: OPENAI_WS_MODE_HTTP_BRIDGE, label: t('admin.accounts.openai.wsModeHttpBridge') }
+  { value: OPENAI_WS_MODE_HTTP_BRIDGE, label: t('admin.accounts.openai.wsModeHttpBridge') },
+  { value: OPENAI_WS_MODE_WS_BRIDGE, label: t('admin.accounts.openai.wsModeWsBridge') }
 ])
 const openaiResponsesWebSocketV2Mode = computed({
   get: () => {
@@ -4528,7 +4883,9 @@ const openAICompactStatusKey = computed(() => {
 })
 
 // Computed: current preset mappings based on platform
-const presetMappings = computed(() => getPresetMappingsByPlatform(props.account?.platform || 'anthropic'))
+const presetMappings = computed(() =>
+  isBPSOAuthAccount.value ? getBPSPresetMappings() : getPresetMappingsByPlatform(props.account?.platform || 'anthropic')
+)
 const tempUnschedScopeOptions = computed<Array<{ value: TempUnschedulableScope; label: string; description: string }>>(() => [
   {
     value: 'model',
@@ -4657,8 +5014,11 @@ const normalizePoolModeRetryCount = (value: number) => {
   return normalized
 }
 
-const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) => {
-  const parsed = splitModelMappingObject(rawMapping)
+const loadModelRestrictionFromMapping = (
+  rawMapping?: Record<string, unknown>,
+  options?: { kiroDirect?: boolean }
+) => {
+  const parsed = splitModelMappingObject(rawMapping, options)
   allowedModels.value = parsed.allowedModels
   modelMappings.value = parsed.modelMappings
   modelRestrictionMode.value =
@@ -4668,7 +5028,7 @@ const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) =
 }
 
 const buildModelRestrictionMapping = () =>
-  buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
+  buildModelMappingObject('combined', allowedModels.value, modelMappings.value, kiroRestrictionOptions())
 
 const applyOpenAIModelMappingCredentials = (credentials: Record<string, unknown>) => {
   const shouldApplyModelMapping = !openaiPassthroughEnabled.value
@@ -4749,6 +5109,14 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     : typeof kiroCreditUnitPrice === 'string'
       ? Number(kiroCreditUnitPrice) || 0
       : 0
+  const leonardoCreditUnitPrice = extra?.leonardo_credit_unit_price_usd
+  leonardoCreditUnitPriceUsd.value = typeof leonardoCreditUnitPrice === 'number'
+    ? leonardoCreditUnitPrice
+    : typeof leonardoCreditUnitPrice === 'string'
+      ? Number(leonardoCreditUnitPrice) || 0
+      : 0
+  leonardoImageLimits.value = leonardoImageLimitsFromExtra(extra as Record<string, unknown> | undefined)
+  fishMaxQuality.value = fishMaxQualityFromExtra(extra as Record<string, unknown> | undefined)
   autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
   autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
   autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
@@ -4766,6 +5134,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiPassthroughEnabled.value = false
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
+  excelBPSIgnoreEncryptedContent.value = false
+  excelBPSCacheCreationAsInput.value = false
   editPlanType.value = ''
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
@@ -4775,6 +5145,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
+  codexTelemetryEnabled.value = false
   codexFingerprintMode.value = 'off'
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
@@ -4833,12 +5204,19 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       codexFingerprintMode.value = (['off', 'device', 'session', 'full'].includes(fpMode || '')
         ? fpMode as CodexFingerprintMode
         : 'off')
+      codexTelemetryEnabled.value = extra?.codex_telemetry_enabled === true
     }
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
     const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
     if (compactMappings && typeof compactMappings === 'object') {
       openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({ from, to }))
     }
+  }
+  // BPS-only（BPS OAuth）账号只有 BPS 设置与通用的长上下文计费，不读取任何 Codex 专属设置。
+  if (newAccount.platform === 'openai' && newAccount.type === 'bps-oauth') {
+    openAILongContextBillingEnabled.value = extra?.openai_long_context_billing_enabled === true
+    excelBPSIgnoreEncryptedContent.value = extra?.openai_excel_bps_ignore_encrypted_content === true
+    excelBPSCacheCreationAsInput.value = extra?.openai_excel_bps_cache_creation_as_input === true
   }
   if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
     anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
@@ -5053,7 +5431,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       : 'us-east-1'
 
     // Load model mappings and detect mode
-    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
+    kiroUpstreamIDs.value = {}
+    loadModelRestrictionFromMapping(
+      credentials.model_mapping as Record<string, unknown> | undefined,
+      newAccount.platform === 'kiro' && !isKiroRelayAccount(newAccount) ? { kiroDirect: true } : undefined
+    )
 
     // Load pool mode
     poolModeEnabled.value = credentials.pool_mode === true
@@ -5129,7 +5511,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = platformDefaultUrl
 
     // Load model mappings for OpenAI/Kiro/Grok OAuth accounts
-    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok' || newAccount.platform === 'cursor' || newAccount.platform === 'kiro') && newAccount.credentials) {
+    kiroUpstreamIDs.value = {}
+    if (newAccount.platform === 'kiro' && newAccount.credentials) {
+      const oauthCredentials = newAccount.credentials as Record<string, unknown>
+      loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined, {
+        kiroDirect: true
+      })
+    } else if ((newAccount.platform === 'openai' || newAccount.platform === 'grok' || newAccount.platform === 'cursor' || newAccount.platform === 'leonardo') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
     } else {
@@ -5149,6 +5537,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   if (newAccount.platform !== 'kiro' || newAccount.type !== 'apikey') {
     editKiroAPIRegion.value = 'us-east-1'
   }
+  resetBPSCandidateModels()
 }
 
 async function loadTLSProfiles() {
@@ -5766,6 +6155,30 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
   }
 }
 
+// OpenAI 自动暂停阈值（5h/7d 用量窗口），OAuth 与 BPS OAuth 账号共用。
+const applyOpenAIAutoPauseExtra = (newExtra: Record<string, unknown>) => {
+  if (autoPause5hThreshold.value != null && autoPause5hThreshold.value > 0) {
+    newExtra.auto_pause_5h_threshold = autoPause5hThreshold.value / 100
+  } else {
+    delete newExtra.auto_pause_5h_threshold
+  }
+  if (autoPause7dThreshold.value != null && autoPause7dThreshold.value > 0) {
+    newExtra.auto_pause_7d_threshold = autoPause7dThreshold.value / 100
+  } else {
+    delete newExtra.auto_pause_7d_threshold
+  }
+  if (autoPause5hDisabled.value) {
+    newExtra.auto_pause_5h_disabled = true
+  } else {
+    delete newExtra.auto_pause_5h_disabled
+  }
+  if (autoPause7dDisabled.value) {
+    newExtra.auto_pause_7d_disabled = true
+  } else {
+    delete newExtra.auto_pause_7d_disabled
+  }
+}
+
 const handleSubmit = async () => {
   if (!props.account) return
   const accountID = props.account.id
@@ -5805,8 +6218,33 @@ const handleSubmit = async () => {
       }
     }
 
-    // For apikey type, handle credentials update
-    if (props.account.type === 'apikey') {
+    // Fish：原生号只更新 api_key（留空保持）；中转号走 base_url + api_key。
+    // 不落通用 apikey 路径——其 base_url 默认值逻辑会把原生号误变成中转号。
+    if (props.account.platform === 'fish' && props.account.type === 'apikey') {
+      const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
+      const newCredentials: Record<string, unknown> = { ...currentCredentials }
+      if (isFishRelayEdit.value) {
+        const newBaseURL = editBaseUrl.value.trim()
+        if (newBaseURL) {
+          newCredentials.base_url = newBaseURL
+        }
+        if (editApiKey.value.trim()) {
+          newCredentials.api_key = editApiKey.value.trim()
+        }
+      } else {
+        const newToken = fishTokenEdit.value.trim()
+        if (newToken) {
+          newCredentials.api_key = newToken
+        }
+      }
+      const fishMapping = buildModelRestrictionMapping()
+      if (fishMapping) {
+        newCredentials.model_mapping = fishMapping
+      } else {
+        delete newCredentials.model_mapping
+      }
+      updatePayload.credentials = newCredentials
+    } else if (props.account.type === 'apikey') {
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
       // Kiro API Key 账号直连 AWS,base_url 可选;其余平台留空时回落到默认上游。
       const newBaseUrl = props.account.platform === 'kiro'
@@ -6117,8 +6555,28 @@ const handleSubmit = async () => {
       updatePayload.credentials = newCredentials
     }
 
-    // OpenAI/Grok/Cursor/Kiro OAuth: persist model mapping to credentials
-    if ((props.account.platform === 'openai' || props.account.platform === 'grok' || props.account.platform === 'cursor' || props.account.platform === 'kiro') && props.account.type === 'oauth') {
+    // Leonardo OAuth: persist model restriction to credentials
+    // 白名单与映射行都空 => 删掉 model_mapping，回落到后端默认映射。
+    if (props.account.platform === 'leonardo' && props.account.type === 'oauth') {
+      const currentCredentials = (updatePayload.credentials as Record<string, unknown>) ||
+        ((props.account.credentials as Record<string, unknown>) || {})
+      const newCredentials: Record<string, unknown> = { ...currentCredentials }
+
+      const modelMapping = buildModelRestrictionMapping()
+      if (modelMapping) {
+        newCredentials.model_mapping = modelMapping
+      } else {
+        delete newCredentials.model_mapping
+      }
+
+      updatePayload.credentials = newCredentials
+    }
+
+    // OpenAI, Grok, and Cursor OAuth (plus OpenAI BPS OAuth) store mappings in credentials.
+    if (
+      (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'bps-oauth')) ||
+      ((props.account.platform === 'grok' || props.account.platform === 'cursor') && props.account.type === 'oauth')
+    ) {
       const currentCredentials = isSparkShadow.value
         ? {}
         : (updatePayload.credentials as Record<string, unknown>) ||
@@ -6138,6 +6596,21 @@ const handleSubmit = async () => {
       updatePayload.credentials = newCredentials
     }
 
+    // Kiro OAuth: persist model mapping to credentials
+    if (props.account.platform === 'kiro' && props.account.type === 'oauth') {
+      const currentCredentials = (updatePayload.credentials as Record<string, unknown>) ||
+        ((props.account.credentials as Record<string, unknown>) || {})
+      const newCredentials: Record<string, unknown> = { ...currentCredentials }
+
+      const modelMapping = buildModelRestrictionMapping()
+      if (modelMapping) {
+        newCredentials.model_mapping = modelMapping
+      } else {
+        delete newCredentials.model_mapping
+      }
+
+      updatePayload.credentials = newCredentials
+    }
     // 仅 Kiro 直连账号持久化积分单价;外部中转账号是外接渠道,与 Kiro 积分无关。
     if (props.account.platform === 'kiro' && !isKiroRelay.value) {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
@@ -6146,6 +6619,23 @@ const handleSubmit = async () => {
       const unitPrice = Number(kiroCreditUnitPriceUsd.value ?? 0)
       newExtra.kiro_credit_unit_price_usd = Number.isFinite(unitPrice) ? unitPrice : 0
       updatePayload.extra = newExtra
+    }
+
+    // 仅 Leonardo Cookie 账号持久化积分单价;中转账号(apikey)转发到外部上游,不消耗 Leonardo 积分。
+    if (isLeonardoCookieAccount.value) {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      const unitPrice = Number(leonardoCreditUnitPriceUsd.value ?? 0)
+      newExtra.leonardo_credit_unit_price_usd = Number.isFinite(unitPrice) ? unitPrice : 0
+      updatePayload.extra = applyLeonardoImageLimitsToExtra(newExtra, leonardoImageLimits.value)
+    }
+
+    // Fish 原生号的最大质量。中转号原样转发，不写这个上限。
+    if (props.account.platform === 'fish' && props.account.type === 'apikey' && !isFishRelayEdit.value) {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {}
+      updatePayload.extra = applyFishMaxQualityToExtra({ ...currentExtra }, fishMaxQuality.value)
     }
 
     // Grok OAuth: 自定义上游地址 + 请求头覆写。base_url 仅改写转发端点，
@@ -6361,6 +6851,7 @@ const handleSubmit = async () => {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
+      const hadCodexTelemetryEnabled = currentExtra.codex_telemetry_enabled === true
       if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
         newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
         newExtra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
@@ -6409,27 +6900,8 @@ const handleSubmit = async () => {
           newExtra.web_search_emulation = webSearchEmulationMode.value
         }
 		}
+		applyOpenAIAutoPauseExtra(newExtra)
 		applyOpenAIImageSizeTiersToExtra(newExtra, openAIImageSizeTiers.value)
-		if (autoPause5hThreshold.value != null && autoPause5hThreshold.value > 0) {
-			newExtra.auto_pause_5h_threshold = autoPause5hThreshold.value / 100
-		} else {
-			delete newExtra.auto_pause_5h_threshold
-		}
-		if (autoPause7dThreshold.value != null && autoPause7dThreshold.value > 0) {
-			newExtra.auto_pause_7d_threshold = autoPause7dThreshold.value / 100
-		} else {
-			delete newExtra.auto_pause_7d_threshold
-		}
-		if (autoPause5hDisabled.value) {
-			newExtra.auto_pause_5h_disabled = true
-		} else {
-			delete newExtra.auto_pause_5h_disabled
-		}
-		if (autoPause7dDisabled.value) {
-			newExtra.auto_pause_7d_disabled = true
-		} else {
-			delete newExtra.auto_pause_7d_disabled
-		}
 		if (props.account.type === 'oauth' && !isSparkShadow.value) {
 			newExtra.auto_reset_credit_enabled = autoResetCreditEnabled.value
 			newExtra.auto_reset_credit_5h_threshold = autoResetCredit5hThreshold.value / 100
@@ -6480,8 +6952,37 @@ const handleSubmit = async () => {
         } else {
           delete newExtra.codex_fingerprint_mode
         }
+        if (!isSparkShadow.value && !isOpenAIAgentIdentity.value) {
+          if (codexTelemetryEnabled.value) {
+            newExtra.codex_telemetry_enabled = true
+          } else if (hadCodexTelemetryEnabled) {
+            newExtra.codex_telemetry_enabled = false
+          } else {
+            delete newExtra.codex_telemetry_enabled
+          }
+        }
       }
 
+      updatePayload.extra = newExtra
+    }
+
+    // BPS-only（BPS OAuth）账号：只保存 BPS 设置、长上下文计费与自动暂停，不写任何 Codex 专属设置。
+    if (props.account.platform === 'openai' && props.account.type === 'bps-oauth') {
+      const newExtra: Record<string, unknown> = { ...((props.account.extra as Record<string, unknown>) || {}) }
+      newExtra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
+      // 可服务的模型只看通用模型限制（credentials.model_mapping），清掉旧版单独的 BPS 白名单。
+      delete newExtra.openai_excel_bps_models
+      if (excelBPSIgnoreEncryptedContent.value) {
+        newExtra.openai_excel_bps_ignore_encrypted_content = true
+      } else {
+        delete newExtra.openai_excel_bps_ignore_encrypted_content
+      }
+      if (excelBPSCacheCreationAsInput.value) {
+        newExtra.openai_excel_bps_cache_creation_as_input = true
+      } else {
+        delete newExtra.openai_excel_bps_cache_creation_as_input
+      }
+      applyOpenAIAutoPauseExtra(newExtra)
       updatePayload.extra = newExtra
     }
 
@@ -6556,6 +7057,16 @@ const handleSubmit = async () => {
         delete newExtra.upstream_request_id_header
       }
       updatePayload.extra = newExtra
+    }
+
+    if (updatePayload.extra && typeof updatePayload.extra === 'object') {
+      const extra = { ...(updatePayload.extra as Record<string, unknown>) }
+      for (const key of Object.keys(extra)) {
+        if (key.startsWith('codex_turn_ticket:') || key === 'codex_harvest_proxy_url') {
+          delete extra[key]
+        }
+      }
+      updatePayload.extra = extra
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

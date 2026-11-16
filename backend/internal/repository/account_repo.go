@@ -25,6 +25,7 @@ import (
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
 	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbproxy "github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -58,10 +59,18 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_5h_",
 	"codex_7d_",
 	"codex_reset_credit_",
+	// 292 门票是纯运行态凭据：它不在 filterSchedulerExtra 的投影白名单里，
+	// 因此 bucket 重建事件永远搬不动门票状态，续期时开事务+发 outbox 是白干。
+	// 归为观测型后仍会同步单账号快照（见 UpdateExtra），不丢任何新鲜度。
+	"codex_turn_ticket:",
 	"passive_usage_",
 	"upstream_billing_probe",
 	"upstream_billing_rate_sync",
 	"ollama_cloud_usage",
+	// fish 钱包余额观测：每次出图/402/巡检都会写，属于观测型。选号要读它，
+	// 所以在 filterSchedulerExtra 里投影；UpdateExtra 同步刷新单账号快照，
+	// 不需要事务 + outbox + 整桶重建。
+	"fish_wallet_",
 }
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
@@ -682,7 +691,8 @@ func lockAndMergeAccountProbeExtra(
 			extra -> 'opencode_go_usage_auto_refresh',
 			extra -> 'opencode_go_usage_snapshot',
 			extra -> 'grok_observed_models',
-			extra -> 'upstream_model_metadata'
+			extra -> 'upstream_model_metadata',
+			COALESCE(extra, '{}'::jsonb)
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -713,6 +723,7 @@ func lockAndMergeAccountProbeExtra(
 		currentOpenCodeSnapshot        []byte
 		currentGrokObservedModels      []byte
 		currentUpstreamModelMetadata   []byte
+		currentExtraJSON               []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -729,6 +740,7 @@ func lockAndMergeAccountProbeExtra(
 		&currentOpenCodeSnapshot,
 		&currentGrokObservedModels,
 		&currentUpstreamModelMetadata,
+		&currentExtraJSON,
 	); err != nil {
 		return nil, err
 	}
@@ -736,7 +748,18 @@ func lockAndMergeAccountProbeExtra(
 		return nil, err
 	}
 
-	extra := copyJSONMap(normalizeJSONMap(account.Extra))
+	// 门票是 1 小时 TTL 的临时凭据。extra 若是非对象 JSON，解析失败不得让整个
+	// 账号编辑失败，只降级放弃「保留库内门票」这一件事。
+	var currentExtra map[string]any
+	if len(currentExtraJSON) > 0 {
+		if err := json.Unmarshal(currentExtraJSON, &currentExtra); err != nil {
+			logger.LegacyPrintf("repository.account",
+				"[Account] current extra unmarshal failed, codex ticket preservation skipped: id=%d err=%v",
+				account.ID, err)
+			currentExtra = nil
+		}
+	}
+	extra := service.MergeOpenAICodexTicketExtra(copyJSONMap(normalizeJSONMap(account.Extra)), currentExtra)
 	for _, key := range []string{
 		service.UpstreamBillingProbeEnabledExtraKey,
 		service.UpstreamBillingRateSyncEnabledExtraKey,
@@ -1354,17 +1377,31 @@ func (r *accountRepository) ListOAuthRefreshCandidatePage(ctx context.Context, o
 		query += `
 			AND status = 'active'`
 	}
+	// bps-oauth (OpenAI Excel/BPS-only) accounts hold OAuth credentials refreshed
+	// through the same OpenAI lifecycle as oauth accounts.
 	if options.IncludeSetupToken {
 		query += `
-			AND type IN ('oauth', 'setup-token')`
+			AND type IN ('oauth', 'setup-token', 'bps-oauth')`
 	} else {
 		query += `
-			AND type = 'oauth'`
+			AND type IN ('oauth', 'bps-oauth')`
 	}
+	args := []any{pq.Array(options.Platforms), options.AfterID, options.Limit}
 	if options.RequireRefreshToken {
-		query += `
+		if len(options.CookieCredentialPlatforms) > 0 {
+			// Leonardo 等平台没有 refresh_token，长期凭据是 cookie：按平台
+			// 分别要求对应凭据非空。
+			args = append(args, pq.Array(options.CookieCredentialPlatforms))
+			query += `
+			AND (
+				(credentials ? 'refresh_token' AND btrim(credentials->>'refresh_token') <> '')
+				OR (platform = ANY($4) AND btrim(COALESCE(credentials->>'cookie', '')) <> '')
+			)`
+		} else {
+			query += `
 			AND credentials ? 'refresh_token'
 			AND btrim(credentials->>'refresh_token') <> ''`
+		}
 	}
 	if options.ExcludeRetryCooldown {
 		query += `
@@ -1377,7 +1414,7 @@ func (r *accountRepository) ListOAuthRefreshCandidatePage(ctx context.Context, o
 		ORDER BY id ASC
 		LIMIT $3`
 
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(options.Platforms), options.AfterID, options.Limit)
+	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1740,6 +1777,170 @@ func (r *accountRepository) SetGrokOAuthRefreshErrorIfCredentialsUnchanged(
 	return true, nil
 }
 
+// SetLeonardoErrorIfCookieUnchanged marks a Leonardo OAuth account as error only
+// while its cookie still equals the one the upstream rejected. A cookie the
+// admin replaced during the round trip is not quarantined by the stale verdict.
+// The scheduler outbox insert shares the statement.
+func (r *accountRepository) SetLeonardoErrorIfCookieUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedCookie string,
+	errorMsg string,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+	}
+	if strings.TrimSpace(expectedCookie) == "" {
+		return false, errors.New("leonardo error update requires the cookie used for refresh")
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET status = $1,
+			error_message = $2,
+			schedulable = FALSE,
+			updated_at = NOW()
+		WHERE a.id = $3
+			AND a.deleted_at IS NULL
+			AND a.platform = $4
+			AND a.type = $5
+			AND a.credentials ->> 'cookie' = $6
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $7, updated.id, NULL, NULL FROM updated
+	`,
+		service.StatusError,
+		errorMsg,
+		id,
+		service.PlatformLeonardo,
+		service.AccountTypeOAuth,
+		expectedCookie,
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if rowsAffected == 0 {
+		return false, nil
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// InvalidateLeonardoAccessTokenIfUnchanged drops access_token / expires_at from
+// a Leonardo OAuth account after the upstream rejected that exact JWT, so the
+// next request refreshes from the cookie instead of reusing a revoked token
+// whose exp has not passed. It is a CAS on the token value: a token a concurrent
+// request already refreshed is left alone. The cookie and every other field are
+// preserved, and the scheduler outbox insert shares the statement.
+func (r *accountRepository) InvalidateLeonardoAccessTokenIfUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedAccessToken string,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+	}
+	if strings.TrimSpace(expectedAccessToken) == "" {
+		return false, errors.New("leonardo token invalidation requires the rejected access_token")
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET credentials = a.credentials - 'access_token' - 'expires_at',
+			updated_at = NOW()
+		WHERE a.id = $1
+			AND a.deleted_at IS NULL
+			AND a.platform = $2
+			AND a.type = $3
+			AND btrim(a.credentials ->> 'access_token') = $4
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $5, updated.id, NULL, NULL FROM updated
+	`,
+		id,
+		service.PlatformLeonardo,
+		service.AccountTypeOAuth,
+		strings.TrimSpace(expectedAccessToken),
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if rowsAffected == 0 {
+		return false, nil
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// UpdateLeonardoTokenIfCookieUnchanged merges a refreshed Leonardo JWT (and the
+// Better Auth-rotated cookie it was minted with) into a Leonardo OAuth account
+// only while the stored cookie still equals the one used for the exchange. Only
+// tokenFields are written (JSONB ||), so model_mapping edits made during the
+// round trip survive. The scheduler outbox insert shares the statement.
+func (r *accountRepository) UpdateLeonardoTokenIfCookieUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedCookie string,
+	tokenFields map[string]any,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+	}
+	if strings.TrimSpace(expectedCookie) == "" {
+		return false, errors.New("leonardo token update requires the cookie used for refresh")
+	}
+	fieldsJSON, err := json.Marshal(normalizeJSONMap(tokenFields))
+	if err != nil {
+		return false, err
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET credentials = COALESCE(a.credentials, '{}'::jsonb) || $1::jsonb,
+			updated_at = NOW()
+		WHERE a.id = $2
+			AND a.deleted_at IS NULL
+			AND a.platform = $3
+			AND a.type = $4
+			AND a.credentials ->> 'cookie' = $5
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $6, updated.id, NULL, NULL FROM updated
+	`,
+		string(fieldsJSON),
+		id,
+		service.PlatformLeonardo,
+		service.AccountTypeOAuth,
+		expectedCookie,
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if rowsAffected == 0 {
+		return false, nil
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
 // SetGrokOAuthRefreshTempUnschedulableIfCredentialsUnchanged applies a bounded
 // transient refresh quarantine only while the active Grok OAuth credential
 // document still matches the exact upstream attempt.
@@ -2070,6 +2271,7 @@ func (r *accountRepository) schedulableAccountsQuery(now time.Time) *dbent.Accou
 		Where(
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
+			knownPlatformPredicate(),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
@@ -2176,6 +2378,7 @@ func (r *accountRepository) ListSchedulableByPlatform(ctx context.Context, platf
 			dbaccount.PlatformEQ(platform),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
+			knownPlatformPredicate(),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
@@ -2210,6 +2413,7 @@ func (r *accountRepository) ListSchedulableByPlatforms(ctx context.Context, plat
 			dbaccount.PlatformIn(platforms...),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
+			knownPlatformPredicate(),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
@@ -2230,6 +2434,7 @@ func (r *accountRepository) ListSchedulableUngroupedByPlatform(ctx context.Conte
 			dbaccount.PlatformEQ(platform),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
+			knownPlatformPredicate(),
 			dbaccount.Not(dbaccount.HasAccountGroups()),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
@@ -2254,6 +2459,7 @@ func (r *accountRepository) ListSchedulableUngroupedByPlatforms(ctx context.Cont
 			dbaccount.PlatformIn(platforms...),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
+			knownPlatformPredicate(),
 			dbaccount.Not(dbaccount.HasAccountGroups()),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
@@ -3199,6 +3405,9 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			extraExpression += " || $" + itoa(idx) + "::jsonb"
 			args = append(args, payload)
 			idx++
+			if enabled, exists := updates.Extra["openai_excel_bps_cache_creation_as_input"].(bool); exists && !enabled {
+				extraExpression = "(" + extraExpression + ") - 'openai_excel_bps_cache_creation_as_input'"
+			}
 			if upstreamBillingProbeExplicitlyDisabled(updates.Extra) || upstreamBillingProbeSnapshotClearRequested(updates.Extra) {
 				extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
 			}
@@ -3378,7 +3587,7 @@ func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID in
 		preds = append(preds, dbaccount.PlatformIn(opts.platforms...))
 	}
 	if opts.schedulable {
-		preds = append(preds, dbaccount.SchedulableEQ(true))
+		preds = append(preds, dbaccount.SchedulableEQ(true), knownPlatformPredicate())
 		if !opts.ignoreTransientState {
 			now := time.Now()
 			preds = append(preds,
@@ -3485,6 +3694,14 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 	}
 
 	return outAccounts, nil
+}
+
+// knownPlatformPredicate restricts scheduling queries to platforms registered in
+// domain.Platforms. Rows left behind by a removed platform (still allowed by
+// historical DB CHECK constraints) are never scheduled, while admin listing
+// and deletion keep working because they do not use it.
+func knownPlatformPredicate() dbpredicate.Account {
+	return dbaccount.PlatformIn(domain.ConcretePlatformIDs()...)
 }
 
 func tempUnschedulablePredicate() dbpredicate.Account {

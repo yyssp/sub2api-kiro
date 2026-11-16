@@ -1,20 +1,19 @@
 package migrations
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/stretchr/testify/require"
 )
 
-// expectedUserPlatformQuotaPlatforms 是 user_platform_quotas.platform 允许的平台集合，
-// 需与 service.AllowedQuotaPlatforms 及 ent/schema/user_platform_quota.go 的 Validate 同步。
-// 此处硬编码而非 import service：migrations 是叶子包，被 repository 依赖，反向 import 会成环。
-// 不含 typesafe：它只由上游 241_add_typesafe_platform 引入，该迁移按文件名紧排在本 fork 的
-// 241_platform_checks_include_opencode_go 之前；新库此时没有 typesafe 行，存量 fork 库上后者
-// 早已应用而被跳过，随后 242 删除约束。因此 242 之前最后一次重建无需覆盖 typesafe。
+// 需与 domain.ConcretePlatformIDs 及 ent/schema/user_platform_quota.go 的 Validate 同步。
+// 242 号迁移起白名单改由应用层平台清单校验，不再维护数据库 CHECK 约束。
 var expectedUserPlatformQuotaPlatforms = []string{
-	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "minimax", "openai", "opencode_go", "zhipu",
+	"anthropic", "antigravity", "cline", "command_code", "cursor", "deepseek", "fish",
+	"gemini", "grok", "kimi", "kiro", "leonardo", "minimax", "openai", "opencode_go", "typesafe", "zhipu",
 }
 
 // TestUserPlatformQuotasRestoreKiroMigration 校验 227 号迁移把 224 漏掉的 kiro
@@ -34,12 +33,14 @@ func TestUserPlatformQuotasRestoreKiroMigration(t *testing.T) {
 }
 
 // TestUserPlatformQuotaPlatformCheckFinalStateCoversAllPlatforms 是防回归护栏：
-// 按文件名顺序（= 迁移执行顺序）取最后一个重建 user_platform_quotas_platform_check
-// 的迁移，断言其平台列表覆盖全部允许平台。
-//
-// 224 的事故根因是 DROP + 重建时手抄平台列表漏了一项，而针对 224 自身的用例只断言
-// 「新增的 kimi/zhipu/deepseek 在列表里」，无法发现旧平台被删。此用例校验终态，
-// 任何后续重建该约束却漏平台的迁移都会在这里失败。
+// 242 号迁移把 user_platform_quotas.platform 白名单从数据库 CHECK 约束改为应用层
+// 平台清单校验（domain.ConcretePlatformIDs），断言清单覆盖全部允许平台（含 fork 的
+// kiro），漏项会让对应平台的配额行插入失败。
 func TestUserPlatformQuotaPlatformCheckFinalStateCoversAllPlatforms(t *testing.T) {
-	assertPlatformCheckFinalState(t, "user_platform_quotas_platform_check", "platform", expectedUserPlatformQuotaPlatforms)
+	got := append([]string{}, domain.ConcretePlatformIDs()...)
+	sort.Strings(got)
+
+	require.Equal(t, expectedUserPlatformQuotaPlatforms, got,
+		"domain.ConcretePlatformIDs 与 user_platform_quotas.platform 允许的平台不一致；"+
+			"新平台必须登记进 domain/platforms.go，漏项会让对应平台的配额行插入失败")
 }

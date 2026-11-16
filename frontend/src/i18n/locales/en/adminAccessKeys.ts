@@ -66,6 +66,7 @@ export default {
   "ruleLegend": "Account and group resource rule {index}",
   "groupFallback": "Group #{id}",
   "ruleSummary": "{groups}; Account types: {types} (account operations only); Platforms: {platforms}; Operations: {count}",
+  "confirmTitle": "Confirm operation",
   "rotateConfirm": "Rotating “{name}” immediately invalidates its current key. Continue?",
   "revokeConfirm": "Permanently revoking “{name}” cannot be undone. Continue?",
   "deleteConfirm": "Delete the key record “{name}”? This removes it from the list only. Historical operation records are retained.",

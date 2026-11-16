@@ -162,7 +162,10 @@ func TestNewGatewayServiceWiresCompositeModelOwnershipResolver(t *testing.T) {
 		nil,      // deferredService
 		nil,      // claudeTokenProvider
 		nil,      // kiroTokenProvider
+		nil,      // leonardoTokenProvider
 		nil,      // kiroCooldownStore
+		nil,      // kiroCacheEmulationRemote
+		nil,      // kiroPromptCacheRemote
 		nil,      // sessionLimitCache
 		nil,      // rpmCache
 		nil,      // digestStore
@@ -193,6 +196,14 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "claude", model: "claude-sonnet-4-5", platform: PlatformAnthropic, ok: true},
 		{name: "anthropic prefix", model: "anthropic/claude-opus-4-5", platform: PlatformAnthropic, ok: true},
 		{name: "gpt", model: "gpt-5.1", platform: PlatformOpenAI, ok: true},
+		{name: "gpt-image stays openai", model: "gpt-image-2", platform: PlatformOpenAI, ok: true},
+		{name: "dall-e stays openai", model: "dall-e-3", platform: PlatformOpenAI, ok: true},
+		{name: "gemini image stays gemini", model: "gemini-2.5-flash-image", platform: PlatformGemini, ok: true},
+		{name: "gemini image models prefix stays gemini", model: "models/gemini-3-pro-image", platform: PlatformGemini, ok: true},
+		{name: "gemini 2.0 image stays gemini", model: "gemini-2.0-flash-image", platform: PlatformGemini, ok: true},
+		{name: "future gemini image stays gemini", model: "gemini-3-flash-image", platform: PlatformGemini, ok: true},
+		{name: "gpt-4o stays openai", model: "gpt-4o", platform: PlatformOpenAI, ok: true},
+		{name: "legacy gpt-image alias stays openai", model: "gpt-image-1-mini", platform: PlatformOpenAI, ok: true},
 		{name: "o series", model: "o3-mini", platform: PlatformOpenAI, ok: true},
 		{name: "embedding", model: "text-embedding-3-large", platform: PlatformOpenAI, ok: true},
 		{name: "gemini", model: "gemini-3-pro", platform: PlatformGemini, ok: true},
@@ -249,7 +260,7 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 		platforms = append(platforms, platform)
 	}
 	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformKiro, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformCursor, PlatformOpenCodeGo, PlatformTypeSafe, PlatformCommandCode, PlatformCline},
+		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformKiro, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformCursor, PlatformOpenCodeGo, PlatformTypeSafe, PlatformCommandCode, PlatformCline, PlatformLeonardo, PlatformFish},
 		platforms,
 	)
 }
@@ -259,4 +270,21 @@ func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {
 		require.True(t, isConcreteRequestPlatform(platform))
 		require.True(t, canCopyAccountsFromGroupPlatform(PlatformComposite, platform))
 	}
+}
+
+// BPS-only accounts carry credentials only the OpenAI gateway can use, like
+// Codex OAuth accounts.
+func TestResolveCompositeModelOwnershipFlagsBPSOAuthClaimants(t *testing.T) {
+	groupID := int64(8)
+	repo := &compositeOwnershipAccountRepo{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeBPSOAuth, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-6-astra": "gpt-6-astra"}}},
+			{ID: 2, Platform: PlatformDeepseek, Type: AccountTypeAPIKey, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-6-astra": "deepseek-v4-pro"}}},
+		},
+	}
+	svc := &GatewayService{accountRepo: repo}
+
+	ownership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "gpt-6-astra")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{Ambiguous: true, OpenAIGatewayOAuthClaimed: true}, ownership)
 }

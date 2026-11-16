@@ -30,6 +30,14 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return nil
 	}
 
+	// Kiro 直连没有 count_tokens 接口，本地 tokenizer 又比上游模型的计数少 1.4–1.7 倍
+	// （随内容变化，无法按固定系数校准），返回偏小的数会让客户端误判上下文余量。
+	// 与 Antigravity 一样返回 404，让客户端用自己的估算。带 base_url 的 API Key
+	// 账号走下面的上游中转，不受影响。
+	if isKiroDirectModeAccount(account) {
+		s.countTokensError(c, http.StatusNotFound, "not_found_error", "count_tokens endpoint is not supported for this platform")
+		return nil
+	}
 	validationModel := parsed.Model
 	if account != nil {
 		if account.IsBedrock() {
@@ -40,20 +48,9 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 			validationModel = account.GetMappedModel(validationModel)
 		}
 	}
-	if account != nil && account.Platform == PlatformAnthropic {
-		if err := validateClaude55Request(parsed.Body.Bytes(), validationModel); err != nil {
-			s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-			return err
-		}
-	}
-
-	if isKiroDirectModeAccount(account) {
-		inputTokens := estimateKiroInputTokens(ctx, parsed.Body.Bytes())
-		if inputTokens < 1 {
-			inputTokens = 1
-		}
-		c.JSON(http.StatusOK, gin.H{"input_tokens": inputTokens})
-		return nil
+	if err := validateClaude55RequestForAccount(parsed.Body.Bytes(), account, validationModel); err != nil {
+		s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return err
 	}
 
 	// Cursor 没有 count_tokens 端点，凭证也只对 Cursor 有效：本地估算，绝不落到下面的

@@ -18,7 +18,8 @@ ALTER TABLE user_platform_quotas
 ALTER TABLE user_platform_quotas
     ADD CONSTRAINT user_platform_quotas_platform_check
     CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok',
-                        'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'opencode_go', 'typesafe'));
+                        'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'adobe', 'opencode_go',
+                        'typesafe', 'command_code', 'cline', 'leonardo', 'fish'));
 
 ALTER TABLE composite_model_routes
     DROP CONSTRAINT IF EXISTS composite_model_routes_target_platform_check;
@@ -26,4 +27,5 @@ ALTER TABLE composite_model_routes
 ALTER TABLE composite_model_routes
     ADD CONSTRAINT composite_model_routes_target_platform_check
     CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok',
-                               'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'opencode_go', 'typesafe'));
+                               'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'adobe', 'opencode_go',
+                               'typesafe', 'command_code', 'cline', 'leonardo', 'fish'));

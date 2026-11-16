@@ -337,16 +337,19 @@
           </div>
           <div class="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
             <span>{{ t('common.total') }}: {{ historyTotal }} {{ t('pagination.results') }}</span>
-            <label>
-              {{ t('pagination.perPage') }}
+            <div class="flex items-center gap-2">
+              <span>{{ t('pagination.perPage') }}</span>
               <Select
                 v-model="historyPageSize"
                 :options="historyPageSizeOptions"
-                class="inline-block w-20"
+                :aria-label="t('pagination.perPage')"
+                class="w-24"
+                size="sm"
                 :disabled="loadingHistory || submitting"
+                data-testid="history-page-size"
                 @change="fetchHistory(1)"
               />
-            </label>
+            </div>
             <button
               class="btn btn-secondary"
               :disabled="loadingHistory || submitting || historyPage <= 1"
@@ -401,7 +404,7 @@ const history = ref<RedeemHistoryItem[]>([])
 const loadingHistory = ref(false)
 const historyPage = ref(1)
 const historyPageSize = ref(20)
-const historyPageSizeOptions = [20, 50, 100].map((value) => ({ value, label: String(value) }))
+const historyPageSizeOptions = [20, 50, 100].map(size => ({ value: size, label: String(size) }))
 const historyTotal = ref(0)
 let historyRequest = 0
 let loadedHistoryPageSize = 20

@@ -2,8 +2,9 @@ import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { generateKiroIDCAuthUrlMock } = vi.hoisted(() => ({
+const { generateKiroIDCAuthUrlMock, applyOAuthCredentialsMock } = vi.hoisted(() => ({
   generateKiroIDCAuthUrlMock: vi.fn(),
+  applyOAuthCredentialsMock: vi.fn(),
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -19,7 +20,7 @@ vi.mock('@/api/admin', () => ({
       generateIDCAuthUrl: generateKiroIDCAuthUrlMock,
     },
     accounts: {
-      applyOAuthCredentials: vi.fn(),
+      applyOAuthCredentials: applyOAuthCredentialsMock,
     },
   },
 }))
@@ -153,6 +154,10 @@ describe('ReAuthAccountModal Kiro regions', () => {
 })
 
 describe('ReAuthAccountModal platform routing', () => {
+  beforeEach(() => {
+    applyOAuthCredentialsMock.mockReset().mockResolvedValue({ id: 77, platform: 'grok' })
+  })
+
   // 回归:Grok 账号曾因 oauthPlatform 缺少分支回落到 anthropic,
   // 导致弹窗显示 Claude 文案且 callback URL 自动提取 code/state 失效。
   it('passes platform="grok" to the OAuth flow for Grok accounts', async () => {

@@ -83,7 +83,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	clientStream := gjson.GetBytes(body, "stream").Bool()
 	prepareCachePlanForContext(
 		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
-		"openai_chat_completions", estimateOpenAIChatCompletionsInputTokens(ctx, body),
+		"openai_chat_completions", estimateOpenAIChatCompletionsInputTokensWithAlgorithm(ctx, s.kiroMeteringAlgorithm(ctx), body),
 	)
 
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)

@@ -311,6 +311,7 @@ func TestBuildSchedulerMetadataAccount_KeepsOpenAIWSFlags(t *testing.T) {
 			"openai_responses_supported":                   false,
 			"codex_fingerprint_mode":                       "session",
 			"codex_fingerprint_seed":                       "11111111-1111-4111-8111-111111111111",
+			"codex_telemetry_enabled":                      true,
 			"mixed_scheduling":                             true,
 			"unused_large_field":                           "drop-me",
 		},
@@ -325,6 +326,7 @@ func TestBuildSchedulerMetadataAccount_KeepsOpenAIWSFlags(t *testing.T) {
 	require.Equal(t, false, got.Extra["openai_responses_supported"])
 	require.Equal(t, "session", got.Extra["codex_fingerprint_mode"])
 	require.Equal(t, "11111111-1111-4111-8111-111111111111", got.Extra["codex_fingerprint_seed"])
+	require.Equal(t, true, got.Extra["codex_telemetry_enabled"])
 	require.Equal(t, true, got.Extra["mixed_scheduling"])
 	require.Nil(t, got.Extra["unused_large_field"])
 }
@@ -1239,4 +1241,30 @@ func TestBuildSchedulerMetadataAccount_KeepsRPMFieldsForRPMGate(t *testing.T) {
 		require.Equal(t, service.WindowCostStickyOnly, restored.CheckRPMSchedulability(100),
 			"投影裁掉 rpm_strategy 会让粘性豁免账号退回三区判定")
 	})
+}
+
+// The retired BPS model whitelist is no longer projected into the scheduler
+// snapshot; a BPS-only account's models come from its model mapping.
+func TestFilterSchedulerExtraDropsRetiredExcelBPSWhitelist(t *testing.T) {
+	filtered := filterSchedulerExtra(map[string]any{
+		"openai_excel_bps_models": []string{"gpt-7-new"},
+		"openai_passthrough":      nil,
+	})
+	require.NotContains(t, filtered, "openai_excel_bps_models")
+	require.NotContains(t, filtered, "openai_passthrough")
+}
+
+func TestFishWalletExtraIsProjectedAndSchedulerNeutral(t *testing.T) {
+	filtered := filterSchedulerExtra(map[string]any{
+		service.FishWalletBalanceExtraKey:   300,
+		service.FishWalletBalanceAtExtraKey: "2026-11-05T00:00:00Z",
+		service.FishWalletBelowExtraKey:     650,
+		service.FishWalletBelowAtExtraKey:   "2026-11-05T00:00:00Z",
+		"fish_max_quality":                  "medium",
+	})
+	require.Len(t, filtered, 5, "fish credit-aware selection reads these from the snapshot")
+	require.False(t, shouldEnqueueSchedulerOutboxForExtraUpdates(map[string]any{
+		service.FishWalletBalanceExtraKey:   300,
+		service.FishWalletBalanceAtExtraKey: "2026-11-05T00:00:00Z",
+	}), "wallet observations must not trigger a bucket rebuild")
 }

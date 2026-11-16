@@ -1112,6 +1112,21 @@ func derefGroupID(groupID *int64) int64 {
 	return *groupID
 }
 
+// mergeAccountIDSets returns the union of the given account ID sets.
+func mergeAccountIDSets(sets ...map[int64]struct{}) map[int64]struct{} {
+	size := 0
+	for _, set := range sets {
+		size += len(set)
+	}
+	out := make(map[int64]struct{}, size)
+	for _, set := range sets {
+		for id := range set {
+			out[id] = struct{}{}
+		}
+	}
+	return out
+}
+
 func servesCompositeAntigravityGemini(apiKey *service.APIKey, effectivePlatform string) bool {
 	return apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite && effectivePlatform == service.PlatformAntigravity
 }

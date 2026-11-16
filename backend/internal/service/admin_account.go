@@ -417,6 +417,7 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	accountExtra = MergeOpenAICodexTicketExtra(accountExtra, nil)
 	if input.Platform == PlatformTypeSafe && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
@@ -475,6 +476,19 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 				return nil, err
 			}
 		}
+		if isLeonardoCookieAccount(account) {
+			if err := ValidateLeonardoCreditUnitPriceFromExtra(account.Extra); err != nil {
+				return nil, err
+			}
+			if err := ValidateLeonardoImageLimitsFromExtra(account.Extra); err != nil {
+				return nil, err
+			}
+		}
+		if isFishTokenAccount(account) {
+			if err := ValidateFishMaxQualityFromExtra(account.Extra); err != nil {
+				return nil, err
+			}
+		}
 		NormalizeFixedQuotaWindows(account.Extra)
 	}
 	if input.ExpiresAt != nil && *input.ExpiresAt > 0 {
@@ -502,6 +516,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if !isServableAccountPlatform(input.Platform) {
+		return nil, infraerrors.BadRequest("ACCOUNT_PLATFORM_UNSUPPORTED", fmt.Sprintf("unsupported account platform: %s", input.Platform))
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err
@@ -561,6 +578,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 
 	account, err := buildAccountForCreate(input, accountExtra)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateBPSOAuthCredentials(account.Platform, account.Type, account.Credentials); err != nil {
 		return nil, err
 	}
 	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
@@ -634,6 +654,24 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, err
 		}
 		if err := ValidateUpstreamRequestIDHeaderExtra(normalizedExtra); err != nil {
+			return nil, err
+		}
+	}
+	{
+		// Validate against the type and credentials this update will store, so
+		// a re-authorization that switches the OAuth client is judged correctly.
+		if err := validateBPSOAuthTypeChange(account.Type, input.Type); err != nil {
+			return nil, err
+		}
+		effectiveType := account.Type
+		if input.Type != "" {
+			effectiveType = input.Type
+		}
+		effectiveCredentials := account.Credentials
+		if len(input.Credentials) > 0 {
+			effectiveCredentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		}
+		if err := validateBPSOAuthCredentials(account.Platform, effectiveType, effectiveCredentials); err != nil {
 			return nil, err
 		}
 	}
@@ -745,6 +783,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				normalizedExtra[key] = v
 			}
 		}
+		normalizedExtra = MergeOpenAICodexTicketExtra(normalizedExtra, account.Extra)
 		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
 		account.Extra = normalizedExtra
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
@@ -765,6 +804,19 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		ComputeQuotaResetAt(account.Extra)
 		if isKiroDirectModeAccount(account) {
 			if err := ValidateKiroCreditUnitPriceFromExtra(account.Extra); err != nil {
+				return nil, err
+			}
+		}
+		if isLeonardoCookieAccount(account) {
+			if err := ValidateLeonardoCreditUnitPriceFromExtra(account.Extra); err != nil {
+				return nil, err
+			}
+			if err := ValidateLeonardoImageLimitsFromExtra(account.Extra); err != nil {
+				return nil, err
+			}
+		}
+		if isFishTokenAccount(account) {
+			if err := ValidateFishMaxQualityFromExtra(account.Extra); err != nil {
 				return nil, err
 			}
 		}
@@ -969,6 +1021,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	updates = MergeOpenAICodexTicketExtra(updates, nil)
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
@@ -998,6 +1051,7 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
 	// Managed probe/session state may only enter through dedicated typed endpoints.
+	input.Extra = MergeOpenAICodexTicketExtra(input.Extra, nil)
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)

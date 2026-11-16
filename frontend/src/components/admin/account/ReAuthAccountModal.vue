@@ -320,10 +320,26 @@
         </div>
       </div>
 
+      <!-- Leonardo：重新导出浏览器 cookie 即完成重登。 -->
+      <div v-if="isLeonardo" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.leonardo.cookieLabel') }}</label>
+          <textarea
+            v-model="leonardoCookie"
+            rows="6"
+            class="input font-mono text-xs"
+            :placeholder="t('admin.accounts.leonardo.cookiePlaceholder')"
+            data-testid="reauth-leonardo-cookie-input"
+          ></textarea>
+          <p class="input-hint">{{ t('admin.accounts.leonardo.cookieHint') }}</p>
+        </div>
+      </div>
+
       <OAuthAuthorizationFlow
-        v-if="!isKiroImportMode"
+        v-if="!isKiroImportMode && !isLeonardo"
         ref="oauthFlowRef"
         :add-method="addMethod"
+        :excel-oauth="isOpenAIBPSOAuth"
         :auth-url="currentAuthUrl"
         :session-id="currentSessionId"
         :loading="currentLoading"
@@ -354,7 +370,17 @@
           {{ t('common.cancel') }}
         </button>
         <button
-          v-if="isKiroImportMode"
+          v-if="isLeonardo"
+          type="button"
+          :disabled="!leonardoCookie.trim()"
+          class="btn btn-primary"
+          data-testid="reauth-leonardo-submit"
+          @click="handleLeonardoReAuth"
+        >
+          {{ t('common.confirm') }}
+        </button>
+        <button
+          v-else-if="isKiroImportMode"
           type="button"
           :disabled="currentLoading || !kiroTokenJson.trim() || (kiroImportNeedsDeviceRegistration && !kiroDeviceRegistrationJson.trim())"
           class="btn btn-primary"
@@ -418,7 +444,7 @@ import {
 } from '@/composables/useAccountOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useKiroOAuth } from '@/composables/useKiroOAuth'
-import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
+import { useOpenAIOAuth, OPENAI_EXCEL_OAUTH_CLIENT_ID } from '@/composables/useOpenAIOAuth'
 import { useAppStore } from '@/stores/app'
 import type { Account, AccountPlatform } from '@/types'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
@@ -491,12 +517,18 @@ const kiroImportTokenPlaceholder = computed(
   () => kiroTokenJsonPlaceholder(t('admin.accounts.oauth.kiro.tokenJsonPlaceholderOr'))
 )
 
+const leonardoCookie = ref('')
+
 const isOpenAI = computed(() => props.account?.platform === 'openai')
+// BPS-only（BPS OAuth）账号必须用官方 Excel 客户端重新授权，换回的凭据才能继续走 BPS。
+const isOpenAIBPSOAuth = computed(() => isOpenAI.value && props.account?.type === 'bps-oauth')
+const openAIReauthType = computed(() => (isOpenAIBPSOAuth.value ? 'bps-oauth' : 'oauth'))
 const isOpenAILike = computed(() => isOpenAI.value)
 const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
 const isKiro = computed(() => props.account?.platform === 'kiro')
+const isLeonardo = computed(() => props.account?.platform === 'leonardo' && props.account?.type === 'oauth')
 const isGrok = computed(() => props.account?.platform === 'grok')
 
 const oauthPlatform = computed<AccountPlatform>(() => {
@@ -683,7 +715,7 @@ const buildUpdatedCredentials = (next: Record<string, unknown>) => ({
 })
 
 const updateAccountCredentials = async (payload: {
-  type: 'oauth' | 'setup-token'
+  type: 'oauth' | 'setup-token' | 'bps-oauth'
   credentials: Record<string, unknown>
   extra?: Record<string, unknown>
 }) => {
@@ -695,11 +727,22 @@ const updateAccountCredentials = async (payload: {
   handleClose()
 }
 
+const handleLeonardoReAuth = async () => {
+  const cookie = leonardoCookie.value.trim()
+  if (!cookie) return
+  await updateAccountCredentials({
+    type: 'oauth',
+    // 只换 cookie；旧 JWT/access_token 留给后台刷新器按新 cookie 重换，
+    // 这里清掉可避免「新 cookie + 旧 token」的短暂混用。
+    credentials: buildUpdatedCredentials({ cookie, access_token: '', expires_at: '' })
+  })
+}
+
 const handleGenerateUrl = async () => {
   if (!props.account) return
 
   if (isOpenAILike.value) {
-    await openaiOAuth.generateAuthUrl(props.account.proxy_id)
+    await openaiOAuth.generateAuthUrl(props.account.proxy_id, undefined, isOpenAIBPSOAuth.value ? 'excel' : 'codex')
     return
   }
 
@@ -761,10 +804,15 @@ const handleExchangeCode = async () => {
 
     const tokenInfo = await openaiOAuth.exchangeAuthCode(authCode.trim(), sessionId, stateToUse, props.account.proxy_id)
     if (!tokenInfo) return
+    if (isOpenAIBPSOAuth.value && tokenInfo.client_id !== OPENAI_EXCEL_OAUTH_CLIENT_ID) {
+      openaiOAuth.error.value = t('admin.accounts.oauth.openai.excelSessionMismatch')
+      appStore.showError(openaiOAuth.error.value)
+      return
+    }
 
     try {
       await updateAccountCredentials({
-        type: 'oauth',
+        type: openAIReauthType.value,
         credentials: buildUpdatedCredentials(openaiOAuth.buildCredentials(tokenInfo)),
         extra: openaiOAuth.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
       })
@@ -1050,12 +1098,21 @@ const handleValidateRefreshToken = async (refreshTokenInput: string) => {
     openaiOAuth.loading.value = true
     openaiOAuth.error.value = ''
     try {
-      const tokenInfo = await openaiOAuth.validateRefreshToken(refreshToken, props.account.proxy_id)
+      const tokenInfo = await openaiOAuth.validateRefreshToken(
+        refreshToken,
+        props.account.proxy_id,
+        isOpenAIBPSOAuth.value ? OPENAI_EXCEL_OAUTH_CLIENT_ID : undefined
+      )
       if (!tokenInfo) return
+      const credentials = openaiOAuth.buildCredentials(tokenInfo)
+      if (isOpenAIBPSOAuth.value) {
+        // Excel 客户端的 RT 只能用 Excel client_id 刷新，必须随凭据落库。
+        credentials.client_id = OPENAI_EXCEL_OAUTH_CLIENT_ID
+      }
 
       const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
-        type: 'oauth',
-        credentials: openaiOAuth.buildCredentials(tokenInfo),
+        type: openAIReauthType.value,
+        credentials,
         extra: openaiOAuth.buildExtraInfo(tokenInfo)
       })
       appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))

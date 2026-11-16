@@ -246,7 +246,7 @@ func TestGroupCacheStrategyRawChatStreamingUsageAndCommit(t *testing.T) {
 		c, _ := gin.CreateTestContext(rec)
 		c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 		SetCacheGroupContext(c, group)
-		prepareCachePlanForContext(context.Background(), c, account, group, body, "claude-sonnet-4-6", "openai_chat_completions", estimateKiroInputTokens(context.Background(), body))
+		prepareCachePlanForContext(context.Background(), c, account, group, body, "claude-sonnet-4-6", "openai_chat_completions", estimateOpenAIChatCompletionsInputTokens(context.Background(), body))
 		return c, rec
 	}
 	newResponse := func() *http.Response {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import RedeemView from '../RedeemView.vue'
 import Select from '@/components/common/Select.vue'
 
@@ -40,6 +40,15 @@ async function submitCode() {
   await wrapper.get('form').trigger('submit')
   await flushPromises()
   return wrapper
+}
+
+const historyPageSizeSelect = (wrapper: VueWrapper) => wrapper.getComponent(Select)
+
+const setHistoryPageSize = async (wrapper: VueWrapper, value: number) => {
+  const select = historyPageSizeSelect(wrapper)
+  select.vm.$emit('update:modelValue', value)
+  await wrapper.vm.$nextTick()
+  select.vm.$emit('change', value, null)
 }
 
 describe('RedeemView refresh after redemption', () => {
@@ -100,18 +109,12 @@ describe('RedeemView refresh after redemption', () => {
     await button('pagination.previous').trigger('click')
     await flushPromises()
     expect(getHistory).toHaveBeenLastCalledWith(1, 20)
-    const pageSizeSelect = wrapper.getComponent(Select)
-    expect(pageSizeSelect.props('options')).toEqual([
-      { value: 20, label: '20' },
-      { value: 50, label: '50' },
-      { value: 100, label: '100' },
-    ])
-    await pageSizeSelect.vm.$emit('update:modelValue', 50)
-    await pageSizeSelect.vm.$emit('change', 50)
+    expect(historyPageSizeSelect(wrapper).props('options').map((option: { label: string }) => option.label))
+      .toEqual(['20', '50', '100'])
+    await setHistoryPageSize(wrapper, 50)
     await flushPromises()
     expect(getHistory).toHaveBeenLastCalledWith(1, 50)
-    await pageSizeSelect.vm.$emit('update:modelValue', 100)
-    await pageSizeSelect.vm.$emit('change', 100)
+    await setHistoryPageSize(wrapper, 100)
     await flushPromises()
     await button('pagination.next').trigger('click')
     await flushPromises()
@@ -139,14 +142,12 @@ describe('RedeemView refresh after redemption', () => {
     await flushPromises()
     let rejectRequest!: (error: Error) => void
     getHistory.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRequest = reject }))
-    const pageSizeSelect = wrapper.getComponent(Select)
-    await pageSizeSelect.vm.$emit('update:modelValue', 50)
-    await pageSizeSelect.vm.$emit('change', 50)
+    await setHistoryPageSize(wrapper, 50)
     expect(getHistory).toHaveBeenLastCalledWith(1, 50)
     expect(button('pagination.next').attributes('disabled')).toBeDefined()
     rejectRequest(new Error('Network error'))
     await flushPromises()
-    expect(pageSizeSelect.props('modelValue')).toBe(20)
+    expect(historyPageSizeSelect(wrapper).props('modelValue')).toBe(20)
     expect(wrapper.text()).toContain('OLD-ROWS')
     expect(wrapper.text()).toContain('61')
     expect(button('pagination.previous').attributes('disabled')).toBeUndefined()
@@ -155,11 +156,10 @@ describe('RedeemView refresh after redemption', () => {
     await button('pagination.next').trigger('click')
     await flushPromises()
     expect(getHistory).toHaveBeenLastCalledWith(3, 20)
-    await pageSizeSelect.vm.$emit('update:modelValue', 50)
-    await pageSizeSelect.vm.$emit('change', 50)
+    await setHistoryPageSize(wrapper, 50)
     await flushPromises()
     expect(getHistory).toHaveBeenLastCalledWith(1, 50)
-    expect(pageSizeSelect.props('modelValue')).toBe(50)
+    expect(historyPageSizeSelect(wrapper).props('modelValue')).toBe(50)
     expect(button('pagination.previous').attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
@@ -178,9 +178,7 @@ describe('RedeemView refresh after redemption', () => {
       id: 2, code: 'NEW-ROWS', type: 'balance', value: 30, used_at: '2026-03-08T00:00:00Z',
     }], total: 61 })
     // Force overlapping requests to exercise responses arriving out of order.
-    const pageSizeSelect = wrapper.getComponent(Select)
-    await pageSizeSelect.vm.$emit('update:modelValue', 50)
-    await pageSizeSelect.vm.$emit('change', 50)
+    await setHistoryPageSize(wrapper, 50)
     await flushPromises()
     const button = (text: string) => wrapper.findAll('button').find(b => b.text() === text)!
     await button('pagination.next').trigger('click')
@@ -192,12 +190,12 @@ describe('RedeemView refresh after redemption', () => {
       rejectOld(new Error('Stale network error'))
     }
     await flushPromises()
-    expect(pageSizeSelect.props('modelValue')).toBe(50)
+    expect(historyPageSizeSelect(wrapper).props('modelValue')).toBe(50)
     expect(wrapper.text()).toContain('NEW-ROWS')
     expect(wrapper.text()).toContain('61')
     expect(button('pagination.previous').attributes('disabled')).toBeUndefined()
     expect(button('pagination.next').attributes('disabled')).toBeDefined()
-    expect(pageSizeSelect.attributes('disabled')).toBeUndefined()
+    expect(historyPageSizeSelect(wrapper).props('disabled')).toBe(false)
     expect(showError).not.toHaveBeenCalled()
     await button('pagination.previous').trigger('click')
     await flushPromises()

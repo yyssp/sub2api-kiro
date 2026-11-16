@@ -282,6 +282,8 @@ func TestResolve_KiroGPT56UsesChannelPricingBeforeDefaultOpenAIPricing(t *testin
 
 func TestResolve_KiroGPT56FallsBackToDefaultOpenAIPricingWhenNoChannelPrice(t *testing.T) {
 	r := newResolverWithPlatformChannel(t, PlatformKiro, nil)
+	// 需要内置的 gpt-5.6 官方兜底价；共享 helper 的测试桩只含 claude-sonnet-4。
+	r.billingService = NewBillingService(nil, nil)
 
 	resolved := r.Resolve(context.Background(), PricingInput{
 		Model:   "gpt-5.6-luna",

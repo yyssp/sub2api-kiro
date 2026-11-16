@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
@@ -31,6 +33,111 @@ func cacheRequestBody(label string, oneHour bool) []byte {
 		strings.Repeat("cacheable prompt chunk "+label+" ", 512),
 		ttl,
 	))
+}
+
+type cacheStrategyRemoteStub struct {
+	mu      sync.Mutex
+	alive   map[uint64]map[[32]byte]time.Duration
+	lookups int
+	stores  int
+}
+
+func (s *cacheStrategyRemoteStub) LookupAlive(_ context.Context, key uint64, fingerprints [][32]byte) (map[[32]byte]time.Duration, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lookups++
+	result := make(map[[32]byte]time.Duration)
+	for _, fingerprint := range fingerprints {
+		if ttl := s.alive[key][fingerprint]; ttl > 0 {
+			result[fingerprint] = ttl
+		}
+	}
+	return result, nil
+}
+
+func (s *cacheStrategyRemoteStub) StoreEntries(_ context.Context, key uint64, entries []KiroCacheRemoteEntry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stores++
+	if s.alive == nil {
+		s.alive = make(map[uint64]map[[32]byte]time.Duration)
+	}
+	if s.alive[key] == nil {
+		s.alive[key] = make(map[[32]byte]time.Duration)
+	}
+	for _, entry := range entries {
+		s.alive[key][entry.Fingerprint] = entry.TTL
+	}
+	return nil
+}
+
+func (s *cacheStrategyRemoteStub) counts() (int, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lookups, s.stores
+}
+
+func TestKiroGroupCacheStrategySharesPrefixesAcrossInstances(t *testing.T) {
+	resetCacheTracker()
+	previousDispatch := kiroCacheEmulationAsyncDispatch
+	kiroCacheEmulationAsyncDispatch = func(fn func()) { fn() }
+	t.Cleanup(func() { kiroCacheEmulationAsyncDispatch = previousDispatch })
+
+	strategyID := int64(900001)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
+	cfg.AllowDerivedSession = true
+	GlobalCacheStrategyRegistry().Put(&CacheStrategy{ID: strategyID, Name: "shared prefix", Enabled: true, Revision: 4, Config: cfg})
+	t.Cleanup(func() { GlobalCacheStrategyRegistry().Delete(strategyID) })
+	group := &Group{ID: 9002, Platform: PlatformKiro, CacheStrategyID: &strategyID}
+	account := &Account{ID: 9003, Platform: PlatformKiro}
+	body := cacheRequestBody("remote shared prefix", false)
+	remote := &cacheStrategyRemoteStub{}
+	ctx := context.Background()
+
+	first := (&GatewayService{kiroCacheEmulationRemote: remote}).prepareCacheEmulationUsage(ctx, account, group, body, "claude-sonnet-4-6", 2000)
+	require.NotNil(t, first)
+	require.Positive(t, first.result().CacheCreationInputTokens)
+	first.commit()
+
+	resetCacheTracker()
+	second := (&GatewayService{kiroCacheEmulationRemote: remote}).prepareCacheEmulationUsage(ctx, account, group, body, "claude-sonnet-4-6", 2000)
+	require.NotNil(t, second)
+	require.Positive(t, second.result().CacheReadInputTokens)
+	second.commit()
+
+	otherGroup := &Group{ID: 9004, Platform: PlatformKiro, CacheStrategyID: &strategyID}
+	resetCacheTracker()
+	isolated := (&GatewayService{kiroCacheEmulationRemote: remote}).prepareCacheEmulationUsage(ctx, account, otherGroup, body, "claude-sonnet-4-6", 2000)
+	require.NotNil(t, isolated)
+	require.Zero(t, isolated.result().CacheReadInputTokens)
+
+	lookups, stores := remote.counts()
+	require.Equal(t, 3, lookups)
+	require.Equal(t, 2, stores)
+}
+
+func TestNonKiroGroupCacheStrategyDoesNotUseKiroRemoteStore(t *testing.T) {
+	resetCacheTracker()
+	previousDispatch := kiroCacheEmulationAsyncDispatch
+	kiroCacheEmulationAsyncDispatch = func(fn func()) { fn() }
+	t.Cleanup(func() { kiroCacheEmulationAsyncDispatch = previousDispatch })
+
+	strategyID := int64(900005)
+	cfg := smallPayloadCacheConfig(CacheStrategyKindPrefix)
+	cfg.AllowDerivedSession = true
+	GlobalCacheStrategyRegistry().Put(&CacheStrategy{ID: strategyID, Name: "local prefix", Enabled: true, Revision: 1, Config: cfg})
+	t.Cleanup(func() { GlobalCacheStrategyRegistry().Delete(strategyID) })
+	group := &Group{ID: 9006, Platform: PlatformAnthropic, CacheStrategyID: &strategyID}
+	account := &Account{ID: 9007, Platform: PlatformAnthropic}
+	remote := &cacheStrategyRemoteStub{}
+	plan := (&GatewayService{kiroCacheEmulationRemote: remote}).prepareCacheEmulationUsage(
+		context.Background(), account, group, cacheRequestBody("non kiro", false), "claude-sonnet-4-6", 2000,
+	)
+	require.NotNil(t, plan)
+	plan.commit()
+	lookups, stores := remote.counts()
+	require.Zero(t, lookups)
+	require.Zero(t, stores)
 }
 
 type cacheStrategyRepoStub struct {
@@ -371,7 +478,7 @@ func TestCacheTrackerFallsBackToOlderBreakpointWhenCreationIsCapped(t *testing.T
 	profile.protocolFamily = "openai_chat_completions"
 
 	svc := &GatewayService{}
-	first := svc.prepareCacheEmulationPlanFromProfile(account, group, profile, profile.totalInputTokens)
+	first := svc.prepareCacheEmulationPlanFromProfile(context.Background(), account, group, profile, profile.totalInputTokens)
 	require.NotNil(t, first)
 	require.NotNil(t, first.result())
 	require.Zero(t, first.result().CacheReadInputTokens)
@@ -388,7 +495,7 @@ func TestCacheTrackerFallsBackToOlderBreakpointWhenCreationIsCapped(t *testing.T
 	require.True(t, ok)
 	secondProfile.rawBody = append([]byte(nil), body...)
 	secondProfile.protocolFamily = "openai_chat_completions"
-	second := svc.prepareCacheEmulationPlanFromProfile(account, group, secondProfile, secondProfile.totalInputTokens)
+	second := svc.prepareCacheEmulationPlanFromProfile(context.Background(), account, group, secondProfile, secondProfile.totalInputTokens)
 	require.NotNil(t, second)
 	require.NotNil(t, second.result())
 	require.Equal(t, 1000, second.result().CacheReadInputTokens)

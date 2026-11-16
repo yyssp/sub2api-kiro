@@ -5245,15 +5245,9 @@
                     v-model.trim="form.grok_default_text_model"
                     type="text"
                     class="input mt-2 w-full"
-                    list="grok-default-text-model-options"
                     data-testid="grok-default-text-model"
                     placeholder="grok-4.5"
                   />
-                  <datalist id="grok-default-text-model-options">
-                    <option value="grok-4.5" />
-                    <option value="grok-4.1-fast" />
-                    <option value="grok-4" />
-                  </datalist>
                   <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.gatewayForwarding.grokDefaultTextModelHint") }}
                   </p>
@@ -5363,6 +5357,89 @@
                 />
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                   {{ t("admin.settings.gatewayForwarding.openaiTTFTModeHint") }}
+                </p>
+              </div>
+
+              <!-- Kiro 计量算法 -->
+              <div class="border-b border-gray-100 pb-5 dark:border-dark-700 md:col-span-2">
+                <label
+                  for="gateway-kiro-tokenizer"
+                  class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.gatewayForwarding.kiroTokenizer") }}
+                </label>
+                <Select
+                  v-model="form.gateway_kiro_tokenizer"
+                  :options="kiroTokenizerOptions"
+                  data-testid="gateway-kiro-tokenizer"
+                  class="mt-2"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.kiroTokenizerHint") }}
+                </p>
+              </div>
+
+              <!-- Kiro 缓存模拟分桶 -->
+              <div class="flex items-center justify-between border-b border-gray-100 pb-5 dark:border-dark-700 md:col-span-2">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.gatewayForwarding.kiroCacheScopeClient") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.kiroCacheScopeClientHint") }}
+                  </p>
+                </div>
+                <Toggle
+                  v-model="form.gateway_kiro_cache_scope_client"
+                  data-testid="gateway-kiro-cache-scope-client"
+                />
+              </div>
+
+              <!-- Fish 原生号动态尺寸规划：最大裁剪 -->
+              <div class="border-b border-gray-100 pb-5 dark:border-dark-700 md:col-span-2">
+                <label
+                  for="fish-image-max-crop-pixels"
+                  class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.gatewayForwarding.fishImageMaxCropPixels") }}
+                </label>
+                <input
+                  id="fish-image-max-crop-pixels"
+                  v-model.number="form.fish_image_max_crop_pixels"
+                  type="number"
+                  min="0"
+                  max="64"
+                  step="1"
+                  data-testid="fish-image-max-crop-pixels"
+                  class="input mt-2 w-40 font-mono text-sm"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.fishImageMaxCropPixelsHint") }}
+                </p>
+              </div>
+
+              <!-- Fish 原生号动态尺寸规划：最大放大倍数 -->
+              <div class="border-b border-gray-100 pb-5 dark:border-dark-700 md:col-span-2">
+                <label
+                  for="fish-image-max-upscale-factor"
+                  class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.gatewayForwarding.fishImageMaxUpscaleFactor") }}
+                </label>
+                <input
+                  id="fish-image-max-upscale-factor"
+                  v-model.number="form.fish_image_max_upscale_factor"
+                  type="number"
+                  min="1"
+                  max="3"
+                  step="0.1"
+                  data-testid="fish-image-max-upscale-factor"
+                  class="input mt-2 w-40 font-mono text-sm"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.fishImageMaxUpscaleFactorHint") }}
                 </p>
               </div>
 
@@ -5848,6 +5925,131 @@
                 <Toggle v-model="form.openai_codex_version_auto_sync_enabled" />
               </div>
 
+              <!-- Codex 292 门票打票 -->
+              <div class="flex items-center justify-between gap-4">
+                <div class="min-w-0">
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                    {{ t("admin.settings.gatewayForwarding.codexTicketEnabled") }}
+                  </h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.codexTicketEnabledDesc") }}
+                  </p>
+                </div>
+                <Toggle
+                  id="codex-ticket-enabled"
+                  v-model="form.openai_codex_ticket_enabled"
+                />
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <div class="min-w-0">
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                    {{ t("admin.settings.gatewayForwarding.codexTicketFailClosed") }}
+                  </h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.codexTicketFailClosedDesc") }}
+                  </p>
+                </div>
+                <Toggle
+                  id="codex-ticket-fail-closed"
+                  v-model="form.openai_codex_ticket_fail_closed"
+                />
+              </div>
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxy") }}
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyDesc") }}
+                </p>
+                <input
+                  id="codex-ticket-harvest-proxy"
+                  v-model="form.openai_codex_ticket_harvest_proxy_url"
+                  type="text"
+                  class="input mt-3 w-full font-mono text-sm"
+                  :placeholder="t('admin.settings.gatewayForwarding.codexTicketHarvestProxyPlaceholder')"
+                  autocomplete="off"
+                />
+                <p
+                  v-if="form.openai_codex_ticket_harvest_proxy_configured"
+                  class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
+                >
+                  {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyConfigured") }}
+                </p>
+              </div>
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.gatewayForwarding.codexTicketDefaultLength") }}
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.codexTicketDefaultLengthDesc") }}
+                </p>
+                <input
+                  id="codex-ticket-default-length"
+                  v-model.number="form.openai_codex_ticket_default_length"
+                  type="number"
+                  min="100"
+                  max="512"
+                  class="input mt-3 w-40 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.gatewayForwarding.codexTicketPlanLengths") }}
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.codexTicketPlanLengthsDesc") }}
+                </p>
+                <div class="mt-3 space-y-2">
+                  <div
+                    v-for="(rule, index) in form.openai_codex_ticket_plan_lengths"
+                    :key="index"
+                    data-test="codex-ticket-plan-row"
+                    class="flex items-center gap-2"
+                  >
+                    <Select
+                      :id="index === 0 ? 'codex-ticket-plan-rule-plan' : undefined"
+                      v-model="rule.plan"
+                      :options="codexTicketPlanOptions"
+                      searchable
+                      creatable
+                      creatable-label-mode="raw"
+                      class="w-48 flex-shrink-0"
+                      :placeholder="t('admin.settings.gatewayForwarding.codexTicketPlanRulePlaceholder')"
+                    />
+                    <input
+                      v-model.number="rule.length"
+                      type="number"
+                      min="100"
+                      max="512"
+                      class="input w-28 font-mono text-sm"
+                      :placeholder="t('admin.settings.gatewayForwarding.codexTicketDefaultLength')"
+                    />
+                    <button
+                      type="button"
+                      class="btn-ghost-danger text-xs"
+                      :title="t('admin.settings.gatewayForwarding.codexTicketPlanRuleRemove')"
+                      @click="form.openai_codex_ticket_plan_lengths.splice(index, 1)"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <button
+                    id="codex-ticket-plan-rule-add"
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    @click="form.openai_codex_ticket_plan_lengths.push({ plan: '', length: form.openai_codex_ticket_default_length || 292 })"
+                  >
+                    <Icon name="plus" size="xs" />
+                    {{ t("admin.settings.gatewayForwarding.codexTicketPlanRuleAdd") }}
+                  </button>
+                  <p
+                    v-if="form.openai_codex_ticket_plan_lengths.length === 0"
+                    class="text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.gatewayForwarding.codexTicketPlanLengthsEmpty") }}
+                  </p>
+                </div>
+              </div>
               <!-- Claude Code 客户端版本号 -->
               <div>
                 <label
@@ -9008,6 +9210,7 @@ import type {
   AuthSourceType,
   SystemSettings,
   UpdateSettingsRequest,
+  CodexTicketPlanLengthRule,
   DefaultSubscriptionSetting,
   DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
@@ -9081,6 +9284,7 @@ import {
   type FingerprintSignalType,
   type FingerprintSignalRow,
 } from "./codexFingerprintSignals";
+import { openAIPlanTypeLabel } from "@/utils/planType";
 
 const { t, locale } = useI18n();
 
@@ -9088,6 +9292,11 @@ const { t, locale } = useI18n();
 const openaiTTFTModeOptions = computed(() => [
   { value: "semantic", label: t("admin.settings.gatewayForwarding.openaiTTFTModeSemantic") },
   { value: "visible", label: t("admin.settings.gatewayForwarding.openaiTTFTModeVisible") },
+]);
+const kiroTokenizerOptions = computed(() => [
+  { value: "official", label: t("admin.settings.gatewayForwarding.kiroTokenizerOfficial") },
+  { value: "charclass", label: t("admin.settings.gatewayForwarding.kiroTokenizerCharClass") },
+  { value: "weighted", label: t("admin.settings.gatewayForwarding.kiroTokenizerWeighted") },
 ]);
 const grokDefaultBaseURLModeOptions = computed(() => [
   { value: "cli", label: t("admin.settings.gatewayForwarding.grokBaseURLModeCLI") },
@@ -9117,6 +9326,16 @@ const oidcTokenAuthMethodOptions = [
   { value: "client_secret_basic", label: "client_secret_basic" },
   { value: "none", label: "none" },
 ];
+// Codex 门票档位规则的 plan 预设：value 即后端做子串匹配的 canonical plan_type，
+// 标签复用 ChatGPT 档位命名；预设外的子串（如 business）通过 Select 的 creatable 输入。
+const codexTicketPlanOptions: SelectOption[] = [
+  "plus",
+  "pro",
+  "prolite",
+  "team",
+  "self_serve_business_prolite",
+  "free",
+].map((value) => ({ value, label: openAIPlanTypeLabel(value) || value }));
 const customMenuVisibilityOptions = computed(() => [
   { value: "user", label: t("admin.settings.customMenu.visibilityUser") },
   { value: "admin", label: t("admin.settings.customMenu.visibilityAdmin") },
@@ -9801,7 +10020,9 @@ type SettingsForm = Omit<
   google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
   openai_low_upstream_rate_priority_enabled: boolean;
-  openai_oauth_scheduling_rate_multiplier: number | "" | null;
+	/** Form always binds a concrete rules array (SystemSettings marks this nullable). */
+	openai_codex_ticket_plan_lengths: CodexTicketPlanLengthRule[];
+	openai_oauth_scheduling_rate_multiplier: number | "" | null;
   openai_advanced_scheduler_enabled: boolean;
   openai_advanced_scheduler_sticky_weighted_enabled: boolean;
   openai_advanced_scheduler_subscription_priority_enabled: boolean;
@@ -10078,6 +10299,8 @@ const form = reactive<SettingsForm>({
   openai_advanced_scheduler_weight_session_sticky: "",
   // Gateway forwarding behavior
   openai_ttft_mode: "semantic",
+  gateway_kiro_tokenizer: "official",
+  gateway_kiro_cache_scope_client: false,
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
@@ -10093,10 +10316,20 @@ const form = reactive<SettingsForm>({
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   openai_codex_client_version_synced: "",
   openai_codex_version_auto_sync_enabled: true,
-  claude_code_client_version: "",
+	openai_codex_ticket_enabled: false,
+  openai_codex_ticket_fail_closed: true,
+  openai_codex_ticket_harvest_proxy_url: "",
+  openai_codex_ticket_harvest_proxy_configured: false,
+  openai_codex_ticket_default_length: 292,
+  // 档位规则直接在本数组里编辑，提交时规整（trim/小写、丢弃空 plan）后序列化进 payload
+	openai_codex_ticket_plan_lengths: [] as CodexTicketPlanLengthRule[],
+	claude_code_client_version: "",
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   claude_code_client_version_synced: "",
-  claude_code_version_auto_sync_enabled: true,
+	claude_code_version_auto_sync_enabled: true,
+  // fish 原生号动态尺寸规划阈值
+  fish_image_max_crop_pixels: 4,
+  fish_image_max_upscale_factor: 2,
   // codex_cli_only 加固
   min_codex_version: "",
   max_codex_version: "",
@@ -11386,6 +11619,25 @@ const siteBillingModeHint = computed(() =>
   t(`admin.settings.features.siteBillingMode.hints.${SITE_BILLING_MODE_I18N_KEYS[siteBillingMode.value]}`),
 );
 
+// fish 原生号动态尺寸规划阈值的提交钳制（与后端校验一致：crop 0-64、factor 1-3）。
+// 清空输入框（v-model.number 得到 ""）回落默认 4，而不是被 Number("") 当成 0（不裁剪）。
+function clampFishImageMaxCropPixels(
+  value: number | string | null | undefined,
+): number {
+  if (value === null || value === undefined || value === "") return 4;
+  const crop = Number(value);
+  if (!Number.isFinite(crop) || crop < 0) return 4;
+  return Math.min(Math.round(crop), 64);
+}
+
+function clampFishImageMaxUpscaleFactor(
+  value: number | null | undefined,
+): number {
+  const factor = Number(value);
+  if (!Number.isFinite(factor) || factor <= 0) return 2;
+  return Math.min(Math.max(factor, 1), 3);
+}
+
 async function saveSettings() {
   saving.value = true;
   try {
@@ -11733,6 +11985,12 @@ async function saveSettings() {
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
       openai_ttft_mode:
         form.openai_ttft_mode === "visible" ? "visible" : "semantic",
+      gateway_kiro_tokenizer: ["official", "charclass", "weighted"].includes(
+        form.gateway_kiro_tokenizer,
+      )
+        ? form.gateway_kiro_tokenizer
+        : "official",
+      gateway_kiro_cache_scope_client: form.gateway_kiro_cache_scope_client,
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
@@ -11755,9 +12013,27 @@ async function saveSettings() {
         form.openai_codex_client_version?.trim() || "",
       openai_codex_version_auto_sync_enabled:
         form.openai_codex_version_auto_sync_enabled,
+      openai_codex_ticket_enabled: form.openai_codex_ticket_enabled,
+      openai_codex_ticket_fail_closed: form.openai_codex_ticket_fail_closed,
+      openai_codex_ticket_harvest_proxy_url:
+        form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
+      openai_codex_ticket_default_length:
+        form.openai_codex_ticket_default_length || 292,
+      openai_codex_ticket_plan_lengths: form.openai_codex_ticket_plan_lengths
+        .map((rule) => ({
+          plan: rule.plan.trim().toLowerCase(),
+          length: rule.length,
+        }))
+        .filter((rule) => rule.plan !== ""),
       claude_code_client_version: form.claude_code_client_version?.trim() || "",
       claude_code_version_auto_sync_enabled:
-        form.claude_code_version_auto_sync_enabled,
+         form.claude_code_version_auto_sync_enabled,
+      fish_image_max_crop_pixels: clampFishImageMaxCropPixels(
+        form.fish_image_max_crop_pixels,
+      ),
+      fish_image_max_upscale_factor: clampFishImageMaxUpscaleFactor(
+        form.fish_image_max_upscale_factor,
+      ),
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:

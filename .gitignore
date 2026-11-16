@@ -134,6 +134,13 @@ code-reviews/
 AGENTS.md
 backend/cmd/server/server
 deploy/docker-compose.override.yml
+deploy/data/
+deploy/postgres_data/
+deploy/redis_data/
+deploy/online/data/
+deploy/online/postgres_data/
+deploy/online/redis_data/
+deploy/online/*.tar.gz
 .gocache/
 vite.config.js
 docs/*
@@ -171,6 +178,10 @@ docs/screenshots/*
 !docs/screenshots/codex-referral-success.png
 .serena/
 .codex/
+.zcode/
+.zcodeignore
+.zcloud/
+.zcloudignore
 frontend/coverage/
 aicodex
 output/

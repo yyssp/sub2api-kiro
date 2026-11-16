@@ -345,8 +345,12 @@ const overloadCountdown = computed(() => {
 const kiroQuotaBadgeLabel = computed(() => {
   if (props.account.platform !== 'kiro') return ''
   switch (props.account.kiro_quota_state) {
+    case 'overage_active':
+      return t('admin.accounts.status.overageActive')
     case 'credits_exhausted':
       return t('admin.accounts.status.creditsExhausted')
+    case 'overage_exhausted':
+      return t('admin.accounts.status.overageExhausted')
     default:
       return ''
   }
@@ -354,7 +358,10 @@ const kiroQuotaBadgeLabel = computed(() => {
 
 const kiroQuotaBadgeClass = computed(() => {
   switch (props.account.kiro_quota_state) {
+    case 'overage_active':
+      return 'badge-warning'
     case 'credits_exhausted':
+    case 'overage_exhausted':
       return 'badge-danger'
     default:
       return 'badge-gray'
@@ -366,6 +373,8 @@ const kiroQuotaHint = computed(() => {
   switch (props.account.kiro_quota_state) {
     case 'credits_exhausted':
       return t('admin.accounts.status.creditsExhaustedUntil', { time: formatDateTime(activeKiroQuotaResetAt.value) })
+    case 'overage_exhausted':
+      return t('admin.accounts.status.overageExhaustedUntil', { time: formatDateTime(activeKiroQuotaResetAt.value) })
     default:
       return ''
   }

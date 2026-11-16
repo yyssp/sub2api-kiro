@@ -128,13 +128,13 @@ func DetectModelPlatform(model string) (string, bool) {
 		strings.HasPrefix(normalized, "claude-"):
 		return PlatformAnthropic, true
 	case strings.HasPrefix(normalized, "gpt-"),
+		strings.HasPrefix(normalized, "gpt-image-"),
 		strings.HasPrefix(normalized, "chatgpt-"),
 		strings.HasPrefix(normalized, "codex-"),
 		strings.HasPrefix(normalized, "text-embedding-"),
 		strings.HasPrefix(normalized, "text-moderation-"),
 		strings.HasPrefix(normalized, "omni-moderation-"),
 		strings.HasPrefix(normalized, "dall-e-"),
-		strings.HasPrefix(normalized, "gpt-image-"),
 		strings.HasPrefix(normalized, "tts-"),
 		strings.HasPrefix(normalized, "whisper-"),
 		hasOpenAISeriesPrefix(normalized):
@@ -211,4 +211,11 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 // 推断不出 kiro，因为 kiro 的模型名是 claude-* / gpt-*，与 anthropic/openai 冲突。
 func isConcreteRequestPlatform(platform string) bool {
 	return domain.IsConcretePlatform(platform)
+}
+
+// isServableAccountPlatform reports whether an account's platform is still
+// served: a registered concrete platform or a profile-only provider. Rows left
+// behind by a removed platform return false.
+func isServableAccountPlatform(platform string) bool {
+	return isConcreteRequestPlatform(platform) || LookupProviderProfile(platform) != nil
 }

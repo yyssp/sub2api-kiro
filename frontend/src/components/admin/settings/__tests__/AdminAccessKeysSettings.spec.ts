@@ -10,6 +10,13 @@ const mocks = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(
 vi.mock('@/api/admin/adminAccessKeys', () => mocks)
 vi.mock('@/api/admin/groups', () => ({ getAllIncludingInactive: vi.fn().mockResolvedValue([{ id: 7, name: '测试分组' }]) }))
 vi.mock('@/components/auth/TotpStepUpDialog.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/components/common/ConfirmDialog.vue', () => ({
+  default: {
+    props: ['show', 'message'],
+    emits: ['confirm', 'cancel'],
+    template: '<div v-if="show" data-test="confirm-dialog"><span data-test="confirm-message">{{ message }}</span><button data-test="confirm-ok" @click="$emit(\'confirm\')">确认</button><button data-test="confirm-cancel" @click="$emit(\'cancel\')">取消</button></div>'
+  }
+}))
 vi.mock('@/composables/useStepUp', () => ({ useStepUp: () => ({ run: mocks.stepUp }), isStepUpCancelled: () => false }))
 beforeEach(() => {
   vi.clearAllMocks()
@@ -104,7 +111,7 @@ describe('管理员受限密钥配置', () => {
     await click('停用')
     expect(wrapper.text()).toContain('已停用')
     const confirmAction = async () => {
-      await wrapper.get('[data-test="action-confirm"] .bg-red-600').trigger('click')
+      await wrapper.get('[data-test="confirm-ok"]').trigger('click')
       await flushPromises()
     }
     mocks.rotate.mockResolvedValueOnce({ item: { ...item, enabled: false }, key: 'rotated-once' })
@@ -125,7 +132,6 @@ describe('管理员受限密钥配置', () => {
     expect(wrapper.text()).toContain('已撤销')
     expect(wrapper.findAll('button').some(button => button.text() === '删除记录')).toBe(true)
     expect(mocks.stepUp).toHaveBeenCalledTimes(5)
-    vi.restoreAllMocks()
   })
 
   it('删除已撤销记录时提示历史保留，取消和失败不移除，服务器确认后才移除', async () => {
@@ -138,7 +144,7 @@ describe('管理员受限密钥配置', () => {
     expect(wrapper.findAll('button').some(button => button.text() === '永久撤销')).toBe(false)
     const dialog = () => wrapper.get('[data-test="action-confirm"]')
     const answer = async (ok: boolean) => {
-      await dialog().findAll('button').find(button => button.text() === (ok ? '删除记录' : '取消'))!.trigger('click')
+      await dialog().get(ok ? '[data-test="confirm-ok"]' : '[data-test="confirm-cancel"]').trigger('click')
       await flushPromises()
     }
     try {
@@ -155,6 +161,7 @@ describe('管理员受限密钥配置', () => {
       expect(wrapper.text()).toContain('删除失败')
       expect(wrapper.text()).toContain('revoked-prefix')
 
+      // 服务器确认后才移除
       let resolve!: (value: { message: string }) => void
       mocks.deleteRecord.mockReturnValueOnce(new Promise(r => { resolve = r }))
       await remove().trigger('click')

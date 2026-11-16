@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/anthropictokenizer"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -354,7 +355,7 @@ func TestOpenAIGatewayService_Forward_ResponsesCachePlanUsesResponsesEstimator(t
 
 	group := &Group{ID: 99011, Platform: PlatformOpenAI, CacheStrategyID: &strategyID}
 	body := []byte(`{"model":"gpt-5.4","instructions":"You are a stable coding assistant for cache regression.","input":[{"role":"user","content":"Keep the Responses prefix stable."}],"metadata":{"session_id":"responses-estimator"},"stream":false}`)
-	require.Greater(t, estimateOpenAIResponsesInputTokens(context.Background(), body), estimateKiroInputTokens(context.Background(), body))
+	require.Greater(t, estimateOpenAIResponsesInputTokens(context.Background(), body), estimateKiroInputTokens(context.Background(), anthropictokenizer.AlgorithmOfficial, body))
 
 	newResp := func(requestID string) *http.Response {
 		return &http.Response{

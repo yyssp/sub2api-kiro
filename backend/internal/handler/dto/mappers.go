@@ -433,12 +433,14 @@ func redactAccountManagedExtra(extra map[string]any) map[string]any {
 	}
 	redacted := make(map[string]any, len(extra))
 	for key, value := range extra {
-		switch key {
-		case service.OllamaCloudUsageSessionExtraKey,
-			service.OllamaCloudUsageAutoRefreshExtraKey,
-			service.OllamaCloudUsageSnapshotExtraKey,
-			service.OpenCodeGoUsageAutoRefreshExtraKey,
-			service.OpenCodeGoUsageSnapshotExtraKey:
+		switch {
+		case key == service.OllamaCloudUsageSessionExtraKey,
+			key == service.OllamaCloudUsageAutoRefreshExtraKey,
+			key == service.OllamaCloudUsageSnapshotExtraKey:
+			continue
+		case service.IsOpenAICodexTicketPrivateExtraKey(key):
+		case key == service.OpenCodeGoUsageAutoRefreshExtraKey,
+			key == service.OpenCodeGoUsageSnapshotExtraKey:
 			continue
 		default:
 			redacted[key] = value
@@ -479,7 +481,7 @@ func AccountListItemFromAccount(a *Account) *AccountListItem {
 	return &AccountListItem{
 		ID: a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
 		Credentials: a.Credentials, CredentialsStatus: a.CredentialsStatus, Extra: a.Extra,
-		OllamaCloudUsage: a.OllamaCloudUsage, OpenCodeGoUsage: a.OpenCodeGoUsage,
+		OllamaCloudUsage: a.OllamaCloudUsage, CodexTurnTickets: a.CodexTurnTickets, OpenCodeGoUsage: a.OpenCodeGoUsage,
 		ProxyID: a.ProxyID, ProxyFallbackOriginID: a.ProxyFallbackOriginID, ProxyFallbackOriginName: a.ProxyFallbackOriginName,
 		Concurrency: a.Concurrency, LoadFactor: a.LoadFactor, Priority: a.Priority, RateMultiplier: a.RateMultiplier,
 		Status: a.Status, ErrorMessage: a.ErrorMessage, LastUsedAt: a.LastUsedAt, ExpiresAt: a.ExpiresAt,
@@ -794,9 +796,25 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 		BillingTier:             l.BillingTier,
 		AccountRateMultiplier:   l.AccountRateMultiplier,
 		AccountStatsCost:        l.AccountStatsCost,
+		UpstreamCredits:         l.KiroCredits,
+		UpstreamCreditCost:      adminUpstreamCreditCost(l),
 		IPAddress:               l.IPAddress,
 		Account:                 AccountSummaryFromService(l.Account),
 	}
+}
+
+// adminUpstreamCreditCost 按账号当前积分单价估算本次上游成本（展示用，不参与计费）。
+// 没有积分、没有关联账号或未设单价时返回 nil。
+func adminUpstreamCreditCost(l *service.UsageLog) *float64 {
+	if l == nil || l.KiroCredits == nil || *l.KiroCredits <= 0 {
+		return nil
+	}
+	unitPrice := l.Account.CreditUnitPriceUSD()
+	if unitPrice <= 0 {
+		return nil
+	}
+	cost := *l.KiroCredits * unitPrice
+	return &cost
 }
 
 func userFacingReasoningEffort(l *service.UsageLog) *string {
@@ -839,16 +857,19 @@ func UsageCleanupTaskFromService(task *service.UsageCleanupTask) *UsageCleanupTa
 		ID:     task.ID,
 		Status: task.Status,
 		Filters: UsageCleanupFilters{
-			StartTime:   task.Filters.StartTime,
-			EndTime:     task.Filters.EndTime,
-			UserID:      task.Filters.UserID,
-			APIKeyID:    task.Filters.APIKeyID,
-			AccountID:   task.Filters.AccountID,
-			GroupID:     task.Filters.GroupID,
-			Model:       task.Filters.Model,
-			RequestType: requestTypeStringPtr(task.Filters.RequestType),
-			Stream:      task.Filters.Stream,
-			BillingType: task.Filters.BillingType,
+			StartTime:             task.Filters.StartTime,
+			EndTime:               task.Filters.EndTime,
+			UserID:                task.Filters.UserID,
+			APIKeyID:              task.Filters.APIKeyID,
+			AccountID:             task.Filters.AccountID,
+			GroupID:               task.Filters.GroupID,
+			Model:                 task.Filters.Model,
+			RequestType:           requestTypeStringPtr(task.Filters.RequestType),
+			Stream:                task.Filters.Stream,
+			BillingType:           task.Filters.BillingType,
+			NativeCompactionV2:    task.Filters.NativeCompactionV2,
+			BillingMode:           task.Filters.BillingMode,
+			UpstreamModelMismatch: task.Filters.UpstreamModelMismatch,
 		},
 		CreatedBy:    task.CreatedBy,
 		DeletedRows:  task.DeletedRows,

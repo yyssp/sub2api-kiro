@@ -555,12 +555,13 @@ func newRouteCacheTestRouter(t *testing.T, group *service.Group, apiKey *service
 		upstream,
 		deferred,
 		nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil,
 		tlsProfiles,
 		nil, nil, nil, nil, nil,
 	)
 	gatewayHandler := handler.NewGatewayHandler(
 		gatewayService, nil, nil, nil, nil, concurrencyService, billingCacheService,
-		nil, nil, nil, nil, nil, nil, nil, cfg, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, cfg, nil,
 	)
 
 	router := gin.New()

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import BackupView from '../BackupView.vue'
@@ -11,6 +12,7 @@ const {
   deleteBackup,
   listBackups,
   getDownloadURL,
+  restoreBackup,
 } = vi.hoisted(() => ({
   getS3Config: vi.fn(),
   getImageStorageConfig: vi.fn(),
@@ -19,6 +21,7 @@ const {
   deleteBackup: vi.fn(),
   listBackups: vi.fn(),
   getDownloadURL: vi.fn(),
+  restoreBackup: vi.fn(),
 }))
 
 vi.mock('@/api', () => ({
@@ -37,7 +40,7 @@ vi.mock('@/api', () => ({
       getBackup: vi.fn(),
       deleteBackup,
       getDownloadURL,
-      restoreBackup: vi.fn(),
+      restoreBackup,
     },
   },
 }))
@@ -57,10 +60,68 @@ vi.mock('@/composables/useStepUp', () => ({
   stepUpBlockReason: () => '',
 }))
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({
-    t: (key: string, params?: Record<string, unknown>) =>
-      params?.index !== undefined ? `${key}:${params.index}` : params?.day !== undefined ? `${key}:${params.day}` : key,
+vi.mock('vue-i18n', async () => {
+  const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+  return {
+    ...actual,
+    useI18n: () => ({
+      t: (key: string, params?: Record<string, unknown>) =>
+        params?.index !== undefined ? `${key}:${params.index}` : params?.day !== undefined ? `${key}:${params.day}` : key,
+    }),
+  }
+})
+
+vi.mock('@/components/common/ConfirmDialog.vue', () => ({
+  default: defineComponent({
+    name: 'ConfirmDialog',
+    props: { show: Boolean, title: String, message: String, confirmText: String, cancelText: String },
+    emits: ['confirm', 'cancel'],
+    setup(props, { emit, slots }) {
+      return () => props.show
+        ? h('div', { class: 'confirm-dialog-stub' }, [
+            h('h3', props.title),
+            h('p', props.message),
+            slots.default?.(),
+            h('button', { type: 'button', onClick: () => emit('cancel') }, props.cancelText),
+            h('button', { type: 'button', onClick: () => emit('confirm') }, props.confirmText),
+          ])
+        : null
+    },
+  }),
+}))
+
+vi.mock('@/components/common/BaseDialog.vue', () => ({
+  default: defineComponent({
+    name: 'BaseDialog',
+    props: { show: Boolean, title: String, width: String },
+    emits: ['close'],
+    setup(props, { slots, emit }) {
+      return () => props.show
+        ? h('section', { class: 'base-dialog-stub', 'data-title': props.title }, [
+            h('h3', props.title),
+            slots.default?.(),
+            slots.footer?.({ close: () => emit('close') }),
+          ])
+        : null
+    },
+  }),
+}))
+
+vi.mock('@/components/common/Input.vue', () => ({
+  default: defineComponent({
+    name: 'InputStub',
+    props: { modelValue: { type: [String, Number], default: '' }, type: String, label: String, placeholder: String, autocomplete: String },
+    emits: ['update:modelValue', 'enter'],
+    setup(props, { emit }) {
+      return () => h('label', [
+        props.label ? h('span', props.label) : null,
+        h('input', {
+          type: props.type || 'text', value: props.modelValue ?? '', placeholder: props.placeholder,
+          autocomplete: props.autocomplete,
+          onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLInputElement).value),
+        }),
+      ])
+    },
   }),
 }))
 
@@ -90,15 +151,25 @@ function mountBackupView() {
   return wrapper
 }
 
+async function mountLoadedView() {
+  const wrapper = mount(BackupView, {
+    global: { stubs: { TotpStepUpDialog: true } },
+  })
+  wrappers.push(wrapper)
+  await flushPromises()
+  return wrapper
+}
+
 describe('admin BackupView', () => {
   beforeEach(() => {
-    getS3Config.mockResolvedValue({})
+    vi.clearAllMocks()
+    getS3Config.mockResolvedValue({ endpoint: '', region: 'auto', bucket: '', access_key_id: '', prefix: 'backups/', force_path_style: false })
     getImageStorageConfig.mockResolvedValue({ config: {}, secret_configured: false })
     getSchedule.mockResolvedValue({ enabled: false, cron_expr: '', retain_days: 14, retain_count: 10 })
-    updateSchedule.mockReset().mockResolvedValue({})
-    deleteBackup.mockReset().mockResolvedValue(undefined)
-    listBackups.mockResolvedValue({ items: [] })
-    getDownloadURL.mockReset()
+    updateSchedule.mockResolvedValue({})
+    deleteBackup.mockResolvedValue(undefined)
+    listBackups.mockResolvedValue({ items: [baseRecord('backup-1')] })
+    restoreBackup.mockResolvedValue({ ...baseRecord('backup-1'), restore_status: 'running' })
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
   })
 
@@ -106,6 +177,21 @@ describe('admin BackupView', () => {
     wrappers.splice(0).forEach(wrapper => wrapper.unmount())
     vi.restoreAllMocks()
     document.body.innerHTML = ''
+  })
+
+  it('恢复备份使用统一密码输入弹框而不是 window.prompt', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('native-password')
+    const wrapper = await mountLoadedView()
+    const restoreButton = wrapper.findAll('button').find(button => button.text() === 'admin.backup.actions.restore')
+    await restoreButton!.trigger('click')
+    expect(promptSpy).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('admin.backup.actions.restorePasswordPrompt')
+    await wrapper.find('input[autocomplete="current-password"]').setValue('restore-password')
+    const submitButton = wrapper.findAll('button').find(button => button.text() === 'common.confirm')
+    const restoreConfirm = wrapper.find('.confirm-dialog-stub').findAll('button').find(button => button.text() === 'admin.backup.actions.restore')
+    await (restoreConfirm ?? submitButton)!.trigger('click')
+    await flushPromises()
+    expect(restoreBackup).toHaveBeenCalledWith('backup-1', 'restore-password')
   })
 
   it.each(['backup', 'restore'])('does not resume %s polling after navigation during initial loading', async (operation) => {
@@ -285,6 +371,7 @@ describe('admin BackupView', () => {
 
   it('归档删除需要单独确认，有限归档不会显示永不过期', async () => {
     listBackups.mockResolvedValue({ items: [{ ...baseRecord('archived'), monthly_archive: { dates: ['2026-09-01', '2026-09-15'], retain_count: 12 } }] })
+    const confirm = vi.spyOn(window, 'confirm')
     const wrapper = mountBackupView()
     await flushPromises()
     expect(wrapper.text()).toContain('admin.backup.archive.badge')
@@ -292,12 +379,10 @@ describe('admin BackupView', () => {
     const button = wrapper.findAll('button').find(button => button.text() === 'common.delete')!
     await button.trigger('click')
     expect(deleteBackup).not.toHaveBeenCalled()
-    expect(document.body.textContent).toContain('admin.backup.archive.deleteConfirm')
-    const confirmButton = Array.from(document.body.querySelectorAll('button')).find(
-      candidate => candidate.textContent?.trim() === 'common.delete' && candidate !== button.element,
-    )
-    expect(confirmButton).toBeDefined()
-    confirmButton?.click()
+    expect(wrapper.text()).toContain('admin.backup.archive.deleteConfirm')
+    expect(confirm).not.toHaveBeenCalled()
+    const confirmButton = wrapper.find('.confirm-dialog-stub').findAll('button').find(button => button.text() === 'common.delete')!
+    await confirmButton.trigger('click')
     await flushPromises()
     expect(deleteBackup).toHaveBeenCalledWith('archived', true)
   })

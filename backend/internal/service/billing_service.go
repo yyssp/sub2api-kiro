@@ -422,7 +422,6 @@ func (s *BillingService) initFallbackPricing() {
 
 	// Claude Haiku 4.5 当前与 Claude 3.5 Haiku 同价
 	s.fallbackPrices["claude-haiku-4.5"] = s.fallbackPrices["claude-3-5-haiku"]
-
 	s.fallbackPrices["claude-opus-5-5"] = &ModelPricing{
 		InputPricePerToken:         4e-6,
 		OutputPricePerToken:        20e-6,
@@ -2394,20 +2393,20 @@ func (s *BillingService) CalculateAudioCost(mode string, durationOrUnits float64
 	}
 }
 
-// CalculateImageCost 计算图片生成费用
-// model: 请求的模型名称（用于获取 LiteLLM 默认价格）
-// imageSize: 图片尺寸 "1K", "2K", "4K"
-// imageCount: 生成的图片数量
-// groupConfig: 分组配置的价格（可能为 nil，表示使用默认值）
-// rateMultiplier: 费率倍数
+// CalculateImageCost 计算图片生成费用（不区分平台）。
 func (s *BillingService) CalculateImageCost(model string, imageSize string, imageCount int, groupConfig *ImagePriceConfig, rateMultiplier float64) *CostBreakdown {
+	return s.CalculateImageCostWithPlatform(model, imageSize, imageCount, groupConfig, rateMultiplier, "")
+}
+
+// CalculateImageCostWithPlatform 与 CalculateImageCost 相同，但携带账号/分组平台，
+// 供按平台区分的兜底价使用。
+func (s *BillingService) CalculateImageCostWithPlatform(model string, imageSize string, imageCount int, groupConfig *ImagePriceConfig, rateMultiplier float64, platform string) *CostBreakdown {
 	if imageCount <= 0 {
 		return &CostBreakdown{}
 	}
 	imageSize = NormalizeImageBillingTierOrDefault(imageSize)
 
-	// 获取单价
-	unitPrice := s.getImageUnitPrice(model, imageSize, groupConfig)
+	unitPrice := s.getImageUnitPrice(model, imageSize, groupConfig, platform)
 
 	// 计算总费用
 	totalCost := unitPrice * float64(imageCount)
@@ -2455,7 +2454,7 @@ func (s *BillingService) CalculateVideoCost(model string, resolution string, vid
 }
 
 // getImageUnitPrice 获取图片单价
-func (s *BillingService) getImageUnitPrice(model string, imageSize string, groupConfig *ImagePriceConfig) float64 {
+func (s *BillingService) getImageUnitPrice(model string, imageSize string, groupConfig *ImagePriceConfig, platform string) float64 {
 	// 优先使用分组配置的价格
 	if groupConfig != nil {
 		switch imageSize {
@@ -2474,8 +2473,7 @@ func (s *BillingService) getImageUnitPrice(model string, imageSize string, group
 		}
 	}
 
-	// 回退到 LiteLLM 默认价格
-	return s.getDefaultImagePrice(model, imageSize)
+	return s.getDefaultImagePrice(model, imageSize, platform)
 }
 
 func (s *BillingService) getVideoUnitPrice(model string, resolution string, groupConfig *VideoPriceConfig) float64 {
@@ -2503,8 +2501,8 @@ func (s *BillingService) getVideoUnitPrice(model string, resolution string, grou
 	return s.getDefaultVideoPrice(model, resolution)
 }
 
-// getDefaultImagePrice 获取 LiteLLM 默认图片价格
-func (s *BillingService) getDefaultImagePrice(model string, imageSize string) float64 {
+// getDefaultImagePrice 获取 LiteLLM 默认图片价格，没有则用通用 $0.134。
+func (s *BillingService) getDefaultImagePrice(model string, imageSize string, platform string) float64 {
 	if price, ok := getDefaultGrokImagineImagePrice(model, imageSize); ok {
 		return price
 	}
@@ -2544,7 +2542,14 @@ func (s *BillingService) getDefaultVideoPrice(model string, resolution string) f
 	// Keep the historical model default as the fallback (interpreted as a per-second
 	// rate; today only Grok models reach video billing, so this path is a safety net),
 	// while letting group-level video prices override it independently from image prices.
-	return s.getDefaultImagePrice(model, ImageBillingSize2K)
+	return s.getDefaultImagePrice(model, ImageBillingSize2K, "")
+}
+
+func imageBillingPlatform(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	return account.Platform
 }
 
 func getDefaultGrokImagineImagePrice(model string, imageSize string) (float64, bool) {

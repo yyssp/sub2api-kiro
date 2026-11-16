@@ -52,9 +52,10 @@ const (
 	PlatformTypeSafe    = domain.PlatformTypeSafe
 	PlatformCommandCode = domain.PlatformCommandCode
 	PlatformCline       = domain.PlatformCline
+	PlatformLeonardo    = domain.PlatformLeonardo
+	PlatformFish        = domain.PlatformFish
 	PlatformComposite   = domain.PlatformComposite
-	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
-	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
+	// Kiro 走 Anthropic 协议网关。
 	PlatformKiro = domain.PlatformKiro
 	// PlatformCursor 走 Anthropic 协议网关（同 Kiro），账号为 session token 制。
 	PlatformCursor = domain.PlatformCursor
@@ -166,6 +167,7 @@ const (
 	AccountTypeUpstream       = domain.AccountTypeUpstream       // 上游透传类型账号（通过 Base URL + API Key 连接上游）
 	AccountTypeBedrock        = domain.AccountTypeBedrock        // AWS Bedrock 类型账号（通过 SigV4 签名或 API Key 连接 Bedrock，由 credentials.auth_mode 区分）
 	AccountTypeServiceAccount = domain.AccountTypeServiceAccount // Google Service Account 类型账号（用于 Vertex AI）
+	AccountTypeBPSOAuth       = domain.AccountTypeBPSOAuth       // OpenAI Excel/BPS-only OAuth 账号（官方 Excel 客户端授权，只能走 BPS）
 )
 
 // Redeem type constants
@@ -691,6 +693,13 @@ const (
 	SettingKeyOpenAITTFTMode = "openai_ttft_mode"
 	OpenAITTFTModeSemantic   = "semantic"
 	OpenAITTFTModeVisible    = "visible"
+	// SettingKeyGatewayKiroTokenizer 控制 Kiro 渠道的 token 计量算法
+	// （official/charclass/weighted），仅影响 usage 与计费口径，不影响上游
+	// 请求与 max_tokens 截断行为。默认 official。
+	SettingKeyGatewayKiroTokenizer = "gateway_kiro_tokenizer"
+	// SettingKeyGatewayKiroCacheScopeClient 打开后 Kiro 缓存模拟按「API key + 会话」分桶，
+	// 切换上游账号不丢缓存命中；关闭（默认）时按 Kiro 账号分桶。仅影响计费口径。
+	SettingKeyGatewayKiroCacheScopeClient = "gateway_kiro_cache_scope_client"
 	// SettingKeyEnableFingerprintUnification 是否统一 OAuth 账号的 X-Stainless-* 指纹头（默认 true）
 	SettingKeyEnableFingerprintUnification = "enable_fingerprint_unification"
 	// SettingKeyEnableMetadataPassthrough 是否透传客户端原始 metadata.user_id（默认 false）
@@ -732,6 +741,18 @@ const (
 	SettingKeyOpenAICodexClientVersionSynced = "openai_codex_client_version_synced"
 	// SettingKeyOpenAICodexVersionAutoSyncEnabled 是否启用 Codex 客户端版本号自动同步（默认 true）。
 	SettingKeyOpenAICodexVersionAutoSyncEnabled = "openai_codex_version_auto_sync_enabled"
+	// SettingKeyOpenAICodexTicketEnabled 后台 292 打票总开关（默认 false）。
+	SettingKeyOpenAICodexTicketEnabled = "openai_codex_ticket_enabled"
+	// SettingKeyOpenAICodexTicketHarvestProxyURL 打票专用代理 URL；空则回退 yaml/env。
+	SettingKeyOpenAICodexTicketHarvestProxyURL = "openai_codex_ticket_harvest_proxy_url"
+	// SettingKeyOpenAICodexTicketDefaultLength 门票默认目标长度；缺失回退 yaml target_length（292）。
+	SettingKeyOpenAICodexTicketDefaultLength = "openai_codex_ticket_default_length"
+	// SettingKeyOpenAICodexTicketPlanLengths 订阅档位长度规则 JSON（[{"plan":"team","length":332}]），
+	// 按账号 plan_type 小写子串匹配、先命中先生效；未命中用默认长度。
+	SettingKeyOpenAICodexTicketPlanLengths = "openai_codex_ticket_plan_lengths"
+	// SettingKeyOpenAICodexTicketFailClosed 缺票拦截：门控模型无有效门票时暂停该账号调度；
+	// 缺失回退 yaml gateway.openai_codex_ticket.fail_closed（默认 true）。
+	SettingKeyOpenAICodexTicketFailClosed = "openai_codex_ticket_fail_closed"
 	// SettingKeyClaudeCodeClientVersion 网关对 Anthropic 上游声明的 Claude Code CLI 客户端版本号（管理员覆写）。
 	// 空值表示跟随自动同步值；自动同步也没有结果时回退到 claude.CLIVersion()（环境变量覆盖 + 内置基线）。
 	// 版本太旧会被 Anthropic 拒绝（claude_code_version_too_old），故该值需保持跟随官方发布。
@@ -744,6 +765,12 @@ const (
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 已废弃：历史全局开关只作为升级迁移输入读取。
 	// 迁移后等价规则写入 SettingKeyCodexCLIOnlyWhitelist，不再参与运行时判定。
 	SettingKeyOpenAIAllowClaudeCodeCodexPlugin = "openai_allow_claude_code_codex_plugin"
+	// SettingKeyFishImageMaxCropPixels fish 原生号动态尺寸规划的最大裁剪量
+	// （按交付分辨率计的像素，居中对称裁剪）。0 = 不裁剪仅同比例缩放；默认 4。
+	SettingKeyFishImageMaxCropPixels = "fish_image_max_crop_pixels"
+	// SettingKeyFishImageMaxUpscaleFactor fish 原生号动态尺寸规划的最大本地
+	// 放大倍数（Lanczos3）。1 = 禁止放大；默认 2。规划不出的尺寸仍走中转。
+	SettingKeyFishImageMaxUpscaleFactor = "fish_image_max_upscale_factor"
 
 	// 余额不足提醒
 	SettingKeyBalanceLowNotifyEnabled     = "balance_low_notify_enabled"      // 全局开关

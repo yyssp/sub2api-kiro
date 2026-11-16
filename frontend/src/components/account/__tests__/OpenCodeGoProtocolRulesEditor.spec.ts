@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import OpenCodeGoProtocolRulesEditor from '../OpenCodeGoProtocolRulesEditor.vue'
-import Select from '@/components/common/Select.vue'
 import type { OpenCodeGoProtocolRule } from '../credentialsBuilder'
 
 vi.mock('vue-i18n', async () => {
@@ -17,11 +16,6 @@ function mountEditor(rows: OpenCodeGoProtocolRule[], platform = 'command_code', 
     props: { rows, platform, plan },
     global: { stubs: { Icon: true } }
   })
-}
-
-async function selectProtocol(wrapper: ReturnType<typeof mountEditor>, index: number, value: string) {
-  wrapper.findAllComponents(Select)[index].vm.$emit('update:modelValue', value)
-  await wrapper.vm.$nextTick()
 }
 
 describe('OpenCodeGoProtocolRulesEditor protocol sets', () => {
@@ -50,13 +44,16 @@ describe('OpenCodeGoProtocolRulesEditor protocol sets', () => {
     ]
     const wrapper = mountEditor(rows)
 
-    await selectProtocol(wrapper, 0, 'chat_completions')
+    // 组件为自定义 Select（原生 select 被替换），通过 update:modelValue 事件交互。
+    const selectAt = (index: number) =>
+      wrapper.getComponent(`[data-testid="opencode-go-protocol-select-${index}"]`)
+    await selectAt(0).vm.$emit('update:modelValue', 'chat_completions')
     expect(rows[0]).toEqual({ pattern: 'gpt-*', protocol: 'chat_completions', extraProtocols: ['responses'] })
 
-    await selectProtocol(wrapper, 0, 'anthropic')
+    await selectAt(0).vm.$emit('update:modelValue', 'anthropic')
     expect(rows[0]).toEqual({ pattern: 'gpt-*', protocol: 'anthropic', extraProtocols: ['responses'] })
 
-    await selectProtocol(wrapper, 1, 'responses')
+    await selectAt(1).vm.$emit('update:modelValue', 'responses')
     expect(rows[1]).toEqual({ pattern: 'grok-*', protocol: 'responses' })
   })
 

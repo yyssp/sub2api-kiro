@@ -102,14 +102,19 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	// 部分环境已应用漏 kiro 的已发布版本（db=5227db3c），另一些环境已应用补 kiro 版本
 	//（db=4de3bf30）。当前文件必须保留 kiro，才能在 224 尚未应用且已有 kiro 数据的环境
 	// 成功升级；两个历史 checksum 双向互认，227 会将已应用旧版的约束统一为全部 9 平台。
-	// 238_opencode_go 来自上游，原版列表漏了本 fork 已有的 kiro / cursor，
-	// 在已有 kiro 配额行的库上 ADD CONSTRAINT 必然失败。当前文件改为超集；
-	// 已应用上游原版（db=6f987e25）的环境互认，约束终态由 241 统一。
-	"238_opencode_go_platform.sql":                  newMigrationChecksumCompatibilityRule("95e2486f29a17901debfa53af497c58d6c78d77b2eef466009d676b73f5ace96", "6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2"),
+	// 238/241 同名迁移曾在上游与 fork 写入不同平台约束。当前版本保留历史两版
+	// checksum，并覆盖 fork 和上游的平台集合，避免升级时重建 CHECK 失败。
+	"238_opencode_go_platform.sql":                  newMigrationChecksumCompatibilityRule("90e5cde17415cccbb5ad4a6f008da7c9090aa07ed98d695b813340915aafe63e", "95e2486f29a17901debfa53af497c58d6c78d77b2eef466009d676b73f5ace96", "d310f134e119bd0b01c36e048841d04e1adc04a117c5c516ccdbbc8800742414", "6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2"),
 	"224_user_platform_quotas_add_cn_providers.sql": newMigrationChecksumCompatibilityRule("5227db3c1a6a1e2e422a9f9ba9d1f490c708b6c6dd91ce89f3c48115421a3e55", "4de3bf301cd838bbaf85613ce37dd47643165c0e3f36a1075341ff71aa37fae1"),
 	// 241_add_typesafe 来自上游，原版列表同样漏了 kiro / cursor（问题同 238）。当前文件改为
-	// 超集；已应用上游原版（db=b6559525）的环境互认，两项约束随后由 242 删除。
-	"241_add_typesafe_platform.sql": newMigrationChecksumCompatibilityRule("c207d636f59c42c769a12331c3ee9b6801ba935fc66d2f0f5d55af7b78f428e5", "b6559525bf8d0b5d7c617e7415944f0d1fae8c408e9131ace84139795f66dcd2"),
+	// 超集；已应用上游原版和本分支旧版的环境都通过精确 checksum 兼容。
+	"241_add_typesafe_platform.sql": newMigrationChecksumCompatibilityRule("e2c621539ce7abf045249271e87c46d0b950fdfd85a5b7a3211bed496ff7aae3", "c207d636f59c42c769a12331c3ee9b6801ba935fc66d2f0f5d55af7b78f428e5", "b6559525bf8d0b5d7c617e7415944f0d1fae8c408e9131ace84139795f66dcd2"),
+	// 此迁移重建配额与 Composite 白名单；已有 fork 数据库可能记录旧版 checksum。
+	"241_platform_checks_include_opencode_go.sql": newMigrationChecksumCompatibilityRule("ec76c3228bd3dbefac481967e6f72a4b0ab74e28f7e7c33800241e222e979521", "0e057a397501b9941556d24f416103340ee6a8d44c8b7b4a0b5fea5cb109e3ad"),
+	// 官方分支将原迁移改成平台 CHECK 超集；升级 fork 时放行其已发布 checksum，
+	// 后续的 fork 超集迁移统一约束，242 再移除应用层不再需要的两项 CHECK。
+	"157_user_platform_quotas_add_grok.sql": newMigrationChecksumCompatibilityRule("a918734da39c2e5a82e4a5e9511bac1f4cf7e310ceadd647df52692320633c1b", "5cace8fa32c6174a72721cd9b01f28f4545de1fd7bcd9ca196a4225056ec4fb8"),
+	"237_add_minimax_platform.sql":          newMigrationChecksumCompatibilityRule("c754b29e15c10ef2a72887c4e2dd04a73a37c6c06218d1b2725836884450c03a", "f4c73d2dbce114ca7ade1aac51998c3465490f4f3c9b3e868e53590f3fa8601b"),
 }
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。

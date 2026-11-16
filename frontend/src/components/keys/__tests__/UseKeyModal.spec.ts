@@ -435,6 +435,7 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('supports_websockets')
     expect(configToml).not.toContain('responses_websockets_v2')
     const features = configToml?.split('[features]\n')[1]?.split('\n[')[0]
+    expect(features).toContain('api_key_model_discovery = true')
     expect(features).toContain('goals = true')
     expect(configToml).not.toContain('model_reasoning_effort = "xhigh"')
     expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')
@@ -581,6 +582,7 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('image_generation')
     expect(configToml).toContain('supports_websockets = true')
     const features = configToml?.split('[features]\n')[1]?.split('\n[')[0]
+    expect(features).toContain('api_key_model_discovery = true')
     expect(features).toContain('responses_websockets_v2 = true')
     expect(features).toContain('goals = true')
     expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')
@@ -632,6 +634,7 @@ describe('UseKeyModal', () => {
     expect(configToml?.split('[features]\n')[1]).toContain('image_generation = true')
     expect(configToml).toContain('supports_websockets = true')
     const features = configToml?.split('[features]\n')[1]?.split('\n[')[0]
+    expect(features).toContain('api_key_model_discovery = true')
     expect(features).toContain('responses_websockets_v2 = true')
     expect(features).toContain('goals = true')
     expect(codeBlocks).not.toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')

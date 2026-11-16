@@ -107,8 +107,34 @@ func TestCursorRequestFromBody_EffortIsWiredNotDropped(t *testing.T) {
 
 func TestCursorRequestFromBody_MaxModeFollowsModelSuffix(t *testing.T) {
 	body := []byte(`{"messages":[{"role":"user","content":"hi"}]}`)
-	require.True(t, cursorRequestFromBody(body, "claude-sonnet-4-5-max").MaxMode)
-	require.False(t, cursorRequestFromBody(body, "claude-sonnet-4-5").MaxMode)
+	for _, tc := range []struct {
+		model string
+		max   bool
+	}{
+		{"claude-sonnet-4-5-max", true},
+		{"cursor/claude-sonnet-4-5-max", true},
+		{"CLAUDE-SONNET-4-5-MAX", true},
+		{"claude-sonnet-4-5", false},
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			require.Equal(t, tc.max, cursorRequestFromBody(body, tc.model).MaxMode)
+		})
+	}
+}
+
+func TestCursorRequestFromBody_MaxModeFollowsAccountCatalogEffort(t *testing.T) {
+	models := []cursor.ModelMeta{
+		{ID: "claude-opus-4-8-medium", Family: "claude"},
+		{ID: "claude-opus-4-8-thinking-max", Family: "claude", Think: true},
+	}
+	body := []byte(`{"messages":[{"role":"user","content":"hi"}],"output_config":{"effort":"max"}}`)
+	req := cursorRequestFromBodyWithModels(body, "claude-opus-4-8", models)
+	require.Equal(t, "claude-opus-4-8-thinking-max", req.Model)
+	require.True(t, req.MaxMode)
+
+	req = cursorRequestFromBodyWithModels([]byte(`{"messages":[{"role":"user","content":"hi"}]}`), "claude-opus-4-8", models)
+	require.Equal(t, "claude-opus-4-8-medium", req.Model)
+	require.False(t, req.MaxMode)
 }
 
 func TestCursorRequestFromBody_ToolTurnsSurviveInMessage(t *testing.T) {

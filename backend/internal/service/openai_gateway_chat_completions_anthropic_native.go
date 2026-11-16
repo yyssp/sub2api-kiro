@@ -57,7 +57,7 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	clientStream := ccReq.Stream
 	prepareCachePlanForContext(
 		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
-		"openai_chat_completions", estimateOpenAIChatCompletionsInputTokens(ctx, body),
+		"openai_chat_completions", estimateOpenAIChatCompletionsInputTokensWithAlgorithm(ctx, s.kiroMeteringAlgorithm(ctx), body),
 	)
 
 	// 2. Convert CC → Responses → Anthropic (chained conversion)

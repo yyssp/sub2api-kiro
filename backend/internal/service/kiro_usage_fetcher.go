@@ -27,9 +27,14 @@ const (
 var resolveKiroRuntimeEndpoint = kiroRuntimeEndpoint
 
 type kiroUsageLimitsResponse struct {
-	NextDateReset      any                  `json:"nextDateReset"`
-	SubscriptionInfo   kiroSubscriptionInfo `json:"subscriptionInfo"`
-	UsageBreakdownList []kiroUsageBreakdown `json:"usageBreakdownList"`
+	NextDateReset        any                      `json:"nextDateReset"`
+	OverageConfiguration kiroOverageConfiguration `json:"overageConfiguration"`
+	SubscriptionInfo     kiroSubscriptionInfo     `json:"subscriptionInfo"`
+	UsageBreakdownList   []kiroUsageBreakdown     `json:"usageBreakdownList"`
+}
+
+type kiroOverageConfiguration struct {
+	OverageStatus string `json:"overageStatus"`
 }
 
 type kiroSubscriptionInfo struct {
@@ -38,15 +43,32 @@ type kiroSubscriptionInfo struct {
 }
 
 type kiroUsageBreakdown struct {
-	CurrentUsage              *float64           `json:"currentUsage"`
-	CurrentUsageWithPrecision *float64           `json:"currentUsageWithPrecision"`
-	DisplayName               string             `json:"displayName"`
-	DisplayNamePlural         string             `json:"displayNamePlural"`
-	FreeTrialInfo             *kiroFreeTrialInfo `json:"freeTrialInfo"`
-	NextDateReset             any                `json:"nextDateReset"`
-	ResourceType              string             `json:"resourceType"`
-	UsageLimit                *float64           `json:"usageLimit"`
-	UsageLimitWithPrecision   *float64           `json:"usageLimitWithPrecision"`
+	Currency                     string             `json:"currency"`
+	CurrentOverages              *float64           `json:"currentOverages"`
+	CurrentOveragesWithPrecision *float64           `json:"currentOveragesWithPrecision"`
+	CurrentUsage                 *float64           `json:"currentUsage"`
+	CurrentUsageWithPrecision    *float64           `json:"currentUsageWithPrecision"`
+	DisplayName                  string             `json:"displayName"`
+	DisplayNamePlural            string             `json:"displayNamePlural"`
+	FreeTrialInfo                *kiroFreeTrialInfo `json:"freeTrialInfo"`
+	Bonuses                      []kiroBonusEntry   `json:"bonuses"`
+	NextDateReset                any                `json:"nextDateReset"`
+	OverageCharges               *float64           `json:"overageCharges"`
+	ResourceType                 string             `json:"resourceType"`
+	UsageLimit                   *float64           `json:"usageLimit"`
+	UsageLimitWithPrecision      *float64           `json:"usageLimitWithPrecision"`
+}
+
+type kiroBonusEntry struct {
+	BonusCode    string   `json:"bonusCode"`
+	BonusType    string   `json:"bonusType"`
+	DisplayName  string   `json:"displayName"`
+	Description  string   `json:"description"`
+	Status       string   `json:"status"`
+	CurrentUsage *float64 `json:"currentUsage"`
+	UsageLimit   *float64 `json:"usageLimit"`
+	ExpiresAt    any      `json:"expiresAt"`
+	RedeemedAt   any      `json:"redeemedAt"`
 }
 
 type kiroFreeTrialInfo struct {
@@ -389,6 +411,7 @@ func mapKiroUsageToInfo(resp *kiroUsageLimitsResponse) *UsageInfo {
 		UpdatedAt:            &now,
 		KiroSubscriptionName: strings.TrimSpace(resp.SubscriptionInfo.SubscriptionTitle),
 		KiroSubscriptionType: strings.TrimSpace(resp.SubscriptionInfo.Type),
+		KiroOveragesEnabled:  strings.EqualFold(strings.TrimSpace(resp.OverageConfiguration.OverageStatus), "ENABLED"),
 	}
 
 	resetAt := parseKiroTimestamp(resp.NextDateReset)
@@ -401,32 +424,71 @@ func mapKiroUsageToInfo(resp *kiroUsageLimitsResponse) *UsageInfo {
 			UsageLimit:     selectKiroFloat(credit.UsageLimitWithPrecision, credit.UsageLimit),
 			PercentageUsed: percentageOrZero(selectKiroFloat(credit.CurrentUsageWithPrecision, credit.CurrentUsage), selectKiroFloat(credit.UsageLimitWithPrecision, credit.UsageLimit)),
 		}
+		info.KiroOverage = &KiroOverageInfo{
+			CurrentOverages: selectKiroFloat(credit.CurrentOveragesWithPrecision, credit.CurrentOverages),
+			OverageCharges:  selectKiroFloat(credit.OverageCharges, nil),
+			CurrencyCode:    strings.TrimSpace(credit.Currency),
+			CurrencySymbol:  kiroCurrencySymbol(strings.TrimSpace(credit.Currency)),
+		}
 		if ft := credit.FreeTrialInfo; ft != nil && strings.EqualFold(strings.TrimSpace(ft.FreeTrialStatus), "ACTIVE") {
 			expiry := parseKiroTimestamp(ft.FreeTrialExpiry)
-			daysRemaining := 0
-			if expiry != nil {
-				daysRemaining = int(time.Until(*expiry).Hours() / 24)
-				if time.Until(*expiry)%(24*time.Hour) != 0 {
-					daysRemaining++
-				}
-				if daysRemaining < 0 {
-					daysRemaining = 0
-				}
-			}
 			current := selectKiroFloat(ft.CurrentUsageWithPrecision, ft.CurrentUsage)
 			limit := selectKiroFloat(ft.UsageLimitWithPrecision, ft.UsageLimit)
 			info.KiroBonus = &KiroCreditProgress{
 				CurrentUsage:   current,
 				UsageLimit:     limit,
 				PercentageUsed: percentageOrZero(current, limit),
-				DaysRemaining:  daysRemaining,
+				DaysRemaining:  kiroDaysRemaining(expiry),
 				ExpiryDate:     expiry,
 			}
 		}
 	}
+	info.KiroBonuses = collectKiroBonuses(resp.UsageBreakdownList)
 	info.KiroResetAt = resetAt
 	setKiroQuotaStateFromUsage(info)
 	return info
+}
+
+func kiroDaysRemaining(expiry *time.Time) int {
+	if expiry == nil {
+		return 0
+	}
+	daysRemaining := int(time.Until(*expiry).Hours() / 24)
+	if time.Until(*expiry)%(24*time.Hour) != 0 {
+		daysRemaining++
+	}
+	if daysRemaining < 0 {
+		daysRemaining = 0
+	}
+	return daysRemaining
+}
+
+func collectKiroBonuses(items []kiroUsageBreakdown) []*KiroBonusProgress {
+	var bonuses []*KiroBonusProgress
+	for i := range items {
+		for _, entry := range items[i].Bonuses {
+			status := strings.ToUpper(strings.TrimSpace(entry.Status))
+			if status != "ACTIVE" && status != "EXHAUSTED" {
+				continue
+			}
+			expiry := parseKiroTimestamp(entry.ExpiresAt)
+			current := selectKiroFloat(entry.CurrentUsage, nil)
+			limit := selectKiroFloat(entry.UsageLimit, nil)
+			bonuses = append(bonuses, &KiroBonusProgress{
+				Name:           strings.TrimSpace(entry.DisplayName),
+				Status:         status,
+				BonusCode:      strings.TrimSpace(entry.BonusCode),
+				Description:    strings.TrimSpace(entry.Description),
+				CurrentUsage:   current,
+				UsageLimit:     limit,
+				PercentageUsed: percentageOrZero(current, limit),
+				DaysRemaining:  kiroDaysRemaining(expiry),
+				ExpiryDate:     expiry,
+				RedeemedAt:     parseKiroTimestamp(entry.RedeemedAt),
+			})
+		}
+	}
+	return bonuses
 }
 
 func selectKiroCreditBreakdown(items []kiroUsageBreakdown) *kiroUsageBreakdown {
@@ -457,6 +519,15 @@ func percentageOrZero(current, limit float64) float64 {
 		return 0
 	}
 	return current / limit * 100
+}
+
+func kiroCurrencySymbol(code string) string {
+	switch strings.ToUpper(strings.TrimSpace(code)) {
+	case "USD":
+		return "$"
+	default:
+		return ""
+	}
 }
 
 func parseKiroTimestamp(raw any) *time.Time {
@@ -543,6 +614,10 @@ func buildKiroDegradedUsage(err error) *UsageInfo {
 		info.ErrorCode = errorCodeNetworkError
 		info.KiroQuotaState = kiroQuotaStateCreditsExhausted
 		info.KiroQuotaReason = classification.Message
+	case kiroErrorOverageExhausted:
+		info.ErrorCode = errorCodeNetworkError
+		info.KiroQuotaState = kiroQuotaStateOverageExhausted
+		info.KiroQuotaReason = classification.Message
 	case kiroErrorSuspended, kiroErrorUsageForbidden, kiroErrorProfileError:
 		info.ErrorCode = errorCodeForbidden
 	default:
@@ -602,12 +677,42 @@ func setKiroQuotaStateFromUsage(info *UsageInfo) {
 	if info.KiroCredit != nil && info.KiroCredit.UsageLimit > 0 {
 		creditExhausted = info.KiroCredit.CurrentUsage >= info.KiroCredit.UsageLimit
 	}
+	// 全部额度池打满（credits + welcome bonus + bonuses[]）才是真耗尽；
+	// 已在超刷（产生了超额用量/费用）说明所有池都已打穿。
+	allPoolsDrained := creditExhausted && !kiroHasRemainingCredits(info)
+	overageActive := info.KiroOverage != nil &&
+		(info.KiroOverage.CurrentOverages > 0 || info.KiroOverage.OverageCharges > 0)
 	switch {
-	case creditExhausted:
+	case info.KiroOveragesEnabled && (overageActive || allPoolsDrained):
+		// 超刷已开启：即使额度池全部打满也能继续请求，只是进入超额计费。
+		info.KiroQuotaState = kiroQuotaStateOverageActive
+		info.KiroQuotaReason = "overages_enabled"
+		info.KiroQuotaResetAt = info.KiroResetAt
+	case allPoolsDrained:
 		info.KiroQuotaState = kiroQuotaStateCreditsExhausted
 		info.KiroQuotaReason = "credits_exhausted"
 		info.KiroQuotaResetAt = info.KiroResetAt
 	default:
 		info.KiroQuotaState = kiroQuotaStateNormal
 	}
+}
+
+// kiroHasRemainingCredits 判断主额度打满后是否仍有可用的赠送额度
+// (welcome bonus 与 bonuses[] 兑换赠送;官方语义:任一额度池有余额即可继续请求)。
+func kiroHasRemainingCredits(info *UsageInfo) bool {
+	if info == nil {
+		return false
+	}
+	if b := info.KiroBonus; b != nil && b.UsageLimit > 0 && b.CurrentUsage < b.UsageLimit {
+		return true
+	}
+	for _, b := range info.KiroBonuses {
+		if b == nil || !strings.EqualFold(b.Status, "ACTIVE") {
+			continue
+		}
+		if b.UsageLimit > 0 && b.CurrentUsage < b.UsageLimit {
+			return true
+		}
+	}
+	return false
 }

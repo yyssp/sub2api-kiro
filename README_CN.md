@@ -214,6 +214,8 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 - **管理后台** - Web 界面进行监控和管理
 - **外部系统集成** - 支持通过 iframe 嵌入外部系统（如工单等），扩展管理后台功能
 
+---
+
 ## 生态项目
 
 围绕 Sub2API 的社区扩展与集成项目：
@@ -835,9 +837,6 @@ export ANTHROPIC_AUTH_TOKEN="sk-xxx"
 Antigravity 账户支持可选的**混合调度**功能。开启后，通用端点 `/v1/messages` 和 `/v1beta/` 也会调度该账户。
 
 > **⚠️ 注意**：Anthropic Claude 和 Antigravity Claude **不能在同一上下文中混合使用**，请通过分组功能做好隔离。
-
----
-
 ## 项目结构
 
 ```

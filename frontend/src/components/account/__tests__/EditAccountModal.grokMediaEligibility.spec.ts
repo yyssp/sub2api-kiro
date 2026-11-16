@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 
 const {
   updateAccountMock,
@@ -56,17 +56,6 @@ const account = (platform = 'grok', type = 'oauth', extra: Record<string, unknow
   group_ids: [], expires_at: null, auto_pause_on_expired: false
 })
 
-// 该下拉框用共享 Select 组件（原生 <select> 会被 nativeControls.spec.ts 拦下），
-// 因此只能通过组件的 props / emit 交互，不能用 element.value / setValue。
-function eligibilitySelect(wrapper: ReturnType<typeof mountModal>) {
-  return wrapper.getComponent('[data-testid="grok-media-eligibility-mode"]')
-}
-
-async function pickMode(wrapper: ReturnType<typeof mountModal>, mode: string) {
-  eligibilitySelect(wrapper).vm.$emit('update:modelValue', mode)
-  await wrapper.vm.$nextTick()
-}
-
 function mountModal(value = account()) {
   return mount(EditAccountModal, {
     props: { show: true, account: value, proxies: [], groups: [] },
@@ -75,6 +64,14 @@ function mountModal(value = account()) {
       GroupSelector: true, ModelWhitelistSelector: true
     } }
   })
+}
+
+const eligibilityModeSelect = (wrapper: VueWrapper) =>
+  wrapper.getComponent('[data-testid="grok-media-eligibility-mode"]')
+
+const setEligibilityMode = async (wrapper: VueWrapper, value: string) => {
+  eligibilityModeSelect(wrapper).vm.$emit('update:modelValue', value)
+  await wrapper.vm.$nextTick()
 }
 
 describe('EditAccountModal Grok media eligibility', () => {
@@ -95,7 +92,7 @@ describe('EditAccountModal Grok media eligibility', () => {
     const wrapper = mountModal()
     await vi.waitFor(() => expect(getEligibilityMock).toHaveBeenCalledWith(12))
     expect(wrapper.find('[data-testid="grok-media-eligibility-card"]').exists()).toBe(true)
-    expect(eligibilitySelect(wrapper).props('modelValue')).toBe('auto')
+    expect(eligibilityModeSelect(wrapper).props('modelValue')).toBe('auto')
     expect(wrapper.get('[data-testid="grok-media-eligibility-status"]').text()).toContain('billing_inconclusive')
     expect(mountModal(account('grok', 'apikey')).find('[data-testid="grok-media-eligibility-card"]').exists()).toBe(false)
     expect(mountModal(account('openai', 'oauth')).find('[data-testid="grok-media-eligibility-card"]').exists()).toBe(false)
@@ -104,7 +101,7 @@ describe('EditAccountModal Grok media eligibility', () => {
   it('updates the dedicated endpoint only when the mode changes', async () => {
     const wrapper = mountModal()
     await vi.waitFor(() => expect(getEligibilityMock).toHaveBeenCalled())
-    await pickMode(wrapper, 'enabled')
+    await setEligibilityMode(wrapper, 'enabled')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     await vi.waitFor(() => expect(updateEligibilityMock).toHaveBeenCalledWith(12, 'enabled'))
   })
@@ -113,7 +110,7 @@ describe('EditAccountModal Grok media eligibility', () => {
     updateEligibilityMock.mockRejectedValueOnce(new Error('eligibility failed'))
     const wrapper = mountModal()
     await vi.waitFor(() => expect(getEligibilityMock).toHaveBeenCalled())
-    await pickMode(wrapper, 'disabled')
+    await setEligibilityMode(wrapper, 'disabled')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     await vi.waitFor(() => expect(showErrorMock).toHaveBeenCalledWith('admin.accounts.grokMediaEligibility.partialSave'))
     expect(getEligibilityMock).toHaveBeenCalledTimes(2)

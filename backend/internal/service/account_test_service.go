@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/anthropictokenizer"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
@@ -51,12 +52,21 @@ const (
 
 // TestEvent represents a SSE event for account testing
 type TestEvent struct {
-	Type     string `json:"type"`
-	Text     string `json:"text,omitempty"`
-	Model    string `json:"model,omitempty"`
-	Status   string `json:"status,omitempty"`
-	Code     string `json:"code,omitempty"`
-	ImageURL string `json:"image_url,omitempty"`
+	Type   string `json:"type"`
+	Text   string `json:"text,omitempty"`
+	Model  string `json:"model,omitempty"`
+	Status string `json:"status,omitempty"`
+	Code   string `json:"code,omitempty"`
+	// BPS evidence: upstream HTTP status, model, request ID and error code
+	// captured during an admin account test round trip.
+	UpstreamStatus    int    `json:"upstream_status,omitempty"`
+	UpstreamModel     string `json:"upstream_model,omitempty"`
+	RequestID         string `json:"request_id,omitempty"`
+	UpstreamErrorCode string `json:"upstream_error_code,omitempty"`
+	// UpstreamErrorMessage is BPS's own rejection message, redacted of the
+	// request token and account secrets.
+	UpstreamErrorMessage string `json:"upstream_error_message,omitempty"`
+	ImageURL             string `json:"image_url,omitempty"`
 	// AudioURL / VideoURL are data: or https URLs for in-browser media players.
 	AudioURL string `json:"audio_url,omitempty"`
 	VideoURL string `json:"video_url,omitempty"`
@@ -160,6 +170,12 @@ type AccountTestService struct {
 	// grokWSDialer is optional; realtime account tests use the default OpenAI-style
 	// WS dialer when nil (supports proxy + coder/websocket handshake).
 	grokWSDialer openAIWSClientDialer
+	// leonardoTokenProvider 为 nil 时 Leonardo 测试路径按需构造本地 provider。
+	leonardoTokenProvider *LeonardoTokenProvider
+	// leonardoImageService 为 nil 时用测试专用的出图服务实例（单测注入用）。
+	leonardoImageService *LeonardoImageService
+	bpsProbeMu           sync.Mutex
+	bpsProbeAccounts     map[int64]struct{}
 }
 
 func (s *AccountTestService) SetCursorTokenProvider(provider *CursorTokenProvider) {
@@ -177,6 +193,13 @@ func (s *AccountTestService) SetSettingService(settingService *SettingService) {
 func (s *AccountTestService) SetPluginManager(pluginManager *PluginManager) {
 	if s != nil {
 		s.pluginManager = pluginManager
+	}
+}
+
+// SetLeonardoTokenProvider 注入与网关共享 OAuthRefreshAPI 的 Leonardo token provider。
+func (s *AccountTestService) SetLeonardoTokenProvider(provider *LeonardoTokenProvider) {
+	if s != nil {
+		s.leonardoTokenProvider = provider
 	}
 }
 
@@ -398,6 +421,12 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return nil
 	}
 
+	// Rows left behind by a removed platform must not fall through to the Claude
+	// fallback below, which would send their stored credentials to Anthropic.
+	if account.Platform != "" && !isServableAccountPlatform(account.Platform) {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account platform: %s", account.Platform))
+	}
+
 	// Route to platform-specific test method
 	// 按入站协议分流的多协议供应商（国产厂商等）：按账号协议选测试路径。
 	if account.RoutesProtocolByInbound() {
@@ -435,6 +464,13 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	if isCursorDirectModeAccount(account) {
 		return s.testCursorAccountConnection(c, account, modelID)
+	}
+	if account.Platform == PlatformLeonardo {
+		return s.testLeonardoAccountConnection(c, account, modelID, prompt)
+	}
+
+	if account.Platform == PlatformFish {
+		return s.testFishAccountConnection(c, account, modelID, prompt)
 	}
 
 	// 按模型分流的多模型聚合平台（OpenCode、Command Code 等）。
@@ -777,7 +813,8 @@ func (s *AccountTestService) testKiroAccountConnection(c *gin.Context, account *
 	pr, pw := io.Pipe()
 	go func() {
 		defer func() { _ = resp.Body.Close() }()
-		_, streamErr := kiropkg.StreamEventStreamAsAnthropicWithContext(ctx, resp.Body, pw, testModelID, estimateKiroInputTokens(ctx, payloadBytes), kiropkg.KiroRequestContext{})
+		// 账号连通性测试不属计量路径，固定官方精确口径。
+		_, streamErr := kiropkg.StreamEventStreamAsAnthropicWithContext(ctx, resp.Body, pw, testModelID, estimateKiroInputTokens(ctx, anthropictokenizer.AlgorithmOfficial, payloadBytes), kiropkg.KiroRequestContext{})
 		if streamErr != nil {
 			_ = pw.CloseWithError(streamErr)
 			return
@@ -793,7 +830,7 @@ func formatKiroTestError(statusCode int, body []byte, requestedModel string, acc
 }
 
 func (s *AccountTestService) executeKiroTestUpstream(ctx context.Context, account *Account, anthropicBody []byte, mappedModel, token string) (*http.Response, error) {
-	modelID := kiropkg.MapModel(mappedModel)
+	modelID := resolveKiroUpstreamModel(mappedModel)
 	currentToken := token
 	// generateAssistantResponse 现在强制要求 profileArn（缺失 → 403 "User is not
 	// authorized to make this call."）。按账号类型解析：API Key → 空；
@@ -982,6 +1019,15 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string) error {
 	ctx := c.Request.Context()
 	mode = normalizeAccountTestMode(mode)
+	// BPS-only accounts are tested on the same gateway path as user Responses
+	// requests and never reach the native probes below, which would send the
+	// Excel token to ChatGPT Codex.
+	if account.IsBPSOAuth() {
+		return s.testBPSOAuthAccountConnection(c, account, modelID, prompt, mode)
+	}
+	if mode == AccountTestModeBPSTools {
+		return s.sendErrorAndEnd(c, "BPS tool probe requires a BPS OAuth account")
+	}
 
 	// Default to openai.DefaultTestModel for OpenAI testing
 	testModelID := modelID
@@ -3212,7 +3258,7 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 
 // testOpenAIImageAPIKey tests OpenAI image generation using an API Key account.
 func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
-	authToken := account.GetOpenAIApiKey()
+	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
 	if authToken == "" {
 		return s.sendErrorAndEnd(c, "No API key available")
 	}

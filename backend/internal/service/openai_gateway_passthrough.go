@@ -269,7 +269,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 	prepareCachePlanForContext(
 		ctx, c, account, cacheGroupFromContext(c, nil), body, policyModel,
-		"openai_responses", estimateOpenAIResponsesInputTokens(ctx, body),
+		"openai_responses", estimateOpenAIResponsesInputTokensWithAlgorithm(ctx, s.kiroMeteringAlgorithm(ctx), body),
 	)
 
 	apiKey := getAPIKeyFromContext(c)
@@ -377,7 +377,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 
 		upstreamStart := time.Now()
+		telemetryAttempt := s.beginCodexTelemetry(c, account, body, upstreamReq.Header)
 		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
+		telemetryAttempt.observeResult(resp, err)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
@@ -603,6 +605,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	// 客户端回带的 x-codex-turn-state 若已知由其他账号铸造（failover 换号），
 	// 剥离后再出站（openai_codex_turn_state.go）。
 	s.guardOpenAICodexTurnStateEcho(c, account, req.Header)
+	if err := s.applyOpenAICodexTicket(ctx, account, extractOpenAICodexTicketModel(body), req.Header); err != nil {
+		return nil, err
+	}
 
 	// 覆盖入站鉴权残留，并注入上游认证
 	req.Header.Del("authorization")

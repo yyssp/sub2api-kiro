@@ -39,7 +39,13 @@ const (
 	PlatformCommandCode = "command_code"
 	// PlatformCline 是 Cline API（多模型聚合，OpenAI 兼容 Chat Completions；按量积分计费，
 	// 另有 ClinePass 订阅）。
-	PlatformCline     = "cline"
+	PlatformCline = "cline"
+	// PlatformLeonardo 是 Leonardo.ai 图片生成平台（OpenAI Images 兼容端点；
+	// 原生 Cookie 账号直连网页版 GraphQL 协议，另支持 OpenAI Images 形中转账号兜底）。
+	PlatformLeonardo = "leonardo"
+	// PlatformFish 是 fish.audio 图片生成平台（OpenAI Images 兼容端点；
+	// 账号为网页会话 Bearer token，直连 api.fish.audio 的 image-video 工具协议）。
+	PlatformFish      = "fish"
 	PlatformComposite = "composite"
 )
 
@@ -70,6 +76,7 @@ const (
 	AccountTypeUpstream       = "upstream"        // 上游透传类型账号（通过 Base URL + API Key 连接上游）
 	AccountTypeBedrock        = "bedrock"         // AWS Bedrock 类型账号（通过 SigV4 签名或 API Key 连接 Bedrock，由 credentials.auth_mode 区分）
 	AccountTypeServiceAccount = "service_account" // Google Service Account 类型账号（用于 Vertex AI）
+	AccountTypeBPSOAuth       = "bps-oauth"       // OpenAI Excel/BPS-only OAuth 账号（官方 Excel 客户端授权，只能走 BPS）
 )
 
 // Redeem type constants
@@ -200,6 +207,7 @@ var DefaultKiroModelMapping = map[string]string{
 	"gpt-5.6-terra":                       "gpt-5.6-terra",
 	"gpt-5.6-luna":                        "gpt-5.6-luna",
 	"codex-auto-review":                   "gpt-5.6-luna",
+	"kimi-k3":                             "kimi-k3",
 	"claude-opus-4-8":                     "claude-opus-4.8",
 	"claude-opus-4-8-thinking":            "claude-opus-4.8",
 	"claude-opus-4-7":                     "claude-opus-4.7",
@@ -208,8 +216,12 @@ var DefaultKiroModelMapping = map[string]string{
 	"claude-opus-4-6-thinking":            "claude-opus-4.6",
 	"claude-opus-5":                       "claude-opus-5",
 	"claude-opus-5-thinking":              "claude-opus-5",
+	"claude-opus-5-5":                     "claude-opus-5.5",
+	"claude-opus-5-5-thinking":            "claude-opus-5.5",
 	"claude-sonnet-5":                     "claude-sonnet-5",
 	"claude-sonnet-5-thinking":            "claude-sonnet-5",
+	"claude-sonnet-5-5":                   "claude-sonnet-5.5",
+	"claude-sonnet-5-5-thinking":          "claude-sonnet-5.5",
 	"claude-sonnet-4-6":                   "claude-sonnet-4.6",
 	"claude-sonnet-4-6-thinking":          "claude-sonnet-4.6",
 	"claude-opus-4-5-20251101":            "claude-opus-4.5",
@@ -218,6 +230,8 @@ var DefaultKiroModelMapping = map[string]string{
 	"claude-sonnet-4-5-20250929-thinking": "claude-sonnet-4.5",
 	"claude-haiku-4-5-20251001":           "claude-haiku-4.5",
 	"claude-haiku-4-5-20251001-thinking":  "claude-haiku-4.5",
+	"claude-haiku-5-5":                    "claude-haiku-5.5",
+	"claude-haiku-5-5-thinking":           "claude-haiku-5.5",
 }
 
 // DefaultBedrockModelMapping 是 AWS Bedrock 平台的默认模型映射

@@ -1321,6 +1321,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		service.AccountExtraOpenAIImageSizeTiers,
 		"codex_fingerprint_mode",
 		"codex_fingerprint_seed",
+		"codex_telemetry_enabled",
 		"codex_5h_used_percent",
 		"codex_7d_used_percent",
 		"codex_5h_reset_at",
@@ -1343,6 +1344,13 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		service.UpstreamBillingProbeExtraKey,
 		service.GrokMediaEligibleExtraKey,
 		"grok_billing_snapshot",
+		// fish 按余额选号：过滤与零头优先排序都跑在本投影上；
+		// fish_max_quality 决定按哪个画质档估价。
+		service.FishWalletBalanceExtraKey,
+		service.FishWalletBalanceAtExtraKey,
+		service.FishWalletBelowExtraKey,
+		service.FishWalletBelowAtExtraKey,
+		"fish_max_quality",
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {

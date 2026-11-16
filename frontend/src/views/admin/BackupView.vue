@@ -925,21 +925,18 @@ async function confirmRestoreBackup() {
 }
 
 function removeBackup(id: string) {
-  const archived = !!backups.value.find(record => record.id === id)?.monthly_archive
   deleteDialogId.value = id
-  deleteDialogArchived.value = archived
+  deleteDialogArchived.value = !!backups.value.find(record => record.id === id)?.monthly_archive
 }
-
 function closeDeleteDialog() {
   deleteDialogId.value = ''
   deleteDialogArchived.value = false
 }
-
 async function confirmRemoveBackup() {
   const id = deleteDialogId.value
-  if (!id) return
   const archived = deleteDialogArchived.value
   closeDeleteDialog()
+  if (!id) return
   try {
     await adminAPI.backup.deleteBackup(id, archived)
     appStore.showSuccess(t('admin.backup.actions.deleted'))

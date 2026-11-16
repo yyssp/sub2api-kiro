@@ -181,6 +181,60 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		require.True(t, isMigrationChecksumCompatible(name, released, edited))
 	})
 
+	// 从官方镜像切到 fork：db 记录官方版 checksum，文件是补了 kiro/adobe 的 fork 版。
+	t.Run("157/237/238官方版与fork版兼容", func(t *testing.T) {
+		for _, tc := range []struct{ name, official, fork string }{
+			{"157_user_platform_quotas_add_grok.sql", "5cace8fa32c6174a72721cd9b01f28f4545de1fd7bcd9ca196a4225056ec4fb8", "a918734da39c2e5a82e4a5e9511bac1f4cf7e310ceadd647df52692320633c1b"},
+			{"237_add_minimax_platform.sql", "f4c73d2dbce114ca7ade1aac51998c3465490f4f3c9b3e868e53590f3fa8601b", "c754b29e15c10ef2a72887c4e2dd04a73a37c6c06218d1b2725836884450c03a"},
+			{"238_opencode_go_platform.sql", "6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2", "d310f134e119bd0b01c36e048841d04e1adc04a117c5c516ccdbbc8800742414"},
+		} {
+			require.True(t, isMigrationChecksumCompatible(tc.name, tc.official, tc.fork), tc.name)
+			require.False(t, isMigrationChecksumCompatible(tc.name,
+				"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", tc.fork), tc.name)
+		}
+	})
+
+	t.Run("238/241平台迁移兼容当前与历史checksum", func(t *testing.T) {
+		for _, tc := range []struct {
+			name      string
+			checksums []string
+		}{
+			{
+				name: "238_opencode_go_platform.sql",
+				checksums: []string{
+					"90e5cde17415cccbb5ad4a6f008da7c9090aa07ed98d695b813340915aafe63e",
+					"95e2486f29a17901debfa53af497c58d6c78d77b2eef466009d676b73f5ace96",
+					"d310f134e119bd0b01c36e048841d04e1adc04a117c5c516ccdbbc8800742414",
+					"6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2",
+				},
+			},
+			{
+				name: "241_add_typesafe_platform.sql",
+				checksums: []string{
+					"e2c621539ce7abf045249271e87c46d0b950fdfd85a5b7a3211bed496ff7aae3",
+					"c207d636f59c42c769a12331c3ee9b6801ba935fc66d2f0f5d55af7b78f428e5",
+					"b6559525bf8d0b5d7c617e7415944f0d1fae8c408e9131ace84139795f66dcd2",
+				},
+			},
+			{
+				name: "241_platform_checks_include_opencode_go.sql",
+				checksums: []string{
+					"ec76c3228bd3dbefac481967e6f72a4b0ab74e28f7e7c33800241e222e979521",
+					"0e057a397501b9941556d24f416103340ee6a8d44c8b7b4a0b5fea5cb109e3ad",
+				},
+			},
+		} {
+			for _, dbChecksum := range tc.checksums {
+				for _, fileChecksum := range tc.checksums {
+					require.True(t, isMigrationChecksumCompatible(tc.name, dbChecksum, fileChecksum),
+						"%s should accept known checksum pair db=%s file=%s", tc.name, dbChecksum, fileChecksum)
+				}
+			}
+			require.False(t, isMigrationChecksumCompatible(tc.name,
+				"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", tc.checksums[0]), tc.name)
+		}
+	})
+
 	t.Run("224未知checksum不兼容", func(t *testing.T) {
 		const name = "224_user_platform_quotas_add_cn_providers.sql"
 		unknown := "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"

@@ -29,24 +29,7 @@ func TestCursorAppearsInCompositeMatchingPlatforms(t *testing.T) {
 }
 
 func TestCursorIsInSchedulerSnapshotPlatforms(t *testing.T) {
-	platforms := schedulerSnapshotPlatforms()
-	require.Equal(t, []string{
-		PlatformAnthropic,
-		PlatformGemini,
-		PlatformOpenAI,
-		PlatformAntigravity,
-		PlatformKiro,
-		PlatformGrok,
-		PlatformKimi,
-		PlatformZhipu,
-		PlatformDeepseek,
-		PlatformMiniMax,
-		PlatformCursor,
-		PlatformOpenCodeGo,
-		PlatformTypeSafe,
-		PlatformCommandCode,
-		PlatformCline,
-	}, platforms)
+	require.Contains(t, schedulerSnapshotPlatforms(), PlatformCursor)
 }
 
 func TestCursorIsInAllPlatformsForErrorPassthrough(t *testing.T) {

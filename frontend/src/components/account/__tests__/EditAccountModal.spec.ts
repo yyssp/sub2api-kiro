@@ -60,6 +60,8 @@ vi.mock('vue-i18n', async () => {
 })
 
 import EditAccountModal from '../EditAccountModal.vue'
+import { OPENAI_EXCEL_OAUTH_CLIENT_ID } from '@/composables/useOpenAIOAuth'
+import { DEFAULT_EXCEL_BPS_MODELS } from '@/constants/account'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -77,6 +79,7 @@ const ModelWhitelistSelectorStub = defineComponent({
   props: {
     modelMappings: { type: Array, default: () => [] },
     syncOverrides: { type: Object, default: undefined },
+    availableModels: { type: Array, default: undefined },
     modelValue: {
       type: Array,
       default: () => []
@@ -376,6 +379,74 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('uses the Kiro direct API-key placeholder when base_url is absent', () => {
+    const wrapper = mountModal(buildKiroAPIKeyAccount())
+
+    expect(wrapper.find('input[type="password"][placeholder="ksk_..."]').exists()).toBe(true)
+    expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(true)
+  })
+
+  it('keeps the relay API-key placeholder when a Kiro base_url is present', () => {
+    const wrapper = mountModal(buildKiroAPIKeyAccount('https://relay.example/v1'))
+
+    expect(wrapper.find('input[type="password"][placeholder="sk-..."]').exists()).toBe(true)
+    expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(false)
+  })
+
+  it('loads and submits Kiro direct API-key API region', async () => {
+    const account = buildKiroAPIKeyAccount()
+    account.credentials.api_region = 'eu-central-1'
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const regionSelect = wrapper.get<HTMLSelectElement>('[data-testid="edit-kiro-api-region-select"]')
+    expect(regionSelect.element.value).toBe('eu-central-1')
+    expect(regionSelect.find('option[value="eu-central-1"]').exists()).toBe(true)
+    expect(regionSelect.find('option[value="eu-central-1"]').text()).toBe('eu-central-1')
+
+    await regionSelect.setValue('eu-west-1')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials?.api_region).toBe('eu-west-1')
+  })
+
+  it('ignores SSO region when rehydrating the Kiro direct API-key API region', () => {
+    const account = buildKiroAPIKeyAccount()
+    account.credentials.region = 'eu-central-1'
+
+    const wrapper = mountModal(account)
+
+    // region 是 Identity Center 区域,不得作为推理区域回退。
+    expect((wrapper.get('[data-testid="edit-kiro-api-region-select"]').element as HTMLSelectElement).value)
+      .toBe('us-east-1')
+  })
+
+  it('hides the API region field for Kiro OAuth accounts and never promotes their SSO region', async () => {
+    const account = buildKiroOAuthAccount()
+    account.credentials.region = 'eu-central-1'
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(false)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials).not.toHaveProperty('api_region')
+    expect(credentials?.region).toBe('eu-central-1')
+  })
+
   it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
     const account = buildAccount()
     account.credentials.model_mapping = { 'gpt-5.2': 'gpt-5.2', 'gpt-latest': 'deepseek-chat' }
@@ -513,72 +584,28 @@ describe('EditAccountModal', () => {
     expect(account.group_ids).toEqual([1, 2])
   })
 
-  it('uses the Kiro direct API-key placeholder when base_url is absent', () => {
-    const wrapper = mountModal(buildKiroAPIKeyAccount())
-
-    expect(wrapper.find('input[type="password"][placeholder="ksk_..."]').exists()).toBe(true)
-    expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(true)
-  })
-
-  it('keeps the relay API-key placeholder when a Kiro base_url is present', () => {
-    const wrapper = mountModal(buildKiroAPIKeyAccount('https://relay.example/v1'))
-
-    expect(wrapper.find('input[type="password"][placeholder="sk-..."]').exists()).toBe(true)
-    expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(false)
-  })
-
-  it('loads and submits Kiro direct API-key API region', async () => {
-    const account = buildKiroAPIKeyAccount()
-    account.credentials.api_region = 'eu-central-1'
-    updateAccountMock.mockReset()
-    checkMixedChannelRiskMock.mockReset()
-    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
-    updateAccountMock.mockResolvedValue(account)
+  it('shows the model restriction for Leonardo cookie accounts and saves the whitelist', async () => {
+    const account = {
+      ...buildGrokOAuthAccount(),
+      id: 9,
+      name: 'Leonardo Cookie',
+      platform: 'leonardo',
+      credentials: { model_mapping: { 'gpt-image-2': 'gpt-image-2' } }
+    } as any
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
 
     const wrapper = mountModal(account)
-    const regionSelect = wrapper.get<HTMLSelectElement>('[data-testid="edit-kiro-api-region-select"]')
-    expect(regionSelect.element.value).toBe('eu-central-1')
-    expect(regionSelect.find('option[value="eu-central-1"]').exists()).toBe(true)
-    expect(regionSelect.find('option[value="eu-central-1"]').text()).toBe('eu-central-1')
 
-    await regionSelect.setValue('eu-west-1')
+    expect(wrapper.find('[data-testid="oauth-model-mapping-section"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-image-2')
+
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
-    expect(credentials?.api_region).toBe('eu-west-1')
-  })
-
-  it('ignores SSO region when rehydrating the Kiro direct API-key API region', () => {
-    const account = buildKiroAPIKeyAccount()
-    account.credentials.region = 'eu-central-1'
-
-    const wrapper = mountModal(account)
-
-    // region 是 Identity Center 区域,不得作为推理区域回退。
-    expect((wrapper.get('[data-testid="edit-kiro-api-region-select"]').element as HTMLSelectElement).value)
-      .toBe('us-east-1')
-  })
-
-  it('hides the API region field for Kiro OAuth accounts and never promotes their SSO region', async () => {
-    const account = buildKiroOAuthAccount()
-    account.credentials.region = 'eu-central-1'
-    updateAccountMock.mockReset()
-    checkMixedChannelRiskMock.mockReset()
-    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
-    updateAccountMock.mockResolvedValue(account)
-
-    const wrapper = mountModal(account)
-    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(false)
-
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-
-    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
-    expect(credentials).not.toHaveProperty('api_region')
-    expect(credentials?.region).toBe('eu-central-1')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-image-2': 'gpt-image-2'
+    })
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
@@ -1098,6 +1125,108 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_flatten_namespaces).toBe(
       true
     )
+  })
+
+  it('keeps plan_type on save for Codex OAuth accounts', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.credentials = { access_token: 'token', plan_type: 'plus' }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="excel-bps-section"]').exists()).toBe(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.plan_type).toBe('plus')
+  })
+
+  it('edits only BPS settings on BPS OAuth accounts and drops the legacy BPS whitelist', async () => {
+    const account = buildAccount()
+    account.type = 'bps-oauth'
+    account.credentials = {
+      access_token: 'token',
+      client_id: OPENAI_EXCEL_OAUTH_CLIENT_ID,
+      model_mapping: { 'gpt-5.6-sol': 'gpt-5.6-sol' }
+    }
+    account.extra = { openai_excel_bps_models: ['gpt-5.6-sol'] }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const bpsSection = wrapper.get('[data-testid="excel-bps-section"]')
+    expect(wrapper.find('[data-testid="excel-bps-toggle"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="edit-openai-flatten-namespaces-toggle"]').exists()).toBe(false)
+    // BPS 区块只剩两个开关，模型只由通用模型限制决定
+    expect(wrapper.find('[data-testid="excel-bps-all-models"]').exists()).toBe(false)
+    expect(bpsSection.findComponent({ name: 'ModelWhitelistSelector' }).exists()).toBe(false)
+    expect(bpsSection.find('[data-testid="excel-bps-cache-creation-as-input"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="excel-bps-ignore-encrypted-content"]').setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const payload = updateAccountMock.mock.calls[0]?.[1] ?? {}
+    const extra = payload.extra ?? {}
+    expect(extra).not.toHaveProperty('openai_excel_bps_models')
+    expect(extra).not.toHaveProperty('openai_excel_bps')
+    expect(extra.openai_excel_bps_ignore_encrypted_content).toBe(true)
+    expect(extra).not.toHaveProperty('openai_oauth_responses_websockets_v2_mode')
+    expect(extra).not.toHaveProperty('codex_fingerprint_mode')
+    expect(payload.credentials?.model_mapping).toEqual({ 'gpt-5.6-sol': 'gpt-5.6-sol' })
+  })
+
+  it('limits BPS OAuth model candidates and quick-add presets to BPS models', async () => {
+    const account = buildAccount()
+    account.type = 'bps-oauth'
+    account.credentials = {
+      access_token: 'token',
+      client_id: OPENAI_EXCEL_OAUTH_CLIENT_ID,
+      model_mapping: { 'gpt-5.6-sol': 'gpt-5.6-sol', 'bps-custom': 'bps-custom' }
+    }
+
+    const wrapper = mountModal(account)
+    const selector = wrapper.getComponent(ModelWhitelistSelectorStub)
+    expect(selector.props('availableModels')).toEqual([...DEFAULT_EXCEL_BPS_MODELS, 'bps-custom'])
+
+    // 「同步上游模型」把结果追加到已选；取消勾选后仍留在候选里
+    selector.vm.$emit('update:modelValue', ['gpt-5.6-sol', 'bps-custom', 'bps-synced'])
+    await flushPromises()
+    selector.vm.$emit('update:modelValue', ['gpt-5.6-sol'])
+    await flushPromises()
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('availableModels')).toEqual([
+      ...DEFAULT_EXCEL_BPS_MODELS,
+      'bps-custom',
+      'bps-synced'
+    ])
+
+    const mappingTab = wrapper.findAll('button').find(btn => btn.text() === 'admin.accounts.modelMapping')
+    await mappingTab!.trigger('click')
+    expect(wrapper.findAll('[data-testid="oauth-preset-mapping"]').map(btn => btn.text())).toEqual([
+      '+ GPT-6 Astra',
+      '+ GPT-5.6 Sol',
+      '+ GPT-5.6 Terra'
+    ])
+  })
+
+  it('keeps native model candidates and presets for Codex OAuth accounts', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.credentials = { access_token: 'token', model_mapping: { 'gpt-5.2': 'gpt-5.2' } }
+
+    const wrapper = mountModal(account)
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('availableModels')).toBeUndefined()
+
+    const mappingTab = wrapper.findAll('button').find(btn => btn.text() === 'admin.accounts.modelMapping')
+    await mappingTab!.trigger('click')
+    const presets = wrapper.findAll('[data-testid="oauth-preset-mapping"]').map(btn => btn.text())
+    expect(presets).toContain('+ GPT-4o')
+    expect(presets).toContain('+ GPT-5.4')
   })
 
   it('writes the upstream request id header into extra only when it changes', async () => {
@@ -1791,6 +1920,23 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_enabled).toBe(true)
   })
 
+  it('setup-token account can select and submit ws_bridge WS mode', async () => {
+    const account = buildOpenAISetupTokenAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('[data-testid="edit-openai-ws-mode-select"]').setValue('ws_bridge')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_mode).toBe('ws_bridge')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_enabled).toBe(true)
+  })
+
   it('hydrates and submits Kiro OAuth credit unit price in extra', async () => {
     const account = buildKiroOAuthAccount()
     updateAccountMock.mockReset()
@@ -1808,6 +1954,118 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.kiro_credit_unit_price_usd).toBe(0.08)
+  })
+
+  it('hydrates and submits Leonardo cookie credit unit price in extra', async () => {
+    const account = {
+      ...buildGrokOAuthAccount(),
+      id: 10,
+      name: 'Leonardo Cookie',
+      platform: 'leonardo',
+      credentials: {},
+      extra: { leonardo_credit_unit_price_usd: 0.0014 }
+    } as any
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="kiro-credit-unit-price-usd"]').exists()).toBe(false)
+    const input = wrapper.get<HTMLInputElement>('[data-testid="leonardo-credit-unit-price-usd"]')
+
+    expect(input.element.value).toBe('0.0014')
+
+    await input.setValue('0.0012')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra?.leonardo_credit_unit_price_usd).toBe(0.0012)
+    expect(extra).not.toHaveProperty('kiro_credit_unit_price_usd')
+  })
+
+  it('hydrates and submits Leonardo cookie image limits in extra', async () => {
+    const account = {
+      ...buildGrokOAuthAccount(),
+      id: 12,
+      name: 'Leonardo Cookie',
+      platform: 'leonardo',
+      credentials: {},
+      extra: { leonardo_max_quality: 'high', leonardo_max_short_edge: 1536, leonardo_max_upscale_factor: 1.5 }
+    } as any
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const quality = wrapper.get<HTMLSelectElement>('[data-testid="leonardo-max-quality"]')
+    const shortEdge = wrapper.get<HTMLInputElement>('[data-testid="leonardo-max-short-edge"]')
+    const factor = wrapper.get<HTMLInputElement>('[data-testid="leonardo-max-upscale-factor"]')
+    expect(quality.element.value).toBe('high')
+    expect(shortEdge.element.value).toBe('1536')
+    expect(factor.element.value).toBe('1.5')
+
+    await quality.setValue('medium')
+    await shortEdge.setValue('1024')
+    await factor.setValue('2')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra).toMatchObject({
+      leonardo_max_quality: 'medium',
+      leonardo_max_short_edge: 1024,
+      leonardo_max_upscale_factor: 2
+    })
+  })
+
+  it('hydrates and submits Fish native max quality', async () => {
+    const account = {
+      ...buildAccount(),
+      id: 21,
+      name: 'Fish Token',
+      platform: 'fish',
+      type: 'apikey',
+      credentials: {},
+      extra: { fish_max_quality: 'high' }
+    } as any
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const quality = wrapper.get<HTMLSelectElement>('[data-testid="fish-max-quality"]')
+    expect(quality.element.value).toBe('high')
+
+    await quality.setValue('medium')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra?.fish_max_quality).toBe('medium')
+  })
+
+  it('does not show Fish max quality for relay accounts', () => {
+    const account = {
+      ...buildAccount(),
+      id: 22,
+      name: 'Fish Relay',
+      platform: 'fish',
+      type: 'apikey',
+      credentials: { base_url: 'https://api.openai.com' }
+    } as any
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="fish-max-quality"]').exists()).toBe(false)
+  })
+
+  it('does not show the Leonardo credit unit price for relay accounts', () => {
+    const account = {
+      ...buildGrokAPIKeyAccount(),
+      id: 11,
+      name: 'Leonardo Relay',
+      platform: 'leonardo'
+    } as any
+
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="leonardo-credit-unit-price-usd"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="leonardo-image-limits"]').exists()).toBe(false)
   })
 
   it('allows saving apikey account when backend redacted api_key but credentials_status reports it exists', async () => {
@@ -2100,6 +2358,145 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     await wrapper.get('[data-testid="auto-reset-credit-5h-threshold"]').setValue('0')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     expect(updateAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+})
+
+describe('EditAccountModal OpenAI OAuth telemetry', () => {
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+  })
+
+  afterEach(() => vi.clearAllMocks())
+
+  it('loads and submits extra.codex_telemetry_enabled for OpenAI OAuth', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.extra = { codex_telemetry_enabled: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="edit-codex-telemetry-toggle"]').exists()).toBe(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_telemetry_enabled).toBe(true)
+  })
+
+  it('writes false when Telemetry is turned off for an OpenAI OAuth account', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.extra = { codex_telemetry_enabled: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-codex-telemetry-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_telemetry_enabled).toBe(false)
+  })
+
+  it('does not show the Telemetry toggle for API keys or Spark shadows', async () => {
+    const apiKey = mountModal(buildAccount())
+    expect(apiKey.find('[data-testid="edit-codex-telemetry-toggle"]').exists()).toBe(false)
+
+    const shadow = mountModal(buildOpenAISparkShadowAccount())
+    expect(shadow.find('[data-testid="edit-codex-telemetry-toggle"]').exists()).toBe(false)
+
+    const agent = buildAccount()
+    agent.type = 'oauth'
+    agent.credentials = { ...(agent.credentials as Record<string, unknown>), auth_mode: 'agent_identity' }
+    const agentWrapper = mountModal(agent)
+    expect(agentWrapper.find('[data-testid="edit-codex-telemetry-toggle"]').exists()).toBe(false)
+  })
+})
+
+describe('EditAccountModal Kiro model restriction', () => {
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+  })
+
+  afterEach(() => vi.clearAllMocks())
+
+  it('shows a derived Kiro pair as a whitelist entry and keeps a custom row', async () => {
+    const account = buildKiroOAuthAccount()
+    account.credentials.model_mapping = {
+      'claude-opus-4-8': 'claude-opus-4.8',
+      'codex-auto-review': 'gpt-5.6-luna'
+    }
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('claude-opus-4-8')
+    expect(wrapper.findAll('[data-testid="oauth-model-mapping-from"]')).toHaveLength(0)
+
+    const mappingToggle = wrapper.findAll('button').find((button) => button.text() === 'admin.accounts.modelMapping')
+    expect(mappingToggle).toBeTruthy()
+    await mappingToggle!.trigger('click')
+
+    const froms = wrapper.findAll<HTMLInputElement>('[data-testid="oauth-model-mapping-from"]')
+    expect(froms).toHaveLength(1)
+    expect(froms[0].element.value).toBe('codex-auto-review')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="oauth-model-mapping-to"]').element.value).toBe('gpt-5.6-luna')
+    wrapper.unmount()
+  })
+
+  it('leaves an empty Kiro mapping on the default-list hint', async () => {
+    const account = buildKiroOAuthAccount()
+    delete account.credentials.model_mapping
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('')
+    expect(wrapper.find('[data-testid="kiro-default-mapping-hint"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="oauth-model-mapping-from"]')).toHaveLength(0)
+    wrapper.unmount()
+  })
+
+  it('round-trips a direct Kiro account without rewriting custom targets', async () => {
+    const account = buildKiroOAuthAccount()
+    account.credentials.model_mapping = {
+      'claude-opus-4-8': 'claude-opus-4.8',
+      'codex-auto-review': 'gpt-5.6-luna'
+    }
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await flushPromises()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    // 直连 Kiro 白名单的标准存法是恒等（转发时 MapModel 仍折成 claude-opus-4.8），
+    // 老的点号行保存后改写成恒等；自定义映射原样保留。
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'claude-opus-4-8': 'claude-opus-4-8',
+      'codex-auto-review': 'gpt-5.6-luna'
+    })
+    wrapper.unmount()
+  })
+
+  it('keeps a relay identity mapping instead of rewriting it to a dotted Kiro id', async () => {
+    const account = buildKiroAPIKeyAccount('https://relay.example/v1')
+    account.credentials.model_mapping = { 'claude-opus-4-8': 'claude-opus-4-8' }
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await flushPromises()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'claude-opus-4-8': 'claude-opus-4-8'
+    })
     wrapper.unmount()
   })
 })

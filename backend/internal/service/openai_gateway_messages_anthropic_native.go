@@ -49,7 +49,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 	clientStream := gjson.GetBytes(body, "stream").Bool()
 	prepareCachePlanForContext(
 		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
-		"anthropic_messages", estimateKiroInputTokens(ctx, body),
+		"anthropic_messages", estimateKiroInputTokens(ctx, s.kiroMeteringAlgorithm(ctx), body),
 	)
 
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)

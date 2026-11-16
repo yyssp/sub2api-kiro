@@ -682,6 +682,7 @@ const WEB_SEARCH_EMULATION_PLATFORMS: ReadonlySet<string> = new Set([
   'opencode_go',
   'minimax',
   'zhipu',
+  'kiro',
 ])
 
 const webSearchGlobalEnabled = ref(false)
@@ -932,7 +933,9 @@ function pricingModelsActionLoadingLabel(platform: string): string {
 
 async function syncLatestModels(sectionIdx: number) {
   const section = form.platforms[sectionIdx]
-  if (!section || syncingPlatform.value || !canFillPricingModels(section.platform)) return
+  // kiro 无定价目录 provider，但走 fork 专属的“填充默认模型”入口。
+  if (!section || syncingPlatform.value) return
+  if (!canFillPricingModels(section.platform)) return
   const platform = section.platform
   syncingPlatform.value = platform
   try {
@@ -953,7 +956,7 @@ async function syncLatestModels(sectionIdx: number) {
       return
     }
     // Add new models as a single new pricing entry (user fills in prices)
-    section.model_pricing.push(createTokenPricingEntry(newModels))
+    form.platforms[sectionIdx].model_pricing.push(createTokenPricingEntry(newModels))
     appStore.showSuccess(t('admin.channels.form.syncModelsSuccess', { count: newModels.length }))
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, t('admin.channels.form.syncModelsError')))

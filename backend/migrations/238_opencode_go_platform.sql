@@ -5,9 +5,9 @@
 -- 3. channel_monitors / channel_monitor_request_templates provider CHECK
 --
 -- Runs after 237_add_minimax_platform.sql. DROP ... IF EXISTS + 幂等守卫保证可重入；
--- 新约束必须是当前全部平台的超集：本 fork 里 238_restore_kiro / 239_add_cursor
--- 已把 kiro、cursor 加进约束，上游原版漏了这两项，存量 kiro 配额行会让 ADD CONSTRAINT
--- 直接失败、阻断启动。上游原版 checksum 见 migrations_runner.go 的兼容规则。
+-- 新约束必须是当前平台全集的超集：保留本 fork 的 Kiro/Cursor 与上游 Adobe、OpenCode，
+-- 以及已由主分支加入的其他 concrete platform；否则存量配额/路由行会令 ADD CONSTRAINT 失败。
+-- 历史 checksum 兼容规则见 migrations_runner.go。
 
 ALTER TABLE user_platform_quotas
     DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check;
@@ -15,7 +15,8 @@ ALTER TABLE user_platform_quotas
 ALTER TABLE user_platform_quotas
     ADD CONSTRAINT user_platform_quotas_platform_check
     CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok',
-                        'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'opencode_go'));
+                        'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'adobe', 'opencode_go',
+                        'typesafe', 'command_code', 'cline', 'leonardo', 'fish'));
 
 ALTER TABLE composite_model_routes
     DROP CONSTRAINT IF EXISTS composite_model_routes_target_platform_check;
@@ -23,7 +24,8 @@ ALTER TABLE composite_model_routes
 ALTER TABLE composite_model_routes
     ADD CONSTRAINT composite_model_routes_target_platform_check
     CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok',
-                               'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'opencode_go'));
+                               'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'adobe', 'opencode_go',
+                               'typesafe', 'command_code', 'cline', 'leonardo', 'fish'));
 
 DO $$
 DECLARE

@@ -23,6 +23,26 @@ func TestDropPlatformCheckConstraintsMigration(t *testing.T) {
 	require.NotContains(t, sql, "DROP CONSTRAINT IF EXISTS channel_monitor_request_templates_provider_check")
 }
 
+func TestPlatformCheckTransitionMigrationsKeepAllPlatforms(t *testing.T) {
+	const platformSet = "'anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'adobe', 'opencode_go', 'typesafe', 'command_code', 'cline', 'leonardo', 'fish'"
+	for _, name := range []string{
+		"238_opencode_go_platform.sql",
+		"239_fork_platform_constraints_superset.sql",
+		"241_add_typesafe_platform.sql",
+		"241_platform_checks_include_opencode_go.sql",
+	} {
+		t.Run(name, func(t *testing.T) {
+			content, err := FS.ReadFile(name)
+			require.NoError(t, err)
+			sql := strings.Join(strings.Fields(string(content)), " ")
+			require.Contains(t, sql, "CHECK (platform IN ("+platformSet+")",
+				"quota CHECK must accept all current and historical values until migration 242 removes it")
+			require.Contains(t, sql, "CHECK (target_platform IN ("+platformSet+")",
+				"composite CHECK must accept all current and historical values until migration 242 removes it")
+		})
+	}
+}
+
 // Platform membership is validated against the application catalog after 242.
 // A later migration must not restore a database whitelist that can drift from it.
 func TestLaterMigrationsDoNotRestorePlatformCheckConstraints(t *testing.T) {

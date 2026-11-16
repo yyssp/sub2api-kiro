@@ -288,7 +288,7 @@ const platformCards = computed<FusedPlatformCard[]>(() => {
     if (hasAnyLimit(q)) platforms.add(platform)
   }
 
-  const PLATFORM_ORDER = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'cursor', 'grok', 'typesafe', 'kimi', 'zhipu', 'deepseek', 'minimax']
+  const PLATFORM_ORDER = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'cursor', 'grok', 'typesafe', 'kimi', 'zhipu', 'deepseek', 'minimax', 'leonardo', 'fish']
   const cards: FusedPlatformCard[] = []
 
   for (const p of platforms) {

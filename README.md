@@ -203,6 +203,8 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 - **Composite Groups** - Admin routing layer that resolves requested models to concrete providers for multi-provider groups ([Operator Guide](docs/COMPOSITE_GROUPS.md))
 - **External System Integration** - Embed external systems (e.g. ticketing) via iframe to extend the admin dashboard
 
+---
+
 ## Ecosystem
 
 Community projects that extend or integrate with Sub2API:
@@ -664,6 +666,11 @@ Or set `GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true` in the environment.
 Use `http_bridge` for client-WebSocket/upstream-HTTP operation when rolling out
 or mitigating upstream WebSocket issues.
 
+Use `ws_bridge` to send streaming HTTP `/v1/responses` requests upstream over
+pooled WebSocket connections as well. WebSocket clients behave exactly as in
+`ctx_pool`. Non-streaming requests, `/responses/*` subpaths (including compact),
+and first payloads above `http_bridge_threshold_bytes` stay on upstream HTTP.
+
 #### Force OpenAI upstream HTTP/SSE
 
 When an egress proxy or network repeatedly reconnects OpenAI Responses
@@ -916,9 +923,6 @@ export ANTHROPIC_AUTH_TOKEN="sk-xxx"
 Antigravity accounts support optional **hybrid scheduling**. When enabled, the general endpoints `/v1/messages` and `/v1beta/` will also route requests to Antigravity accounts.
 
 > **⚠️ Warning**: Anthropic Claude and Antigravity Claude **cannot be mixed within the same conversation context**. Use groups to isolate them properly.
-
----
-
 ## Project Structure
 
 ```

@@ -122,8 +122,20 @@
       </ClaudeResetCreditsCell>
     </template>
 
-    <!-- OpenAI OAuth accounts: single source from /usage API -->
-    <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
+    <!-- OpenAI Codex accounts: ticket status; usage querying remains OAuth-only. -->
+    <template v-else-if="account.platform === 'openai' && (account.type === 'oauth' || account.type === 'setup-token' || account.type === 'bps-oauth')">
+      <div v-if="codexTurnTickets.length" class="mb-1 space-y-0.5">
+        <div
+          v-for="ticket in codexTurnTickets"
+          :key="ticket.model"
+          class="flex items-center gap-1 text-[10px] leading-4"
+        >
+          <span class="truncate font-medium text-gray-500 dark:text-gray-400" :title="ticket.model">{{ shortCodexTicketModel(ticket.model) }}</span>
+          <span v-if="ticket.ready" class="text-emerald-600 dark:text-emerald-400">{{ formatCodexTicketRemaining(ticket.remaining_seconds) }}<span v-if="ticket.length" class="ml-0.5 opacity-70">({{ ticket.length }})</span></span>
+          <span v-else-if="ticket.blocked" class="text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.codexTurnTicketPaused') }}</span>
+          <span v-else class="text-gray-500">{{ t('admin.accounts.openai.codexTurnTicketMissing') }}</span>
+        </div>
+      </div>
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
           v-if="usageInfo?.five_hour"
@@ -192,6 +204,7 @@
         <div class="text-xs text-gray-400">-</div>
         <!-- Always allow on-demand upstream quota query, even before local data exists. -->
         <OpenAIQuotaResetCell
+          v-if="account.type === 'oauth'"
           :account="account"
           class="mt-1"
           @account-updated="handleQuotaResetAccountUpdated"
@@ -657,7 +670,7 @@
       </div>
     </template>
 
-    <!-- Kiro platform: show credits + bonus (仅直连 AWS;外部中转账号不展示 credits) -->
+    <!-- Kiro platform: show credits + welcome bonus + bonuses[] 赠送 + overage 摘要 (仅直连 AWS;外部中转账号不展示 credits) -->
     <template v-else-if="isKiroUsageAccount">
       <div v-if="loading" class="space-y-1.5">
         <div class="h-4 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
@@ -710,10 +723,174 @@
           </div>
         </div>
 
+        <div
+          v-for="(bonus, index) in kiroBonusEntries"
+          :key="`kiro-bonus-${index}-${bonus.bonus_code || bonus.name || ''}`"
+          class="space-y-1"
+        >
+          <div class="flex items-baseline justify-between gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+            <span class="font-medium tracking-[0.01em]">{{ bonus.name || t('admin.accounts.usageWindow.kiroBonusGift') }}</span>
+            <span class="font-semibold tabular-nums text-gray-700 dark:text-gray-200">{{ formatKiroAmount(bonus.current_usage) }} / {{ formatKiroAmount(bonus.usage_limit) }}</span>
+          </div>
+          <div class="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div class="h-full rounded-full bg-emerald-500 transition-all" :style="{ width: `${clampPercent(bonus.percentage_used)}%` }"></div>
+          </div>
+          <div v-if="kiroProgressMeta(bonus)" class="text-[9px] leading-tight text-gray-500 dark:text-gray-400">
+            {{ kiroProgressMeta(bonus) }}
+          </div>
+        </div>
+
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-500 dark:text-gray-400">
           <span v-if="kiroResetDisplay" class="inline-flex items-center gap-1">
             <span class="text-gray-400 dark:text-gray-500">{{ t('admin.accounts.usageWindow.kiroReset') }}</span>
             <span class="font-medium tabular-nums text-gray-600 dark:text-gray-300">{{ kiroResetDisplay }}</span>
+          </span>
+          <span v-if="kiroOverageSummary" class="inline-flex items-center gap-1 font-medium text-amber-700 dark:text-amber-300">
+            {{ kiroOverageSummary }}
+          </span>
+        </div>
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <button
+            type="button"
+            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
+            :disabled="activeQueryLoading"
+            @click="loadActiveUsage"
+          >
+            <svg
+              class="h-2.5 w-2.5"
+              :class="{ 'animate-spin': activeQueryLoading }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {{ t('admin.accounts.usageWindow.activeQuery') }}
+          </button>
+        </div>
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
+
+    <!-- Leonardo Cookie 号：Fast / Rollover 进度条（剩余 / 上限）+ Top-up 数字 + 重置日期 -->
+    <template v-else-if="isLeonardoUsageAccount">
+      <div v-if="loading" class="space-y-1.5">
+        <div class="h-4 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        <div class="space-y-1">
+          <div class="h-1.5 w-32 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-28 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="error" class="text-xs text-red-500">
+        {{ error }}
+      </div>
+      <div v-else-if="leonardoUsageAvailable" class="space-y-2" data-testid="leonardo-usage">
+        <div v-if="leonardoPlanLabel" class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span class="inline-flex items-center rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+            {{ leonardoPlanLabel }}
+          </span>
+        </div>
+
+        <div v-if="leonardoCredits" class="space-y-1" data-testid="leonardo-fast">
+          <div class="flex items-baseline justify-between gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+            <span class="font-medium tracking-[0.01em]">{{ leonardoCredits.fast_daily ? t('admin.accounts.usageWindow.leonardoFastDaily') : t('admin.accounts.usageWindow.leonardoFast') }}</span>
+            <span class="font-semibold tabular-nums text-gray-700 dark:text-gray-200">
+              {{ formatLeonardoTokens(leonardoCredits.subscription) }}<template v-if="leonardoFastLimit > 0"> / {{ formatLeonardoTokens(leonardoFastLimit) }}</template>
+            </span>
+          </div>
+          <div v-if="leonardoFastLimit > 0" class="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div :class="['h-full rounded-full transition-all', leonardoFastBarClass]" :style="{ width: `${leonardoFastPercent}%` }"></div>
+          </div>
+        </div>
+
+        <div v-if="leonardoShowRollover" class="space-y-1" data-testid="leonardo-rollover">
+          <div class="flex items-baseline justify-between gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+            <span class="font-medium tracking-[0.01em]">{{ t('admin.accounts.usageWindow.leonardoRollover') }}</span>
+            <span class="font-semibold tabular-nums text-gray-700 dark:text-gray-200">
+              {{ formatLeonardoTokens(leonardoCredits?.rollover) }}<template v-if="leonardoRolloverLimit > 0"> / {{ formatLeonardoTokens(leonardoRolloverLimit) }}</template>
+            </span>
+          </div>
+          <div v-if="leonardoRolloverLimit > 0" class="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div class="h-full rounded-full bg-sky-500 transition-all" :style="{ width: `${leonardoRolloverPercent}%` }"></div>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-500 dark:text-gray-400">
+          <span v-if="leonardoCredits" class="inline-flex items-center gap-1" data-testid="leonardo-topup">
+            <span class="text-gray-400 dark:text-gray-500">{{ t('admin.accounts.usageWindow.leonardoTopUp') }}</span>
+            <span class="font-medium tabular-nums text-gray-600 dark:text-gray-300">{{ formatLeonardoTokens(leonardoCredits.paid) }}</span>
+          </span>
+          <span v-if="leonardoResetDisplay" class="inline-flex items-center gap-1">
+            <span class="text-gray-400 dark:text-gray-500">{{ t('admin.accounts.usageWindow.leonardoReset') }}</span>
+            <span class="font-medium tabular-nums text-gray-600 dark:text-gray-300">{{ leonardoResetDisplay }}</span>
+          </span>
+        </div>
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <button
+            type="button"
+            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
+            :disabled="activeQueryLoading"
+            @click="loadActiveUsage"
+          >
+            <svg
+              class="h-2.5 w-2.5"
+              :class="{ 'animate-spin': activeQueryLoading }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {{ t('admin.accounts.usageWindow.activeQuery') }}
+          </button>
+        </div>
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
+
+    <!-- Fish token 号：钱包已用进度 + 每日出图窗口。中转号没有 Fish 钱包。 -->
+    <template v-else-if="isFishUsageAccount">
+      <div v-if="loading" class="space-y-1.5">
+        <div class="h-4 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        <div class="space-y-1">
+          <div class="h-1.5 w-32 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-28 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="error" class="text-xs text-red-500">
+        {{ error }}
+      </div>
+      <div v-else-if="fishUsageAvailable" class="space-y-2" data-testid="fish-usage">
+        <div v-if="fishPlanLabel" class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span class="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+            {{ fishPlanLabel }}
+          </span>
+        </div>
+
+        <div v-if="usageInfo?.fish_credits" class="space-y-1" data-testid="fish-credits">
+          <div class="flex items-baseline justify-between gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+            <span class="font-medium tracking-[0.01em]">{{ t('admin.accounts.usageWindow.fishCredits') }}</span>
+            <span class="font-semibold tabular-nums text-gray-700 dark:text-gray-200">{{ formatKiroAmount(usageInfo.fish_credits.current_usage) }} / {{ formatKiroAmount(usageInfo.fish_credits.usage_limit) }}</span>
+          </div>
+          <div class="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div class="h-full rounded-full bg-amber-500 transition-all" :style="{ width: `${fishCreditPercent}%` }"></div>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-500 dark:text-gray-400">
+          <span v-if="fishResetDisplay" class="inline-flex items-center gap-1">
+            <span class="text-gray-400 dark:text-gray-500">{{ t('admin.accounts.usageWindow.fishReset') }}</span>
+            <span class="font-medium tabular-nums text-gray-600 dark:text-gray-300">{{ fishResetDisplay }}</span>
           </span>
         </div>
         <div class="flex items-center gap-1.5 mt-0.5">
@@ -886,7 +1063,9 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  kiroUsageMeta: [meta: { plan_type?: string }]
+  kiroUsageMeta: [meta: { plan_type?: string; kiro_overages_enabled?: boolean }]
+  leonardoUsageMeta: [meta: { plan_type?: string }]
+  fishUsageMeta: [meta: { plan_type?: string }]
   'account-updated': [account: Account]
   'usage-loaded': [usage: AccountUsageInfo]
 }>()
@@ -938,12 +1117,16 @@ const showUsageWindows = computed(() => {
   if (props.account.platform === 'kiro') {
     return props.account.type === 'oauth' || isKiroDirectApiKeyAccount(props.account)
   }
+  // Fish token 号展示钱包与每日出图窗口；中转号按通用 API Key 展示今日统计。
+  if (props.account.platform === 'fish') {
+    return isFishUsageAccount.value
+  }
   // 多协议 API Key 供应商：apikey 账号也有滚动用量窗口（coding plan / 订阅）或余额，
   // 由 CNProviderQuotaCell / CNProviderBalanceCell 自行探测与展示。
   if (isMultiProtocolApiKeyPlatform(props.account.platform)) {
     return true
   }
-  return props.account.type === 'oauth' || props.account.type === 'setup-token'
+  return props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'bps-oauth'
 })
 
 const shouldFetchUsage = computed(() => {
@@ -964,7 +1147,15 @@ const shouldFetchUsage = computed(() => {
     return props.account.type === 'oauth'
   }
   if (props.account.platform === 'openai') {
+    return props.account.type === 'oauth' || props.account.type === 'bps-oauth'
+  }
+  // Leonardo Cookie 号查积分余额；中转号没有 Leonardo 用量。必须与
+  // isLeonardoUsageAccount 同口径，否则积分模板永远拿不到数据。
+  if (props.account.platform === 'leonardo') {
     return props.account.type === 'oauth'
+  }
+  if (props.account.platform === 'fish') {
+    return isFishUsageAccount.value
   }
   return false
 })
@@ -993,9 +1184,24 @@ const geminiUsageAvailable = computed(() => {
 })
 
 const hasOpenAIUsageFallback = computed(() => {
-  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
+  if (props.account.platform !== 'openai' || (props.account.type !== 'oauth' && props.account.type !== 'bps-oauth')) return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
 })
+
+const codexTurnTickets = computed(() => props.account.codex_turn_tickets ?? [])
+
+function shortCodexTicketModel(model: string) {
+  if (model === 'gpt-6-astra') return 'astra'
+  if (model === 'gpt-5.6-sol') return 'sol'
+  return model
+}
+
+function formatCodexTicketRemaining(seconds: number) {
+  const total = Math.max(0, Math.floor(seconds || 0))
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}m${String(s).padStart(2, '0')}s`
+}
 
 const openAISevenDayEstimatedTotalCost = computed(() => {
   const sevenDay = usageInfo.value?.seven_day
@@ -1629,25 +1835,79 @@ const isKiroUsageAccount = computed(() => {
     (props.account.type === 'oauth' || isKiroDirectApiKeyAccount(props.account))
 })
 
+// Leonardo 原生账号：展示积分余额；中转账号无 Leonardo 用量，按通用处理。
+const isLeonardoUsageAccount = computed(() =>
+  props.account.platform === 'leonardo' && props.account.type === 'oauth'
+)
+
+// Fish token 号（无 base_url）才有钱包与每日出图窗口。
+const isFishUsageAccount = computed(() => {
+  if (props.account.platform !== 'fish' || props.account.type !== 'apikey') return false
+  const baseURL = (props.account.credentials as { base_url?: unknown } | undefined)?.base_url
+  return typeof baseURL !== 'string' || baseURL.trim() === ''
+})
+
 const defaultUsageSource = computed<'passive' | 'active' | undefined>(() => {
-  if (isAnthropicOAuthOrSetupToken.value || isKiroUsageAccount.value) {
+  if (isAnthropicOAuthOrSetupToken.value || isKiroUsageAccount.value || isLeonardoUsageAccount.value || isFishUsageAccount.value) {
     return 'passive'
   }
   return undefined
 })
 
 const manualRefreshUsageSource = computed<'passive' | 'active' | undefined>(() => {
-  if (isKiroUsageAccount.value) {
+  if (isKiroUsageAccount.value || isLeonardoUsageAccount.value || isFishUsageAccount.value) {
     return 'active'
   }
   return defaultUsageSource.value
+})
+
+const leonardoUsageAvailable = computed(() =>
+  !!(usageInfo.value?.leonardo_credits || usageInfo.value?.leonardo_plan)
+)
+
+// Leonardo 积分池：上限来自后端的套餐常量表，未知套餐时为 0（只显示数字、不画进度条）。
+const leonardoCredits = computed(() => usageInfo.value?.leonardo_credits ?? null)
+const leonardoPlanLabel = computed(() =>
+  (usageInfo.value?.leonardo_plan_name || usageInfo.value?.leonardo_plan || '').trim()
+)
+const leonardoFastLimit = computed(() => leonardoCredits.value?.fast_limit ?? 0)
+const leonardoRolloverLimit = computed(() => leonardoCredits.value?.rollover_limit ?? 0)
+const leonardoPercent = (remaining?: number | null, limit?: number | null) =>
+  limit && limit > 0 ? clampPercent(((remaining ?? 0) / limit) * 100) : 0
+// 进度条按剩余比例画（与官网「剩余 / 上限」一致），越用越短。
+const leonardoFastPercent = computed(() =>
+  leonardoPercent(leonardoCredits.value?.subscription, leonardoFastLimit.value)
+)
+const leonardoFastBarClass = computed(() => {
+  if (leonardoFastPercent.value < 5) return 'bg-red-500'
+  if (leonardoFastPercent.value < 20) return 'bg-amber-500'
+  return 'bg-emerald-500'
+})
+const leonardoRolloverPercent = computed(() =>
+  leonardoPercent(leonardoCredits.value?.rollover, leonardoRolloverLimit.value)
+)
+// 免费套餐没有 Rollover Bank：容量与余额都为 0 时整行隐藏。
+const leonardoShowRollover = computed(() =>
+  !!leonardoCredits.value && (leonardoRolloverLimit.value > 0 || (leonardoCredits.value.rollover ?? 0) > 0)
+)
+const formatLeonardoTokens = (value?: number | null) =>
+  (value != null && Number.isFinite(value) ? value : 0).toLocaleString()
+const leonardoResetDisplay = computed(() => {
+  const raw = usageInfo.value?.leonardo_token_renewal
+  if (!raw) return ''
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleDateString()
 })
 
 const kiroUsageAvailable = computed(() => {
   return !!(
     usageInfo.value?.kiro_credit ||
     usageInfo.value?.kiro_bonus ||
-    usageInfo.value?.kiro_reset_at
+    usageInfo.value?.kiro_bonuses?.length ||
+    usageInfo.value?.kiro_overage ||
+    usageInfo.value?.kiro_reset_at ||
+    usageInfo.value?.kiro_overages_enabled
   )
 })
 
@@ -1661,9 +1921,57 @@ const syncKiroUsageMeta = (info?: AccountUsageInfo | null) => {
   ).trim()
 
   emit('kiroUsageMeta', {
+    ...(planType ? { plan_type: planType } : {}),
+    kiro_overages_enabled: info?.kiro_overages_enabled === true
+  })
+}
+
+// Leonardo 套餐与 Kiro 同源（用量接口），优先展示名（如 Ultimate），回退原始 plan 码。
+const syncLeonardoUsageMeta = (info?: AccountUsageInfo | null) => {
+  if (!isLeonardoUsageAccount.value) return
+
+  const planType = (
+    info?.leonardo_plan_name ||
+    info?.leonardo_plan ||
+    ''
+  ).trim()
+
+  emit('leonardoUsageMeta', {
     ...(planType ? { plan_type: planType } : {})
   })
 }
+
+const syncFishUsageMeta = (info?: AccountUsageInfo | null) => {
+  if (!isFishUsageAccount.value) return
+  const planType = (info?.fish_plan || '').trim()
+  emit('fishUsageMeta', {
+    ...(planType ? { plan_type: planType } : {})
+  })
+}
+
+const syncUsageMeta = (info?: AccountUsageInfo | null) => {
+  syncKiroUsageMeta(info)
+  syncLeonardoUsageMeta(info)
+  syncFishUsageMeta(info)
+}
+
+const fishUsageAvailable = computed(() =>
+  !!(usageInfo.value?.fish_credits || usageInfo.value?.fish_plan)
+)
+const fishCreditPercent = computed(() => clampPercent(usageInfo.value?.fish_credits?.percentage_used))
+const fishPlanLabel = computed(() => {
+  const plan = (usageInfo.value?.fish_plan || '').trim()
+  if (!plan) return ''
+  if (plan.toLowerCase() === 'free') return 'Free'
+  return plan
+})
+const fishResetDisplay = computed(() => {
+  const raw = usageInfo.value?.fish_reset_at
+  if (!raw) return ''
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleString()
+})
 
 const clampPercent = (value?: number | null) => {
   if (value == null || !Number.isFinite(value)) return 0
@@ -1689,19 +1997,45 @@ const kiroResetDisplay = computed(() => {
   return parsed.toLocaleDateString()
 })
 
-const kiroBonusMeta = computed(() => {
-  const bonus = usageInfo.value?.kiro_bonus
-  if (!bonus) return ''
-  if ((bonus.days_remaining ?? 0) > 0) {
-    return t('admin.accounts.usageWindow.kiroDaysLeft', { days: bonus.days_remaining })
+// Kiro 各额度池共用的 meta 行：优先剩余天数，回退到期日。
+const kiroProgressMeta = (
+  progress?: { days_remaining?: number; expiry_date?: string | null } | null
+) => {
+  if (!progress) return ''
+  if ((progress.days_remaining ?? 0) > 0) {
+    return t('admin.accounts.usageWindow.kiroDaysLeft', { days: progress.days_remaining })
   }
-  if (bonus.expiry_date) {
-    const parsed = new Date(bonus.expiry_date)
+  if (progress.expiry_date) {
+    const parsed = new Date(progress.expiry_date)
     if (!Number.isNaN(parsed.getTime())) {
       return `${t('admin.accounts.usageWindow.kiroExpires')} ${parsed.toLocaleDateString()}`
     }
   }
   return ''
+}
+
+const kiroBonusMeta = computed(() => kiroProgressMeta(usageInfo.value?.kiro_bonus))
+
+// bonuses[]（兑换/活动赠送）逐条展示。
+const kiroBonusEntries = computed(() => usageInfo.value?.kiro_bonuses ?? [])
+
+// overage（超刷）摘要：有超额用量或费用时展示，如「超额 2 ($0.08)」。
+const kiroOverageSummary = computed(() => {
+  const overage = usageInfo.value?.kiro_overage
+  if (!overage) return ''
+  const hasOverageCount = (overage.current_overages ?? 0) > 0
+  const hasCharges = (overage.overage_charges ?? 0) > 0
+  if (!hasOverageCount && !hasCharges) return ''
+
+  const parts: string[] = [t('admin.accounts.usageWindow.kiroOverage')]
+  if (hasOverageCount) {
+    parts.push(formatKiroAmount(overage.current_overages))
+  }
+  if (hasCharges) {
+    const symbol = overage.currency_symbol || overage.currency_code || ''
+    parts.push(`(${symbol}${(overage.overage_charges ?? 0).toFixed(2)})`)
+  }
+  return parts.join(' ')
 })
 
 const kiroRuntimeResetDisplay = computed(() => {
@@ -1743,7 +2077,9 @@ const kiroStatusBadgeLabel = computed(() => {
   if (usageInfo.value?.needs_reauth) return t('admin.accounts.needsReauth')
   if (isKiroProfileError.value) return t('admin.accounts.usageError')
   if (isKiroUsageForbidden.value) return t('admin.accounts.forbidden')
+  if (kiroQuotaState.value === 'overage_active') return t('admin.accounts.status.overageActive')
   if (kiroQuotaState.value === 'credits_exhausted') return t('admin.accounts.status.creditsExhausted')
+  if (kiroQuotaState.value === 'overage_exhausted') return t('admin.accounts.status.overageExhausted')
   return ''
 })
 
@@ -1754,7 +2090,8 @@ const kiroStatusToneClass = computed(() => {
   if (usageInfo.value?.needs_reauth) return 'text-orange-700 dark:text-orange-300'
   if (isKiroProfileError.value) return 'text-yellow-700 dark:text-yellow-300'
   if (isKiroUsageForbidden.value) return 'text-rose-700 dark:text-rose-300'
-  if (kiroQuotaState.value === 'credits_exhausted') {
+  if (kiroQuotaState.value === 'overage_active') return 'text-amber-700 dark:text-amber-300'
+  if (kiroQuotaState.value === 'credits_exhausted' || kiroQuotaState.value === 'overage_exhausted') {
     return 'text-red-700 dark:text-red-300'
   }
   return 'text-gray-600 dark:text-gray-300'
@@ -1767,6 +2104,9 @@ const kiroStatusHint = computed(() => {
   }
   if (kiroQuotaState.value === 'credits_exhausted' && kiroQuotaResetDisplay.value) {
     return t('admin.accounts.status.creditsExhaustedUntil', { time: kiroQuotaResetDisplay.value })
+  }
+  if (kiroQuotaState.value === 'overage_exhausted' && kiroQuotaResetDisplay.value) {
+    return t('admin.accounts.status.overageExhaustedUntil', { time: kiroQuotaResetDisplay.value })
   }
   return ''
 })
@@ -1795,7 +2135,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
     const cached = _usageCache.get(props.account.id)
     if (cached && Date.now() - cached.ts < USAGE_CACHE_TTL) {
       usageInfo.value = cached.data
-      syncKiroUsageMeta(cached.data)
+      syncUsageMeta(cached.data)
       loading.value = false
       return
     }
@@ -1811,7 +2151,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
     const result = await enqueueUsageRequest(props.account, fetchFn)
     if (!unmounted.value) {
       usageInfo.value = result
-      syncKiroUsageMeta(result)
+      syncUsageMeta(result)
       _usageCache.set(props.account.id, { data: result, ts: Date.now() })
     }
   } catch (e: any) {
@@ -1879,7 +2219,7 @@ const loadActiveUsage = async () => {
   try {
     const result = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
     usageInfo.value = result
-    syncKiroUsageMeta(result)
+    syncUsageMeta(result)
     _usageCache.set(props.account.id, { data: result, ts: Date.now() })
   } catch (e: any) {
     console.error('Failed to load active usage:', e)
@@ -2051,7 +2391,7 @@ watch(
 
 watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
-  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
+  if (props.account.platform !== 'openai' || (props.account.type !== 'oauth' && props.account.type !== 'bps-oauth')) return
 
   if (isBatchManaged.value) {
     requestParentBatchUsage({ force: true })

@@ -754,6 +754,10 @@ func defaultModelMappingForPlatform(platform string) map[string]string {
 		return domain.DefaultAntigravityModelMapping
 	case domain.PlatformKiro:
 		return domain.DefaultKiroModelMapping
+	case domain.PlatformLeonardo:
+		return domain.DefaultLeonardoModelMapping
+	case domain.PlatformFish:
+		return domain.DefaultFishModelMapping
 	default:
 		return nil
 	}
@@ -995,6 +999,11 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 }
 
 func (a *Account) isModelMappingSupported(requestedModel string) bool {
+	// BPS-only（bps-oauth）账号没有原生 Codex 通道：不具备 BPS 资格（free / 影子）时
+	// 不服务任何模型；其余按下方 model_mapping 判定，空映射只放行默认 BPS 模型。
+	if a.IsBPSOAuth() && !a.IsExcelBPSEnabled() {
+		return false
+	}
 	// 透传模式仅替换认证、模型语义完全交由上游决定，因此放行所有模型。
 	// 该短路必须在 model_mapping 判定之前：账号从"白名单模式"切换到透传后，
 	// credentials 里常残留旧的非空 model_mapping，若不在此放行，透传账号会被
@@ -1002,8 +1011,19 @@ func (a *Account) isModelMappingSupported(requestedModel string) bool {
 	if a.IsOpenAIPassthroughEnabled() {
 		return true
 	}
+	// Leonardo 只服务平台已实现的模型（首期仅 gpt-image-2），自定义映射也绕不过去。
+	if a.Platform == PlatformLeonardo {
+		return leonardoAccountSupportsModel(a, requestedModel)
+	}
+	// fish 同理：token 原生号与中转号都只承接 fish 公共名（gpt-image 家族）。
+	if a.Platform == PlatformFish {
+		return fishAccountSupportsModel(a, requestedModel)
+	}
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
+		if a.IsBPSOAuth() {
+			return isExcelBPSDefaultModel(requestedModel)
+		}
 		if a.IsOpenAIOAuth() {
 			return isOpenAIOAuthServableModel(requestedModel)
 		}
@@ -1016,7 +1036,14 @@ func (a *Account) isModelMappingSupported(requestedModel string) bool {
 		return true
 	}
 	normalized := normalizeRequestedModelForLookup(a.Platform, requestedModel)
-	return normalized != requestedModel && mappingSupportsRequestedModel(mapping, normalized)
+	if normalized != requestedModel && mappingSupportsRequestedModel(mapping, normalized) {
+		return true
+	}
+	if isKiroDirectModeAccount(a) {
+		_, ok := resolveKiroClaudeAlias(mapping, requestedModel)
+		return ok
+	}
+	return false
 }
 
 // GetMappedModel 获取映射后的模型名（支持通配符，最长优先匹配）。
@@ -1039,6 +1066,11 @@ func (a *Account) ResolveMappedModel(requestedModel string) (mappedModel string,
 	normalized := normalizeRequestedModelForLookup(a.Platform, requestedModel)
 	if normalized != requestedModel {
 		if mappedModel, matched := resolveRequestedModelInMapping(mapping, normalized); matched {
+			return mappedModel, true
+		}
+	}
+	if isKiroDirectModeAccount(a) {
+		if mappedModel, matched := resolveKiroClaudeAlias(mapping, requestedModel); matched {
 			return mappedModel, true
 		}
 	}
@@ -1539,6 +1571,11 @@ func (a *Account) IsOpenAIApiKey() bool {
 // 适用 openai、国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）与 OpenCode Go；
 // grok 走 GetGrokBaseURL，此处对 grok 返回 "" 以保持原有行为。
 func (a *Account) GetOpenAIBaseURL() string {
+	// Leonardo / fish 中转号借用 OpenAI Images 转发链路做分组兜底，必须返回它
+	// 自己的 base_url，否则会落到 api.openai.com。
+	if isLeonardoRelayAccount(a) || isFishRelayAccount(a) {
+		return strings.TrimRight(strings.TrimSpace(a.GetCredential("base_url")), "/")
+	}
 	if !a.IsOpenAI() && !a.IsMultiProtocolAPIKey() {
 		return ""
 	}
@@ -1769,7 +1806,7 @@ func (a *Account) GetOpenAIAccessToken() string {
 }
 
 func (a *Account) GetOpenAIRefreshToken() string {
-	if !a.IsOpenAIOAuth() {
+	if !a.IsOpenAIOAuthCredentialAccount() {
 		return ""
 	}
 	return a.GetCredential("refresh_token")
@@ -1880,6 +1917,9 @@ func (a *Account) GetOpenAIProtocolAPIKey() string {
 	if a == nil {
 		return ""
 	}
+	if isLeonardoRelayAccount(a) || isFishRelayAccount(a) {
+		return a.GetCredential("api_key")
+	}
 	if a.IsMultiProtocolAPIKey() {
 		if a.Type != AccountTypeAPIKey {
 			return ""
@@ -1896,15 +1936,19 @@ func (a *Account) GetOpenAIUserAgent() string {
 	return a.GetCredential("user_agent")
 }
 
+// GetChatGPTAccountID returns the ChatGPT workspace of an OpenAI subscription
+// credential (Codex OAuth, setup token or BPS-only). It identifies the account
+// only; callers that send ChatGPT headers gate on the native protocol
+// themselves (see openai_chatgpt_headers.go).
 func (a *Account) GetChatGPTAccountID() string {
-	if !a.IsOpenAIOAuthLike() {
+	if !a.IsOpenAIOAuthLike() && !a.IsBPSOAuth() {
 		return ""
 	}
 	return a.GetCredential("chatgpt_account_id")
 }
 
 func (a *Account) IsChatGPTAccountFedRAMP() bool {
-	if !a.IsOpenAIOAuthLike() || a.Credentials == nil {
+	if (!a.IsOpenAIOAuthLike() && !a.IsBPSOAuth()) || a.Credentials == nil {
 		return false
 	}
 	v, ok := a.Credentials["chatgpt_account_is_fedramp"]
@@ -2165,7 +2209,7 @@ func (a *Account) GetOpenAIOrganizationID() string {
 }
 
 func (a *Account) GetOpenAITokenExpiresAt() *time.Time {
-	if !a.IsOpenAIOAuth() {
+	if !a.IsOpenAIOAuthCredentialAccount() {
 		return nil
 	}
 	return a.GetCredentialAsTime("expires_at")
@@ -2212,13 +2256,27 @@ func (a *Account) IsOveragesEnabled() bool {
 	return false
 }
 
+const codexTelemetryEnabledExtraKey = "codex_telemetry_enabled"
+
+// IsCodexTelemetryEnabled reports whether this OpenAI OAuth account opted into
+// simulated Codex client telemetry. Missing or non-bool extra is off. Setup
+// tokens, API keys, Agent Identity, and other platforms cannot enable it.
+func (a *Account) IsCodexTelemetryEnabled() bool {
+	if a == nil || !a.IsOpenAIOAuth() || a.IsOpenAIAgentIdentity() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra[codexTelemetryEnabledExtraKey].(bool)
+	return ok && enabled
+}
+
 // IsOpenAIPassthroughEnabled 返回 OpenAI 账号是否启用"自动透传（仅替换认证）"。
 //
 // 新字段：accounts.extra.openai_passthrough。
 // 兼容字段：accounts.extra.openai_oauth_passthrough（历史 OAuth 开关）。
 // 字段缺失或类型不正确时，按 false（关闭）处理。
 func (a *Account) IsOpenAIPassthroughEnabled() bool {
-	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+	// BPS 转发始终应用账号映射，透传对 bps-oauth 不生效。
+	if a == nil || !a.IsOpenAI() || a.Extra == nil || a.IsBPSOAuth() {
 		return false
 	}
 	if enabled, ok := a.Extra["openai_passthrough"].(bool); ok {
@@ -2243,7 +2301,48 @@ func (a *Account) IsOpenAIPassthroughEnabled() bool {
 // 优先级：
 // 1. 按账号类型读取分类型字段
 // 2. 分类型字段缺失时，回退兼容字段
+// IsExcelBPSEnabled reports whether the account routes through the Excel
+// gateway (bps.openai.com). BPS is the only channel of a BPS-only (bps-oauth)
+// account, so it is always on for eligible accounts; the account's model
+// restriction decides what it serves. Free-plan accounts are never eligible.
+func (a *Account) IsExcelBPSEnabled() bool {
+	return excelBPSRouteEligible(a)
+}
+
+const ExcelBPSIgnoreEncryptedContentKey = "openai_excel_bps_ignore_encrypted_content"
+
+// IsExcelBPSIgnoreEncryptedContentEnabled opts into replacing ciphertext that
+// BPS cannot forward, such as sub-agent messages in an old Codex conversation,
+// with an omission notice instead of rejecting the whole request.
+func (a *Account) IsExcelBPSIgnoreEncryptedContentEnabled() bool {
+	if !a.IsExcelBPSEnabled() {
+		return false
+	}
+	enabled, _ := a.Extra[ExcelBPSIgnoreEncryptedContentKey].(bool)
+	return enabled
+}
+
+// IsExcelBPSCacheCreationAsInputEnabled controls local billing and downstream usage.
+// The setting has no effect unless this account uses the Excel/BPS protocol.
+func (a *Account) IsExcelBPSCacheCreationAsInputEnabled() bool {
+	if !a.IsExcelBPSEnabled() {
+		return false
+	}
+	enabled, _ := a.Extra["openai_excel_bps_cache_creation_as_input"].(bool)
+	return enabled
+}
+
+// IsExcelBPSEnabledForModel reports whether a request for this model routes
+// through BPS. Every model of an eligible BPS-only account does; which models
+// the account accepts at all is its model restriction (IsModelSupported).
+func (a *Account) IsExcelBPSEnabledForModel(requestedModel string) bool {
+	return a.IsExcelBPSEnabled()
+}
+
 func (a *Account) IsOpenAIResponsesWebSocketV2Enabled() bool {
+	if a.IsBPSOAuth() {
+		return false
+	}
 	if a == nil || !a.IsOpenAI() || a.Extra == nil {
 		return false
 	}
@@ -2273,6 +2372,7 @@ const (
 	OpenAIWSIngressModeCtxPool     = "ctx_pool"
 	OpenAIWSIngressModePassthrough = "passthrough"
 	OpenAIWSIngressModeHTTPBridge  = "http_bridge"
+	OpenAIWSIngressModeWSBridge    = "ws_bridge"
 )
 
 func normalizeOpenAIWSIngressMode(mode string) string {
@@ -2285,6 +2385,8 @@ func normalizeOpenAIWSIngressMode(mode string) string {
 		return OpenAIWSIngressModePassthrough
 	case OpenAIWSIngressModeHTTPBridge:
 		return OpenAIWSIngressModeHTTPBridge
+	case OpenAIWSIngressModeWSBridge:
+		return OpenAIWSIngressModeWSBridge
 	case OpenAIWSIngressModeShared:
 		return OpenAIWSIngressModeShared
 	case OpenAIWSIngressModeDedicated:
@@ -2304,7 +2406,7 @@ func normalizeOpenAIWSIngressDefaultMode(mode string) string {
 	return OpenAIWSIngressModeCtxPool
 }
 
-// ResolveOpenAIResponsesWebSocketV2Mode 返回账号在 WSv2 ingress 下的有效模式（off/ctx_pool/passthrough）。
+// ResolveOpenAIResponsesWebSocketV2Mode 返回账号在 WSv2 ingress 下的有效模式（off/ctx_pool/passthrough/http_bridge/ws_bridge）。
 //
 // 优先级：
 // 1. 分类型 mode 新字段（string）
@@ -2431,12 +2533,62 @@ func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
 	return ok && enabled
 }
 
+// CreditUnitPriceUSD returns the account-level USD price per upstream credit used
+// for display-only cost estimates (Kiro: extra.kiro_credit_unit_price_usd, Leonardo:
+// extra.leonardo_credit_unit_price_usd). Unset, non-numeric or non-positive values
+// yield 0.
+func (a *Account) CreditUnitPriceUSD() float64 {
+	if a == nil || a.Extra == nil {
+		return 0
+	}
+	var key string
+	switch a.Platform {
+	case PlatformKiro:
+		key = "kiro_credit_unit_price_usd"
+	case PlatformLeonardo:
+		key = "leonardo_credit_unit_price_usd"
+	default:
+		return 0
+	}
+	var value float64
+	switch v := a.Extra[key].(type) {
+	case float64:
+		value = v
+	case float32:
+		value = float64(v)
+	case int:
+		value = float64(v)
+	case int64:
+		value = float64(v)
+	case json.Number:
+		value, _ = v.Float64()
+	case string:
+		value, _ = strconv.ParseFloat(strings.TrimSpace(v), 64)
+	}
+	if math.IsNaN(value) || math.IsInf(value, 0) || value <= 0 {
+		return 0
+	}
+	return value
+}
+
 // ValidateKiroCreditUnitPriceFromExtra rejects invalid account-level Kiro credit pricing.
 func ValidateKiroCreditUnitPriceFromExtra(extra map[string]any) error {
+	return validateCreditUnitPriceFromExtra(extra, "kiro_credit_unit_price_usd")
+}
+
+// ValidateLeonardoCreditUnitPriceFromExtra rejects invalid account-level Leonardo
+// credit pricing (USD per Leonardo credit; display-only today-stats estimate).
+func ValidateLeonardoCreditUnitPriceFromExtra(extra map[string]any) error {
+	return validateCreditUnitPriceFromExtra(extra, "leonardo_credit_unit_price_usd")
+}
+
+// validateCreditUnitPriceFromExtra checks extra[key] is a finite number >= 0 and
+// normalizes it to float64 in place; a missing or nil key is accepted.
+func validateCreditUnitPriceFromExtra(extra map[string]any, key string) error {
 	if extra == nil {
 		return nil
 	}
-	raw, ok := extra["kiro_credit_unit_price_usd"]
+	raw, ok := extra[key]
 	if !ok || raw == nil {
 		return nil
 	}
@@ -2454,22 +2606,22 @@ func ValidateKiroCreditUnitPriceFromExtra(extra map[string]any) error {
 	case json.Number:
 		parsed, err := v.Float64()
 		if err != nil {
-			return fmt.Errorf("kiro_credit_unit_price_usd must be a number")
+			return fmt.Errorf("%s must be a number", key)
 		}
 		value = parsed
 	case string:
 		parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
 		if err != nil {
-			return fmt.Errorf("kiro_credit_unit_price_usd must be a number")
+			return fmt.Errorf("%s must be a number", key)
 		}
 		value = parsed
 	default:
-		return fmt.Errorf("kiro_credit_unit_price_usd must be a number")
+		return fmt.Errorf("%s must be a number", key)
 	}
 	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
-		return fmt.Errorf("kiro_credit_unit_price_usd must be a finite number >= 0")
+		return fmt.Errorf("%s must be a finite number >= 0", key)
 	}
-	extra["kiro_credit_unit_price_usd"] = value
+	extra[key] = value
 	return nil
 }
 

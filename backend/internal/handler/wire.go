@@ -52,12 +52,14 @@ func ProvideAdminHandlers(
 	auditLogHandler *admin.AuditLogHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
+	settingService *service.SettingService,
 	cursorOAuthService *service.CursorOAuthService,
 	opencodeGoUsage *service.OpenCodeGoUsageService,
 	claudeResetCredits *service.ClaudeResetCreditService,
 ) *AdminHandlers {
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
+	accountHandler.SetCodexTicketSettings(settingService)
 	accountHandler.SetCursorOAuthService(cursorOAuthService)
 	accountHandler.SetOpenCodeGoUsageService(opencodeGoUsage)
 	accountHandler.SetClaudeResetCreditService(claudeResetCredits)
@@ -119,6 +121,8 @@ func ProvideGatewayHandler(
 	promptRuleService *service.PromptRuleService,
 	contentModerationService *service.ContentModerationService,
 	userMsgQueueService *service.UserMessageQueueService,
+	leonardoImageService *service.LeonardoImageService,
+	fishImageService *service.FishImageService,
 	cfg *config.Config,
 	settingService *service.SettingService,
 	coordinator *securityaudit.Coordinator,
@@ -126,7 +130,8 @@ func ProvideGatewayHandler(
 ) *GatewayHandler {
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
-		errorPassthroughService, promptRuleService, contentModerationService, userMsgQueueService, cfg, settingService)
+		errorPassthroughService, promptRuleService, contentModerationService, userMsgQueueService,
+		leonardoImageService, fishImageService, cfg, settingService)
 	h.securityAuditCoordinator = coordinator
 	h.geminiCachedContentService = geminiCachedContentService
 	return h

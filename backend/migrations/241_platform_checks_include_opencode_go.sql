@@ -1,9 +1,9 @@
--- 统一四处平台/供应商 CHECK 约束为全部 12 个平台。
+-- 统一配额/组合路由平台 CHECK 为当前完整平台全集。
 --
 -- 迁移按文件名排序执行：238_opencode_go_platform 先于 238_restore_kiro_platform、
 -- 239_add_cursor_platform 运行，而后两者各自用 DROP + 重建写入不含 opencode_go 的列表，
--- 新库的约束终态因此缺 opencode_go —— 与 ent schema、service.AllowedQuotaPlatforms 不一致，
--- opencode_go 的配额行、composite 路由、渠道监控都会被 Postgres 拒绝。
+-- 新库约束终态因此缺 opencode_go。保留完整平台全集，避免过渡阶段拒绝已有平台行；
+-- 242 随后移除这两项 CHECK。
 --
 -- 写法沿用 227/229/238/239：DROP IF EXISTS 后重建超集约束，存量行瞬时校验通过。
 -- 列表取 ent schema 的枚举终态。
@@ -14,7 +14,8 @@ ALTER TABLE user_platform_quotas
 ALTER TABLE user_platform_quotas
     ADD CONSTRAINT user_platform_quotas_platform_check
     CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok',
-                        'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'opencode_go'));
+                        'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'adobe', 'opencode_go',
+                        'typesafe', 'command_code', 'cline', 'leonardo', 'fish'));
 
 ALTER TABLE composite_model_routes
     DROP CONSTRAINT IF EXISTS composite_model_routes_target_platform_check;
@@ -22,7 +23,8 @@ ALTER TABLE composite_model_routes
 ALTER TABLE composite_model_routes
     ADD CONSTRAINT composite_model_routes_target_platform_check
     CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok',
-                               'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'opencode_go'));
+                               'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'adobe', 'opencode_go',
+                               'typesafe', 'command_code', 'cline', 'leonardo', 'fish'));
 
 ALTER TABLE channel_monitors
     DROP CONSTRAINT IF EXISTS channel_monitors_provider_check;

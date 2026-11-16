@@ -83,6 +83,9 @@ type GatewayHandler struct {
 	geminiCachedContentService *service.GeminiCachedContentService
 	concurrencyHelper          *ConcurrencyHelper
 	userMsgQueueHelper         *UserMsgQueueHelper
+	leonardoImageService       *service.LeonardoImageService
+	fishImageService           *service.FishImageService
+	imageLimiter               *imageConcurrencyLimiter
 	maxAccountSwitches         int
 	maxAccountSwitchesGemini   int
 	cfg                        *config.Config
@@ -105,6 +108,8 @@ func NewGatewayHandler(
 	promptRuleService *service.PromptRuleService,
 	contentModerationService *service.ContentModerationService,
 	userMsgQueueService *service.UserMessageQueueService,
+	leonardoImageService *service.LeonardoImageService,
+	fishImageService *service.FishImageService,
 	cfg *config.Config,
 	settingService *service.SettingService,
 ) *GatewayHandler {
@@ -142,6 +147,9 @@ func NewGatewayHandler(
 		contentModerationService:  contentModerationService,
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
 		userMsgQueueHelper:        umqHelper,
+		leonardoImageService:      leonardoImageService,
+		fishImageService:          fishImageService,
+		imageLimiter:              sharedImageConcurrencyLimiter,
 		maxAccountSwitches:        maxAccountSwitches,
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
@@ -1207,6 +1215,12 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
 		platform = forcedPlatform
 	}
+	// A group left on a removed platform serves nothing; advertise nothing
+	// instead of falling through to the Claude defaults below.
+	if platform != "" && !domain.IsGroupPlatform(platform) {
+		writeModelsList(c, platform, []string{})
+		return
+	}
 
 	if platform == service.PlatformOpenAI && apiKey != nil && apiKey.Group != nil &&
 		apiKey.Group.Platform == service.PlatformOpenAI && apiKey.Group.CodexModelsManifestConfig.Enabled {
@@ -1351,7 +1365,14 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	models := make([]string, 0)
 	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
 	for _, platform := range domain.CompositePrecedencePlatformIDs() {
+		// TypeSafe 仅经 /v1/systemone 提供服务，LLM 客户端目录按需排除。
 		if platform == service.PlatformTypeSafe && !includeSystemOne {
+			continue
+		}
+		// Kiro is omitted on purpose: its model names collide with Anthropic/OpenAI
+		// and cannot be inferred by DetectModelPlatform. Explicit composite_model_routes
+		// rows still surface kiro models via GetCompositeRouteModels below.
+		if platform == service.PlatformKiro {
 			continue
 		}
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
@@ -1554,6 +1575,10 @@ func defaultModelIDsForPlatform(platform string) []string {
 			ids = append(ids, model.ID)
 		}
 		return ids
+	case service.PlatformLeonardo:
+		return service.LeonardoModelIDs()
+	case service.PlatformFish:
+		return domain.FishModelNames()
 	case service.PlatformKiro:
 		ids := make([]string, 0, len(kiro.DefaultModels))
 		for _, model := range kiro.DefaultModels {
@@ -1579,6 +1604,11 @@ func defaultModelIDsForPlatform(platform string) []string {
 			// /v1/systemone, so the static fallback never advertises it to LLM
 			// clients. compositeAvailableModels lists it when the group can serve it.
 			if concretePlatform == service.PlatformTypeSafe {
+				continue
+			}
+			// Kiro is deliberately skipped as well: its claude-*/gpt-* model names
+			// collide with Anthropic/OpenAI and cannot be inferred by DetectModelPlatform.
+			if concretePlatform == service.PlatformKiro {
 				continue
 			}
 			for _, id := range defaultModelIDsForPlatform(concretePlatform) {

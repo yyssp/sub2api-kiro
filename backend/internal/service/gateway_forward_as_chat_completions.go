@@ -70,7 +70,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 			mappedModel = normalized
 		}
 	}
-	if err := validateClaude55Request(body, mappedModel); err != nil {
+	if err := validateClaude55RequestForAccount(body, account, mappedModel); err != nil {
 		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	}
 	cachePlan := prepareCachePlanForContext(
 		ctx, c, account, group, body, mappedModel, "openai_chat_completions",
-		estimateOpenAIChatCompletionsInputTokens(ctx, body),
+		estimateOpenAIChatCompletionsInputTokensWithAlgorithm(ctx, s.kiroMeteringAlgorithm(ctx), body),
 	)
 
 	// 6. Apply Claude Code mimicry for OAuth accounts.
@@ -135,6 +135,9 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, anthropicBody, mappedModel)
 		resp, _, err = s.openKiroAnthropicStreamResponse(ctx, account, parsed, anthropicBody, mappedModel, originalModel, c.Request.Header, group, cachePlan)
 		if err != nil {
+			if failoverErr := kiroFailoverFromOpenErr(c, account, err); failoverErr != nil {
+				return nil, failoverErr
+			}
 			// behavior=reject 时请求没发出去，不能报成上游故障。见 respondKiroPayloadTooLarge。
 			if weight, limit, ok := kiroPayloadTooLargeDetail(err); ok {
 				writeGatewayCCError(c, http.StatusBadRequest, "invalid_request_error",
@@ -189,6 +192,8 @@ func (s *GatewayService) ForwardAsChatCompletions(
 				UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
 			})
 		}
+		reasoningEffort = NormalizeClaudeOutputEffort(gjson.GetBytes(forwardedBody, "output_config.effort").String())
+		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, mappedModel)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -225,6 +230,12 @@ func (s *GatewayService) ForwardAsChatCompletions(
 			}
 		}
 
+		if account.Platform == PlatformKiro {
+			if fixed, ok := kiroContextLengthClientMessage(resp.StatusCode, respBody); ok {
+				writeGatewayCCError(c, http.StatusBadRequest, "invalid_request_error", fixed)
+				return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
+			}
+		}
 		writeGatewayCCError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", upstreamMsg)
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
@@ -239,12 +250,20 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		var sseErr *sseStreamErrorEventError
 		switch {
 		case errors.As(handleErr, &sseErr):
-			return nil, s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, mappedModel, c.Writer.Size() != writerSizeBeforeStream)
+			outputStarted := c.Writer.Size() != writerSizeBeforeStream
+			if kiroResult, handled, kiroErr := s.handleKiroStreamErrorEvent(ctx, c, account, resp, anthropicBody, originalModel, mappedModel, mappedModel, startTime, sseErr.RawData, outputStarted, writeKiroCCError); handled {
+				return kiroResult, kiroErr
+			}
+			return nil, s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, mappedModel, outputStarted)
 		case errors.Is(handleErr, errAnthropicNativeStreamIdle) && s.rateLimitService != nil:
 			s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
 		}
 	} else {
 		result, handleErr = s.handleCCBufferedFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
+		if exc := kiroUpstreamExceptionFromError(handleErr); exc != nil {
+			// 非流式客户端还没收到任何字节：与 /v1/messages 非流式一致，按 Kiro HTTP 错误处理。
+			return nil, s.handleKiroUpstreamException(ctx, c, account, mappedModel, anthropicBody, exc, resp.Header, writeKiroCCError)
+		}
 	}
 
 	return result, handleErr
@@ -368,6 +387,10 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	streamStatus.readErr = scanner.Err()
 	if failure := streamStatus.failure(); failure != nil {
 		_ = resp.Body.Close()
+		if kiroUpstreamExceptionFromError(failure.err) != nil {
+			// Kiro 流内异常：不写响应、不计费，由调用方按 Kiro HTTP 错误处理（换号或回 4xx）。
+			return nil, failure.err
+		}
 		writeGatewayCCError(c, http.StatusBadGateway, "server_error", failure.message)
 		return &ForwardResult{
 			RequestID: requestID, UpstreamHeaders: resp.Header, Usage: usage,

@@ -36,7 +36,7 @@ func TestToolResultImageIsAttachedToUserMessage(t *testing.T) {
 	require.Equal(t, testPNGBase64, images.Get("0.source.bytes").String())
 
 	text := gjson.GetBytes(res.Payload, currentCtx+".userInputMessageContext.toolResults.0.content.0.text").String()
-	require.Equal(t, kiroToolResultImageAttached, text)
+	require.Equal(t, kiroToolResultImageOnlyText, text)
 }
 
 func TestToolResultDocumentAndSearchResultRenderAsText(t *testing.T) {

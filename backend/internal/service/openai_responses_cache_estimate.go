@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/anthropictokenizer"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 )
 
@@ -18,28 +19,32 @@ import (
 // Responses block flattener so the cache plan receives a realistic token
 // baseline before read/write shaping.
 func estimateOpenAIResponsesInputTokens(ctx context.Context, body []byte) int {
+	return estimateOpenAIResponsesInputTokensWithAlgorithm(ctx, anthropictokenizer.AlgorithmOfficial, body)
+}
+
+func estimateOpenAIResponsesInputTokensWithAlgorithm(ctx context.Context, alg anthropictokenizer.Algorithm, body []byte) int {
 	if len(body) == 0 {
 		return 0
 	}
 
 	var req apicompat.ResponsesRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return estimateKiroInputTokens(ctx, body)
+		return estimateKiroInputTokens(ctx, alg, body)
 	}
 
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return estimateKiroInputTokens(ctx, body)
+		return estimateKiroInputTokens(ctx, alg, body)
 	}
 
 	blocks := flattenResponsesCacheBlocks(ctx, payload)
 	if len(blocks) == 0 {
-		return estimateKiroInputTokens(ctx, body)
+		return estimateKiroInputTokens(ctx, alg, body)
 	}
 
 	effectiveTools, err := apicompat.EffectiveResponsesTools(&req)
 	if err != nil {
-		return estimateKiroInputTokens(ctx, body)
+		return estimateKiroInputTokens(ctx, alg, body)
 	}
 
 	return countKiroResponsesInputTokens(payload, blocks, len(effectiveTools))

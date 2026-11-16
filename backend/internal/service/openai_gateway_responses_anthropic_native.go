@@ -64,7 +64,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	clientStream := responsesReq.Stream
 	prepareCachePlanForContext(
 		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
-		"openai_responses", estimateOpenAIResponsesInputTokens(ctx, body),
+		"openai_responses", estimateOpenAIResponsesInputTokensWithAlgorithm(ctx, s.kiroMeteringAlgorithm(ctx), body),
 	)
 
 	// 3. Convert Responses → Anthropic

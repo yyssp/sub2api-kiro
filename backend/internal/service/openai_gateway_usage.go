@@ -179,7 +179,17 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	// OpenAI input_tokens 是总输入，包含缓存读取和缓存写入明细。
 	// 将三类 token 拆成互斥桶，避免缓存写入同时按普通输入和 cache_write 重复计费。
-	actualInputTokens := result.Usage.InputTokens - result.Usage.CacheReadInputTokens - result.Usage.CacheCreationInputTokens
+	cacheCreationTokens := result.Usage.CacheCreationInputTokens
+	cacheCreation30mTokens := result.Usage.CacheCreation30mInputTokens
+	cacheCreation12hTokens := result.Usage.CacheCreation12hInputTokens
+	if account.IsExcelBPSCacheCreationAsInputEnabled() && result.UpstreamEndpoint == "/basispoints/api/responses" {
+		// Total input already includes cache creation. Retain those tokens in the
+		// ordinary input bucket without changing the original upstream usage.
+		cacheCreationTokens = 0
+		cacheCreation30mTokens = 0
+		cacheCreation12hTokens = 0
+	}
+	actualInputTokens := result.Usage.InputTokens - result.Usage.CacheReadInputTokens - cacheCreationTokens
 	if actualInputTokens < 0 {
 		actualInputTokens = 0
 	}
@@ -190,9 +200,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageInputTokens:       max(result.Usage.ImageInputTokens-result.Usage.ImageCacheReadTokens, 0),
 		ImageCacheReadTokens:   result.Usage.ImageCacheReadTokens,
 		OutputTokens:           result.Usage.OutputTokens,
-		CacheCreationTokens:    result.Usage.CacheCreationInputTokens,
-		CacheCreation30mTokens: result.Usage.CacheCreation30mInputTokens,
-		CacheCreation12hTokens: result.Usage.CacheCreation12hInputTokens,
+		CacheCreationTokens:    cacheCreationTokens,
+		CacheCreation30mTokens: cacheCreation30mTokens,
+		CacheCreation12hTokens: cacheCreation12hTokens,
 		CacheReadTokens:        result.Usage.CacheReadInputTokens,
 		ImageOutputTokens:      result.Usage.ImageOutputTokens,
 	}
@@ -239,6 +249,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 	}
 	longContextBillingGate := openAILongContextBillingGate(billingAccount)
+	imagePlatform := imageBillingPlatform(account)
 	modelLongContextExempt := openAISubscriptionLongContextExempt(billingAccount, result)
 	cost, err = s.calculateOpenAIRecordUsageCost(
 		ctx,
@@ -254,6 +265,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		longContextBillingGate,
 		modelLongContextExempt,
 		pricingAt,
+		imagePlatform,
 	)
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
@@ -287,6 +299,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
 				ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
 				videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingGate, modelLongContextExempt, pricingAt,
+				imagePlatform,
 			)
 			// 基线定价源以 baselineBillingModel 为准：它正是 calculateOpenAIRecordUsageCost
 			// 内部做渠道定价判断时使用的模型，且"首候选有渠道价"必然意味着首候选就是实际
@@ -319,6 +332,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			longContextBillingGate,
 			modelLongContextExempt,
 			pricingAt,
+			imagePlatform,
 		)
 		if standardErr != nil && !isUsagePricingUnavailableError(standardErr) {
 			return standardErr
@@ -425,7 +439,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
 		usageLog.VideoDurationSeconds = &videoDurationSeconds
 	}
-	if account.Platform == PlatformKiro && result.Usage.KiroCredits > 0 {
+	// 上游积分（kiro_credits 列）：Kiro 与 Leonardo Cookie 号记录；Leonardo 中转号
+	// 走 OpenAI 兼容上游，没有 Leonardo 积分。
+	if (account.Platform == PlatformKiro || (account.Platform == PlatformLeonardo && account.Type == AccountTypeOAuth)) &&
+		result.Usage.KiroCredits > 0 {
 		kiroCredits := result.Usage.KiroCredits
 		usageLog.KiroCredits = &kiroCredits
 	}
@@ -579,9 +596,10 @@ func openAILongContextBillingGate(account *Account) *bool {
 
 // openAISubscriptionLongContextExempt 按实际凭据和最终发送模型判断订阅豁免。
 // GPT-6.1 Sol / Terra 的订阅请求不再收取模型长上下文附加费；API Key 仍使用 API 价卡。
+// BPS OAuth 账号消耗的是同一份 ChatGPT 订阅，同样豁免。
 // 使用发送模型，避免客户别名、渠道计费模型或响应模型计费切换改变上游订阅规则。
 func openAISubscriptionLongContextExempt(account *Account, result *OpenAIForwardResult) bool {
-	if !account.IsOpenAIOAuthLike() || result == nil {
+	if (!account.IsOpenAIOAuthLike() && !account.IsBPSOAuth()) || result == nil {
 		return false
 	}
 	model := strings.TrimSpace(result.UpstreamModel)
@@ -605,6 +623,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	longContextBillingGate *bool,
 	modelLongContextExempt bool,
 	pricingAt time.Time,
+	platform string,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
 	if result != nil && result.WebSearchCalls > 0 {
@@ -638,10 +657,10 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		// 分组显式开启按张计费且来自图片端点时强制走图片计费；否则渠道 token 定价优先。
 		// 混合的 Responses/Chat/WS 请求即使产出了图片，也不能因开关丢失文本 token 费用。
 		if imageCountBillingApplies(apiKey, result.ImageEndpoint) {
-			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
+			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier, platform), nil
 		}
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
-			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
+			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier, platform), nil
 		}
 	}
 
@@ -786,6 +805,7 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	apiKey *APIKey,
 	result *OpenAIForwardResult,
 	multiplier float64,
+	platform string,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
@@ -804,13 +824,13 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	}
 	groupConfig := imagePriceConfigFromAPIKey(apiKey)
 	if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
-		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+		return s.billingService.CalculateImageCostWithPlatform(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier, platform)
 	}
 	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
 		apiKey = refreshed
 		groupConfig = imagePriceConfigFromAPIKey(apiKey)
 		if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
-			return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+			return s.billingService.CalculateImageCostWithPlatform(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier, platform)
 		}
 	}
 	if resolved != nil && resolved.Source == PricingSourceChannel &&
@@ -834,7 +854,7 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 		logger.LegacyPrintf("service.openai_gateway", "Calculate image channel cost failed: %v", err)
 	}
 
-	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+	return s.billingService.CalculateImageCostWithPlatform(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier, platform)
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIVideoCost(

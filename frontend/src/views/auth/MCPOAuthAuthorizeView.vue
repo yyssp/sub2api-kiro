@@ -41,12 +41,30 @@
         <p v-if="authStore.user?.email" class="break-all text-sm text-gray-600 dark:text-gray-300">{{ t('mcp.signedInAs', { email: authStore.user.email }) }}</p>
         <div>
           <label for="mcp-consent-scope" class="input-label">{{ t('mcp.scope') }}</label>
-          <Select id="mcp-consent-scope" v-model="scope" :options="scopeOptions" :searchable="false" :disabled="submitting" aria-describedby="mcp-scope-hint" />
+          <Select
+            id="mcp-consent-scope"
+            v-model="scope"
+            :options="scopeOptions"
+            :searchable="false"
+            :disabled="submitting"
+            :aria-label="t('mcp.scope')"
+            aria-describedby="mcp-scope-hint"
+            data-testid="scope-select"
+          />
           <p id="mcp-scope-hint" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ scope === 'admin' ? t('mcp.adminScopeHint') : t('mcp.userScopeHint') }}</p>
         </div>
         <div>
           <label for="mcp-consent-permissions" class="input-label">{{ t('mcp.permissions') }}</label>
-          <Select id="mcp-consent-permissions" v-model="readOnly" :options="permissionOptions" :searchable="false" :disabled="submitting" aria-describedby="mcp-permissions-hint" />
+          <Select
+            id="mcp-consent-permissions"
+            v-model="readOnly"
+            :options="permissionOptions"
+            :searchable="false"
+            :disabled="submitting"
+            :aria-label="t('mcp.permissions')"
+            aria-describedby="mcp-permissions-hint"
+            data-testid="permissions-select"
+          />
           <p id="mcp-permissions-hint" class="mt-2 text-xs" :class="readOnly ? 'text-gray-500 dark:text-gray-400' : 'text-amber-700 dark:text-amber-400'">{{ readOnly ? t('mcp.readOnlyHint') : t('mcp.readWriteHint') }}</p>
           <p v-if="scope === 'admin' && !readOnly" data-testid="admin-write-hint" class="mt-1 text-xs text-amber-700 dark:text-amber-400">{{ t('mcp.adminWriteHint') }}</p>
         </div>
@@ -94,7 +112,6 @@ const permissionOptions = computed(() => [
 let authorization: MCPAuthorization | null = null
 let generation = 0
 const redirectOrigin = computed(() => consent.value ? new URL(consent.value.redirect_uri).origin : '')
-
 function errorMessage(error: unknown, fallback: string): string {
   const message = (error as { message?: unknown } | null)?.message
   return typeof message === 'string' && message ? message : fallback

@@ -145,6 +145,41 @@ describe('AccountUsageCell', () => {
     })
   })
 
+  it.each(['oauth', 'setup-token'] as const)('renders Codex ticket status for OpenAI %s accounts', async (type) => {
+    getUsage.mockResolvedValue({})
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: type === 'oauth' ? 9701 : 9702,
+          platform: 'openai',
+          type,
+          codex_turn_tickets: [
+            { model: 'gpt-6-astra', ready: true, remaining_seconds: 2520, blocked: false },
+            { model: 'gpt-5.6-sol', ready: false, remaining_seconds: 0, blocked: true },
+            { model: 'custom-model', ready: false, remaining_seconds: 0, blocked: false },
+          ],
+        }),
+      },
+      global: { stubs: {
+        OpenAIQuotaResetCell: { template: '<div data-test="quota-reset" />' },
+        UsageProgressBar: true,
+        AccountQuotaInfo: true,
+      } },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('42m00s')
+    expect(wrapper.text()).toContain('admin.accounts.openai.codexTurnTicketPaused')
+    expect(wrapper.text()).toContain('admin.accounts.openai.codexTurnTicketMissing')
+    if (type === 'setup-token') {
+      expect(getUsage).not.toHaveBeenCalled()
+      expect(wrapper.find('[data-test="quota-reset"]').exists()).toBe(false)
+    }
+    await wrapper.setProps({ account: { ...wrapper.props('account'), codex_turn_tickets: [] } })
+    expect(wrapper.text()).not.toContain('codexTurnTicket')
+    expect(wrapper.text()).not.toContain('42m00s')
+    wrapper.unmount()
+  })
+
   it('keeps cached Claude quota visible while a replacement batch is loading', async () => {
     const requestBatchedUsage = vi.fn()
     const wrapper = mount(AccountUsageCell, {
@@ -1166,7 +1201,8 @@ describe('AccountUsageCell', () => {
     expect(getUsage).toHaveBeenCalledWith(3001, 'passive', false)
     expect(wrapper.emitted('kiroUsageMeta')?.[0]).toEqual([
       {
-        plan_type: 'KIRO PRO+'
+        plan_type: 'KIRO PRO+',
+        kiro_overages_enabled: false
       }
     ])
     expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroCredits')
@@ -1175,6 +1211,263 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('25 / 500')
     expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroDaysLeft')
     expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroReset')
+  })
+
+  it('Kiro OAuth 会展示 overage 摘要并回传超刷开关', async () => {
+    const account = makeAccount({
+      id: 3003,
+      platform: 'kiro',
+      type: 'oauth',
+      extra: {},
+      credentials: {}
+    })
+
+    getUsage.mockResolvedValue({
+      source: 'passive',
+      kiro_subscription_name: 'KIRO PRO+',
+      kiro_overages_enabled: true,
+      kiro_credit: {
+        current_usage: 125,
+        usage_limit: 2000,
+        percentage_used: 6.25,
+      },
+      kiro_bonus: {
+        current_usage: 25,
+        usage_limit: 500,
+        percentage_used: 5,
+      },
+      kiro_overage: {
+        current_overages: 2,
+        overage_charges: 0.08,
+        currency_symbol: '$',
+        currency_code: 'USD',
+      },
+      kiro_reset_at: '2099-03-13T12:00:00Z',
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.emitted('kiroUsageMeta')?.[0]).toEqual([
+      {
+        plan_type: 'KIRO PRO+',
+        kiro_overages_enabled: true
+      }
+    ])
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroOverage')
+    expect(wrapper.text()).toContain('2 ($0.08)')
+  })
+
+  it('Kiro OAuth 会展示 overage active 与 exhausted 状态', async () => {
+    getUsage.mockResolvedValueOnce({
+      source: 'passive',
+      kiro_quota_state: 'overage_active',
+      kiro_quota_reason: 'overages_enabled',
+      kiro_quota_reset_at: '2099-03-13T12:00:00Z',
+      kiro_overages_enabled: true,
+      kiro_credit: {
+        current_usage: 2100,
+        usage_limit: 2000,
+        percentage_used: 100,
+      },
+      kiro_overage: {
+        current_overages: 3,
+        overage_charges: 0.12,
+        currency_symbol: '$',
+      },
+    })
+
+    const activeWrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3005,
+          platform: 'kiro',
+          type: 'oauth',
+          extra: {},
+          credentials: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(activeWrapper.text()).toContain('admin.accounts.status.overageActive')
+
+    getUsage.mockResolvedValueOnce({
+      source: 'passive',
+      kiro_quota_state: 'overage_exhausted',
+      kiro_quota_reason: 'usage API error: overage exhausted',
+      kiro_quota_reset_at: '2099-03-13T12:00:00Z',
+      error: 'usage API error: kiro usage request failed (status 429): {"message":"overage exhausted"}',
+    })
+
+    const exhaustedWrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3006,
+          platform: 'kiro',
+          type: 'oauth',
+          extra: {},
+          credentials: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(exhaustedWrapper.text()).toContain('admin.accounts.status.overageExhausted')
+    expect(exhaustedWrapper.text()).toContain('admin.accounts.status.overageExhaustedUntil')
+  })
+
+  it('Kiro OAuth 会逐条展示赠送额度', async () => {
+    const account = makeAccount({
+      id: 3002,
+      platform: 'kiro',
+      type: 'oauth',
+      extra: {},
+      credentials: {}
+    })
+
+    getUsage.mockResolvedValue({
+      source: 'passive',
+      kiro_subscription_name: 'KIRO PRO+',
+      kiro_credit: {
+        current_usage: 2000,
+        usage_limit: 2000,
+        percentage_used: 100,
+      },
+      kiro_bonuses: [
+        {
+          name: 'Launch promo',
+          status: 'ACTIVE',
+          bonus_code: 'LAUNCH-2026',
+          current_usage: 30,
+          usage_limit: 300,
+          percentage_used: 10,
+          days_remaining: 7,
+        },
+        {
+          status: 'EXHAUSTED',
+          current_usage: 100,
+          usage_limit: 100,
+          percentage_used: 100,
+        },
+      ],
+      kiro_reset_at: '2099-03-13T12:00:00Z',
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    // 主额度 + 两条赠送（首条带官方 displayName，次条无名称回退 i18n）。
+    expect(wrapper.text()).toContain('2.0K / 2.0K')
+    expect(wrapper.text()).toContain('Launch promo')
+    expect(wrapper.text()).toContain('30 / 300')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroBonusGift')
+    expect(wrapper.text()).toContain('100 / 100')
+  })
+
+  it('Fish token 号用 passive source 展示积分与套餐，并回写套餐（不再展示今日出图）', async () => {
+    const account = makeAccount({
+      id: 4001,
+      platform: 'fish',
+      type: 'apikey',
+      extra: {},
+      credentials: { token: 'tok' }
+    })
+
+    getUsage.mockResolvedValue({
+      source: 'passive',
+      fish_plan: 'free',
+      fish_credits: {
+        current_usage: 1500,
+        usage_limit: 8000,
+        percentage_used: 18.75
+      },
+      fish_daily: {
+        current_usage: 1,
+        usage_limit: 3,
+        percentage_used: 33.333
+      },
+      fish_reset_at: '2099-03-14T00:00:00Z'
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: { account },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(4001, 'passive', false)
+    expect(wrapper.emitted('fishUsageMeta')?.[0]).toEqual([{ plan_type: 'free' }])
+    expect(wrapper.find('[data-testid="fish-usage"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.fishCredits')
+    expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.fishDaily')
+    expect(wrapper.find('[data-testid="fish-daily"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Free')
+  })
+
+  it('Fish 中转号不拉 Fish 用量窗口', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 4002,
+          platform: 'fish',
+          type: 'apikey',
+          extra: {},
+          credentials: { base_url: 'https://relay.example.com', api_key: 'sk' }
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="fish-usage"]').exists()).toBe(false)
   })
 
   it('Kiro OAuth 会展示运行时冷却状态', async () => {
@@ -2248,5 +2541,111 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('7d|56')
     expect(wrapper.text()).not.toContain('7d S')
     expect(wrapper.text()).not.toContain('7d F')
+  })
+})
+
+describe('AccountUsageCell Leonardo', () => {
+  beforeEach(() => {
+    getUsage.mockReset()
+  })
+
+  const mountLeonardo = (id: number) =>
+    mount(AccountUsageCell, {
+      props: { account: makeAccount({ id, platform: 'leonardo', type: 'oauth', extra: {}, credentials: {} }) },
+      global: { stubs: { UsageProgressBar: true, AccountQuotaInfo: true } }
+    })
+
+  it('Leonardo Cookie 号按池展示 Fast / Rollover 进度条与 Top-up', async () => {
+    getUsage.mockResolvedValue({
+      source: 'passive',
+      leonardo_plan: 'STANDARD',
+      leonardo_plan_name: 'Premium',
+      leonardo_token_renewal: '2026-11-13T09:51:37.672',
+      leonardo_credits: {
+        total: 24992, usable: 24992, subscription: 24992, paid: 0, rollover: 0,
+        fast_limit: 25000, rollover_limit: 75000
+      },
+    })
+
+    const wrapper = mountLeonardo(4001)
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(4001, 'passive', false)
+    // 套餐桥接：把展示名回传给父组件，供「平台/类型」列渲染徽章
+    expect(wrapper.emitted('leonardoUsageMeta')?.[0]).toEqual([
+      {
+        plan_type: 'Premium'
+      }
+    ])
+    expect(wrapper.text()).toContain('Premium')
+    const fast = wrapper.get('[data-testid="leonardo-fast"]')
+    expect(fast.text()).toContain('admin.accounts.usageWindow.leonardoFast')
+    expect(fast.text()).toContain(`${(24992).toLocaleString()} / ${(25000).toLocaleString()}`)
+    expect(fast.find('.bg-emerald-500').exists()).toBe(true)
+    const rollover = wrapper.get('[data-testid="leonardo-rollover"]')
+    expect(rollover.text()).toContain(`0 / ${(75000).toLocaleString()}`)
+    expect(wrapper.get('[data-testid="leonardo-topup"]').text()).toContain('admin.accounts.usageWindow.leonardoTopUp')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.leonardoReset')
+  })
+
+  it('Leonardo 未知套餐只显示数字，不画进度条', async () => {
+    getUsage.mockResolvedValue({
+      source: 'passive',
+      leonardo_plan: 'ENTERPRISE',
+      leonardo_credits: { total: 1200, usable: 1200, subscription: 1000, paid: 0, rollover: 200, fast_limit: 0, rollover_limit: 0 },
+    })
+
+    const wrapper = mountLeonardo(4003)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('ENTERPRISE')
+    // 无展示名时回退原始 plan 码
+    expect(wrapper.emitted('leonardoUsageMeta')?.[0]).toEqual([
+      {
+        plan_type: 'ENTERPRISE'
+      }
+    ])
+    const fast = wrapper.get('[data-testid="leonardo-fast"]')
+    expect(fast.text()).toContain((1000).toLocaleString())
+    expect(fast.text()).not.toContain('/')
+    expect(fast.find('.rounded-full.bg-gray-200').exists()).toBe(false)
+    // 有结转余额时仍显示 Rollover 行（只有数字）。
+    expect(wrapper.get('[data-testid="leonardo-rollover"]').text()).toContain('200')
+  })
+
+  it('Leonardo 免费套餐标注每日 Fast，隐藏空的 Rollover 行', async () => {
+    getUsage.mockResolvedValue({
+      source: 'passive',
+      leonardo_plan: 'FREE',
+      leonardo_plan_name: 'Free',
+      leonardo_credits: { total: 3, usable: 3, subscription: 3, paid: 0, rollover: 0, fast_limit: 150, rollover_limit: 0, fast_daily: true },
+    })
+
+    const wrapper = mountLeonardo(4004)
+    await flushPromises()
+
+    const fast = wrapper.get('[data-testid="leonardo-fast"]')
+    expect(fast.text()).toContain('admin.accounts.usageWindow.leonardoFastDaily')
+    // 剩余 2%：进度条变红。
+    expect(fast.find('.bg-red-500').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="leonardo-rollover"]').exists()).toBe(false)
+  })
+
+  it('Leonardo 中转号不查 Leonardo 用量', async () => {
+    mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 4002,
+          platform: 'leonardo',
+          type: 'apikey',
+          extra: {},
+          credentials: { base_url: 'https://relay.example.com' }
+        })
+      },
+      global: { stubs: { UsageProgressBar: true, AccountQuotaInfo: true } }
+    })
+    await flushPromises()
+
+    expect(getUsage).not.toHaveBeenCalled()
   })
 })

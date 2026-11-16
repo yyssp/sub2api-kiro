@@ -15,7 +15,7 @@ func TestTypeSafePlatformMigration(t *testing.T) {
 	require.Contains(t, sql, "DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check")
 	require.Contains(t, sql, "DROP CONSTRAINT IF EXISTS composite_model_routes_target_platform_check")
 	require.Contains(t, sql,
-		"CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'opencode_go', 'typesafe'))")
+		"CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'adobe', 'opencode_go', 'typesafe', 'command_code', 'cline', 'leonardo', 'fish'))")
 	require.Contains(t, sql,
-		"CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'opencode_go', 'typesafe'))")
+		"CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'cursor', 'adobe', 'opencode_go', 'typesafe', 'command_code', 'cline', 'leonardo', 'fish'))")
 }

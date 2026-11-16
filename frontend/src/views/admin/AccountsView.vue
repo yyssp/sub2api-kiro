@@ -263,8 +263,10 @@
                   :type="row.type"
                   :auth-mode="getOpenAIAuthMode(row)"
                   :plan-type="getAccountPlanType(row)"
+                  :overages-enabled="isKiroOveragesEnabled(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
                   :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at"
+                  :telemetry-enabled="row.extra?.codex_telemetry_enabled === true"
                 />
                 <span
                   v-if="getAntigravityTierLabel(row)"
@@ -304,7 +306,7 @@
               :stats="todayStatsByAccountId[String(row.id)] ?? null"
               :platform="row.platform"
               :kiro-credit-unit-price-usd="getKiroCreditUnitPriceUsd(row)"
-              :is-relay="isKiroRelayAccount(row)"
+              :is-relay="isTodayStatsRelayAccount(row)"
               :loading="todayStatsLoading"
               :error="todayStatsError"
             />
@@ -327,7 +329,9 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
-              @kiro-usage-meta="handleKiroUsageMeta(row, $event)"
+              @kiro-usage-meta="handleUsagePlanMeta(row, $event)"
+              @leonardo-usage-meta="handleUsagePlanMeta(row, $event)"
+              @fish-usage-meta="handleFishUsageMeta(row, $event)"
               :batched-usage="usageBatchByAccountId[String(row.id)] ?? null"
               :batched-usage-error="usageBatchErrorByAccountId[String(row.id)] ?? null"
               :batched-usage-loading="usageBatchLoadingByAccountId[String(row.id)] === true"
@@ -518,13 +522,13 @@
       @cancel="showBulkResetConfirm = false"
     />
     <ConfirmDialog
-      :show="showBulkRefreshConfirm"
+      :show="showBulkRefreshTokenConfirm"
       :title="t('admin.accounts.bulkRefreshTokenTitle')"
       :message="t('admin.accounts.bulkRefreshTokenConfirm', { count: selIds.length })"
       :confirm-text="t('common.confirm')"
       :cancel-text="t('common.cancel')"
       @confirm="handleBulkRefreshToken"
-      @cancel="showBulkRefreshConfirm = false"
+      @cancel="showBulkRefreshTokenConfirm = false"
     />
   </AppLayout>
 </template>
@@ -643,7 +647,7 @@ const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
 const showBulkDeleteConfirm = ref(false)
 const showBulkResetConfirm = ref(false)
-const showBulkRefreshConfirm = ref(false)
+const showBulkRefreshTokenConfirm = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
@@ -813,7 +817,7 @@ const accountSupportsBatchUsage = (account: Account) => {
   }
   if (account.platform === 'gemini') return true
   if (account.platform === 'antigravity') return account.type === 'oauth'
-  if (account.platform === 'openai') return account.type === 'oauth'
+  if (account.platform === 'openai') return account.type === 'oauth' || account.type === 'bps-oauth'
   if (account.platform === 'grok') return account.type === 'oauth'
   return false
 }
@@ -1491,20 +1495,43 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
   )
 }
 
-const handleKiroUsageMeta = (account: Account, meta: { plan_type?: string }) => {
-  if (account.platform !== 'kiro') return
+// Kiro / Leonardo 的套餐来自用量接口，合并进内存态 credentials.plan_type，
+// 供「平台/类型」列的 PlatformTypeBadge 渲染（不落库，刷新后由用量重新回填）。
+// Kiro 同时回填 overage 开关，Badge 据此展示「超量」标记。
+const handleUsagePlanMeta = (account: Account, meta: { plan_type?: string; kiro_overages_enabled?: boolean }) => {
+  if (account.platform !== 'kiro' && account.platform !== 'leonardo') return
+  account.credentials = {
+    ...(account.credentials || {}),
+    ...(meta.plan_type ? { plan_type: meta.plan_type } : {}),
+    ...(account.platform === 'kiro' ? { kiro_overages_enabled: meta.kiro_overages_enabled === true } : {})
+  }
+}
+
+const isKiroOveragesEnabled = (account: Account) => {
+  return account.platform === 'kiro' && account.credentials?.kiro_overages_enabled === true
+}
+
+const handleFishUsageMeta = (account: Account, meta: { plan_type?: string }) => {
+  if (account.platform !== 'fish') return
   account.credentials = {
     ...(account.credentials || {}),
     ...(meta.plan_type ? { plan_type: meta.plan_type } : {})
   }
 }
 
+// 今日统计积分估算单价:Kiro 读 kiro_credit_unit_price_usd,Leonardo 读 leonardo_credit_unit_price_usd。
 const getKiroCreditUnitPriceUsd = (account: Account): number => {
-  if (account.platform !== 'kiro') return 0
-  const raw = account.extra?.kiro_credit_unit_price_usd
+  let raw: unknown
+  if (account.platform === 'kiro') raw = account.extra?.kiro_credit_unit_price_usd
+  else if (account.platform === 'leonardo') raw = account.extra?.leonardo_credit_unit_price_usd
+  else return 0
   const value = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : 0
   return Number.isFinite(value) && value > 0 ? value : 0
 }
+
+// Leonardo 中转账号(apikey)转发到外部 OpenAI 兼容上游,不消耗 Leonardo 积分;Kiro 沿用原中转判定。
+const isTodayStatsRelayAccount = (account: Account): boolean =>
+  account.platform === 'leonardo' ? account.type === 'apikey' : isKiroRelayAccount(account)
 
 const syncAccountRefs = (nextAccount: Account) => {
   if (edAcc.value?.id === nextAccount.id) edAcc.value = nextAccount
@@ -2006,13 +2033,13 @@ const handleBulkResetStatus = async () => {
   }
 }
 const handleBulkRefreshToken = async () => {
-  if (!showBulkRefreshConfirm.value) {
-    showBulkRefreshConfirm.value = true
+  if (!showBulkRefreshTokenConfirm.value) {
+    showBulkRefreshTokenConfirm.value = true
     return
   }
   const accountIds = [...selIds.value]
   try {
-    showBulkRefreshConfirm.value = false
+    showBulkRefreshTokenConfirm.value = false
     const result = await adminAPI.accounts.batchRefresh(accountIds)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))

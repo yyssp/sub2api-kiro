@@ -113,9 +113,8 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 	if len(repo.upsertCalls) != 1 {
 		t.Fatalf("UpsertForUser should be called once, got %d", len(repo.upsertCalls))
 	}
-	// upsert 记录数 = 请求体中给出的平台数（未给出的平台不落库）。
-	// 请求体列了 6 个平台（anthropic/openai/gemini/antigravity/kiro/grok）。
-	// 三档全空的平台不落库，由 UpsertForUser 的“不在列表里就软删”分支处理。
+	// upsert 记录数 = 请求体中至少配置了一档限额的平台数；三档全空的平台不落库，
+	// 由 UpsertForUser 的"不在列表里就软删"分支处理。
 	if repo.upsertCalls[0].userID != 42 || len(repo.upsertCalls[0].records) != 2 {
 		t.Errorf("unexpected upsert call: %+v", repo.upsertCalls[0])
 	}

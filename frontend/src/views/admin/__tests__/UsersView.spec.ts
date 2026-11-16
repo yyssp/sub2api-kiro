@@ -175,9 +175,9 @@ const mountBulkDeleteView = () => mountUsersView({
       <button data-test="confirm-delete" @click="$emit('confirm')">confirm</button>
       <button data-test="cancel-delete" @click="$emit('cancel')">cancel</button>
     </div>`
-  }
+  },
+  BulkEditUserModal: true
 })
-
 const getToggleStatusButton = (wrapper: ReturnType<typeof mountBulkDeleteView>, id: number) => {
   const button = wrapper
     .get(`[data-test="actions-${id}"]`)

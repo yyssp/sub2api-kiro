@@ -30,7 +30,7 @@ func TestSanitizeStoredCredentials_StripsEphemeralSSOSecrets(t *testing.T) {
 	require.NotContains(t, out, "cookie")
 }
 
-func TestSanitizeStoredCredentials_AlwaysStripsCookie(t *testing.T) {
+func TestSanitizeStoredCredentials_StripsCookieForOtherPlatforms(t *testing.T) {
 	// Bulk paths may pass empty platform; cookie must never persist next to tokens.
 	for _, platform := range []string{PlatformOpenAI, PlatformGrok, ""} {
 		creds := map[string]any{

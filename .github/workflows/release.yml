@@ -89,8 +89,10 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
       - uses: pnpm/action-setup@v6
         with:
-          version: 9
+
+          version: 9.15.9
       - uses: actions/setup-node@v6
+
         with:
           node-version: '24'
           cache: pnpm
@@ -128,6 +130,7 @@ jobs:
           name: version-file
           path: backend/cmd/server/
       - uses: actions/download-artifact@v8
+
         with:
           name: frontend-dist
           path: backend/internal/web/dist/

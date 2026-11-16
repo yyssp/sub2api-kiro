@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/anthropictokenizer"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -64,6 +66,8 @@ type cachedGatewayForwardingSettings struct {
 	anthropicCacheTTL1hInjection     bool
 	rewriteMessageCacheControl       bool
 	clientDatelineNormalization      bool
+	kiroTokenizer                    anthropictokenizer.Algorithm
+	kiroCacheScopeClient             bool
 	expiresAt                        int64 // unix nano
 }
 
@@ -73,6 +77,82 @@ var gatewayForwardingSF singleflight.Group
 const gatewayForwardingCacheTTL = 60 * time.Second
 const gatewayForwardingErrorTTL = 5 * time.Second
 const gatewayForwardingDBTimeout = 5 * time.Second
+
+// cachedFishImageFitLimits 缓存 fish 原生号动态尺寸规划阈值（进程内缓存，60s TTL）
+type cachedFishImageFitLimits struct {
+	limits    domain.FishFitLimits
+	expiresAt int64 // unix nano
+}
+
+var fishImageFitLimitsCache atomic.Value // *cachedFishImageFitLimits
+var fishImageFitLimitsSF singleflight.Group
+
+const fishImageFitLimitsCacheTTL = 60 * time.Second
+const fishImageFitLimitsErrorTTL = 5 * time.Second
+const fishImageFitLimitsDBTimeout = 5 * time.Second
+
+// parseFishImageFitLimitsValues 从持久化 settings map 解析 fish 动态尺寸
+// 阈值：缺失/非法回退默认（裁 4px / 放大 2.0），再经 Normalized 钳制。
+// parseSettings 与运行时缓存共用，保证两条读取路径口径一致。
+func parseFishImageFitLimitsValues(values map[string]string) domain.FishFitLimits {
+	limits := domain.DefaultFishFitLimits()
+	if raw, ok := values[SettingKeyFishImageMaxCropPixels]; ok && strings.TrimSpace(raw) != "" {
+		if v, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil && v >= 0 {
+			limits.MaxCropPixels = v
+		}
+	}
+	if raw, ok := values[SettingKeyFishImageMaxUpscaleFactor]; ok && strings.TrimSpace(raw) != "" {
+		if v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64); err == nil && v > 0 {
+			limits.MaxUpscaleFactor = v
+		}
+	}
+	return limits.Normalized()
+}
+
+func (s *SettingService) getFishImageFitLimitsCached(ctx context.Context) domain.FishFitLimits {
+	defaults := domain.DefaultFishFitLimits()
+	if cached, ok := fishImageFitLimitsCache.Load().(*cachedFishImageFitLimits); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.limits
+		}
+	}
+	val, _, _ := fishImageFitLimitsSF.Do("fish_image_fit_limits", func() (any, error) {
+		if cached, ok := fishImageFitLimitsCache.Load().(*cachedFishImageFitLimits); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.limits, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fishImageFitLimitsDBTimeout)
+		defer cancel()
+		values, err := s.settingRepo.GetMultiple(dbCtx, []string{
+			SettingKeyFishImageMaxCropPixels,
+			SettingKeyFishImageMaxUpscaleFactor,
+		})
+		if err != nil {
+			slog.Warn("failed to get fish image fit limits", "error", err)
+			fishImageFitLimitsCache.Store(&cachedFishImageFitLimits{
+				limits:    defaults,
+				expiresAt: time.Now().Add(fishImageFitLimitsErrorTTL).UnixNano(),
+			})
+			return defaults, nil
+		}
+		limits := parseFishImageFitLimitsValues(values)
+		fishImageFitLimitsCache.Store(&cachedFishImageFitLimits{
+			limits:    limits,
+			expiresAt: time.Now().Add(fishImageFitLimitsCacheTTL).UnixNano(),
+		})
+		return limits, nil
+	})
+	if limits, ok := val.(domain.FishFitLimits); ok {
+		return limits
+	}
+	return defaults
+}
+
+// GetFishImageFitLimits 返回 fish 原生号动态尺寸规划阈值（缺省裁 4px / 放大 2 倍）。
+func (s *SettingService) GetFishImageFitLimits(ctx context.Context) domain.FishFitLimits {
+	return s.getFishImageFitLimitsCached(ctx)
+}
 
 // cachedAccountSchedulingThresholds 缓存平台自动停调阈值（进程内缓存，60s TTL）
 type cachedAccountSchedulingThresholds struct {
@@ -285,6 +365,319 @@ func (s *SettingService) GetAntigravityUserAgentVersion(ctx context.Context) str
 		return version
 	}
 	return fallback
+}
+
+type cachedOpenAICodexTicketEnabled struct {
+	value     bool
+	expiresAt int64
+}
+
+const openAICodexTicketEnabledCacheTTL = 5 * time.Second
+
+// GetOpenAICodexTicketEnabled 返回后台 292 打票总开关。
+// 设置键存在时以后台为准；缺失则回退 yaml/env。
+func (s *SettingService) GetOpenAICodexTicketEnabled(ctx context.Context, fallback bool) bool {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return fallback
+	}
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if cached, ok := s.openAICodexTicketEnabledCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.value
+		}
+	}
+	resultCh := s.openAICodexTicketEnabledSF.DoChan(SettingKeyOpenAICodexTicketEnabled, func() (any, error) {
+		if cached, ok := s.openAICodexTicketEnabledCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.value, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketEnabled)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			if cached, ok := s.openAICodexTicketEnabledCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil {
+				return cached.value, nil
+			}
+			return fallback, nil
+		}
+		enabled := fallback
+		if err == nil && strings.TrimSpace(value) != "" {
+			enabled = value == "true"
+		}
+		s.openAICodexTicketEnabledCache.Store(&cachedOpenAICodexTicketEnabled{
+			value:     enabled,
+			expiresAt: time.Now().Add(openAICodexTicketEnabledCacheTTL).UnixNano(),
+		})
+		return enabled, nil
+	})
+	select {
+	case <-ctx.Done():
+		return fallback
+	case result := <-resultCh:
+		if v, ok := result.Val.(bool); ok && result.Err == nil {
+			return v
+		}
+		return fallback
+	}
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketEnabledCache() {
+	if s == nil {
+		return
+	}
+	s.openAICodexTicketEnabledSF.Forget(SettingKeyOpenAICodexTicketEnabled)
+	s.openAICodexTicketEnabledCache.Store(&cachedOpenAICodexTicketEnabled{expiresAt: 0})
+}
+
+type cachedOpenAICodexTicketFailClosed struct {
+	value     bool
+	expiresAt int64
+}
+
+const openAICodexTicketFailClosedCacheTTL = 5 * time.Second
+
+// GetOpenAICodexTicketFailClosed 返回缺票拦截开关（门控模型无票时是否暂停该账号调度）。
+// 设置键存在时以后台为准；缺失则回退 yaml/env（默认 true）。
+func (s *SettingService) GetOpenAICodexTicketFailClosed(ctx context.Context, fallback bool) bool {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return fallback
+	}
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if cached, ok := s.openAICodexTicketFailClosedCache.Load().(*cachedOpenAICodexTicketFailClosed); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.value
+		}
+	}
+	resultCh := s.openAICodexTicketFailClosedSF.DoChan(SettingKeyOpenAICodexTicketFailClosed, func() (any, error) {
+		if cached, ok := s.openAICodexTicketFailClosedCache.Load().(*cachedOpenAICodexTicketFailClosed); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.value, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketFailClosed)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			if cached, ok := s.openAICodexTicketFailClosedCache.Load().(*cachedOpenAICodexTicketFailClosed); ok && cached != nil {
+				return cached.value, nil
+			}
+			return fallback, nil
+		}
+		failClosed := fallback
+		if err == nil && strings.TrimSpace(value) != "" {
+			failClosed = value == "true"
+		}
+		s.openAICodexTicketFailClosedCache.Store(&cachedOpenAICodexTicketFailClosed{
+			value:     failClosed,
+			expiresAt: time.Now().Add(openAICodexTicketFailClosedCacheTTL).UnixNano(),
+		})
+		return failClosed, nil
+	})
+	select {
+	case <-ctx.Done():
+		return fallback
+	case result := <-resultCh:
+		if v, ok := result.Val.(bool); ok && result.Err == nil {
+			return v
+		}
+		return fallback
+	}
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketFailClosedCache() {
+	if s == nil {
+		return
+	}
+	s.openAICodexTicketFailClosedSF.Forget(SettingKeyOpenAICodexTicketFailClosed)
+	s.openAICodexTicketFailClosedCache.Store(&cachedOpenAICodexTicketFailClosed{expiresAt: 0})
+}
+
+type cachedOpenAICodexTicketHarvestProxy struct {
+	value     string
+	expiresAt int64
+}
+
+const openAICodexTicketHarvestProxyCacheTTL = 5 * time.Second
+
+// GetOpenAICodexTicketHarvestProxyURL 返回后台配置的 292 打票代理。空则调用方回退 yaml/env。
+func (s *SettingService) GetOpenAICodexTicketHarvestProxyURL(ctx context.Context) string {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return ""
+	}
+	if s == nil || s.settingRepo == nil {
+		return ""
+	}
+	if cached, ok := s.openAICodexTicketHarvestProxyCache.Load().(*cachedOpenAICodexTicketHarvestProxy); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.value
+		}
+	}
+	resultCh := s.openAICodexTicketHarvestProxySF.DoChan(SettingKeyOpenAICodexTicketHarvestProxyURL, func() (any, error) {
+		if cached, ok := s.openAICodexTicketHarvestProxyCache.Load().(*cachedOpenAICodexTicketHarvestProxy); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.value, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketHarvestProxyURL)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			if cached, ok := s.openAICodexTicketHarvestProxyCache.Load().(*cachedOpenAICodexTicketHarvestProxy); ok && cached != nil {
+				value = cached.value
+			}
+			s.openAICodexTicketHarvestProxyCache.Store(&cachedOpenAICodexTicketHarvestProxy{
+				value:     value,
+				expiresAt: time.Now().Add(time.Second).UnixNano(),
+			})
+			return value, nil
+		}
+		value = strings.TrimSpace(value)
+		s.openAICodexTicketHarvestProxyCache.Store(&cachedOpenAICodexTicketHarvestProxy{
+			value:     value,
+			expiresAt: time.Now().Add(openAICodexTicketHarvestProxyCacheTTL).UnixNano(),
+		})
+		return value, nil
+	})
+	select {
+	case <-ctx.Done():
+		return ""
+	case result := <-resultCh:
+		if v, ok := result.Val.(string); ok && result.Err == nil {
+			return v
+		}
+		return ""
+	}
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketHarvestProxyCache() {
+	if s == nil {
+		return
+	}
+	s.openAICodexTicketHarvestProxySF.Forget(SettingKeyOpenAICodexTicketHarvestProxyURL)
+	s.openAICodexTicketHarvestProxyCache.Store(&cachedOpenAICodexTicketHarvestProxy{expiresAt: 0})
+}
+
+// OpenAICodexTicketTargetLengthConfig 后台配置的门票长度：默认长度 + 订阅档位规则。
+type OpenAICodexTicketTargetLengthConfig struct {
+	DefaultLength int
+	Rules         []OpenAICodexTicketPlanLengthRule
+}
+
+type cachedOpenAICodexTicketTargetLength struct {
+	value     OpenAICodexTicketTargetLengthConfig
+	expiresAt int64
+}
+
+const openAICodexTicketTargetLengthCacheTTL = 5 * time.Second
+
+// GetOpenAICodexTicketTargetLengthConfig 返回后台的门票默认长度与档位规则。
+// 后台未配置默认长度时以 yamlDefault 兜底；读取失败时保留旧缓存或兜底值。
+func (s *SettingService) GetOpenAICodexTicketTargetLengthConfig(ctx context.Context, yamlDefault int) OpenAICodexTicketTargetLengthConfig {
+	fallback := OpenAICodexTicketTargetLengthConfig{DefaultLength: yamlDefault}
+	if yamlDefault <= 0 {
+		fallback.DefaultLength = 292
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return fallback
+	}
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if cached, ok := s.openAICodexTicketTargetLengthCache.Load().(*cachedOpenAICodexTicketTargetLength); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.value
+		}
+	}
+	resultCh := s.openAICodexTicketTargetLengthSF.DoChan(SettingKeyOpenAICodexTicketPlanLengths, func() (any, error) {
+		if cached, ok := s.openAICodexTicketTargetLengthCache.Load().(*cachedOpenAICodexTicketTargetLength); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.value, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		defaultRaw, defErr := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketDefaultLength)
+		rulesRaw, rulesErr := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketPlanLengths)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if (defErr != nil && !errors.Is(defErr, ErrSettingNotFound)) || (rulesErr != nil && !errors.Is(rulesErr, ErrSettingNotFound)) {
+			// 瞬时存储故障：沿用上一个已知值，只把缓存缩短到 1 秒以便尽快重试。
+			if cached, ok := s.openAICodexTicketTargetLengthCache.Load().(*cachedOpenAICodexTicketTargetLength); ok && cached != nil {
+				s.openAICodexTicketTargetLengthCache.Store(&cachedOpenAICodexTicketTargetLength{
+					value:     cached.value,
+					expiresAt: time.Now().Add(time.Second).UnixNano(),
+				})
+				return cached.value, nil
+			}
+			return fallback, nil
+		}
+		value := fallback
+		if n, err := strconv.Atoi(strings.TrimSpace(defaultRaw)); err == nil && n >= OpenAICodexTicketMinTargetLength && n <= OpenAICodexTicketMaxTargetLength {
+			value.DefaultLength = n
+		}
+		value.Rules = parseOpenAICodexTicketPlanLengthRules(rulesRaw)
+		s.openAICodexTicketTargetLengthCache.Store(&cachedOpenAICodexTicketTargetLength{
+			value:     value,
+			expiresAt: time.Now().Add(openAICodexTicketTargetLengthCacheTTL).UnixNano(),
+		})
+		return value, nil
+	})
+	select {
+	case <-ctx.Done():
+		return fallback
+	case result := <-resultCh:
+		if v, ok := result.Val.(OpenAICodexTicketTargetLengthConfig); ok && result.Err == nil {
+			return v
+		}
+		return fallback
+	}
+}
+
+// InvalidateOpenAICodexTicketTargetLengthCache 在设置更新后立即失效长度配置缓存。
+func (s *SettingService) InvalidateOpenAICodexTicketTargetLengthCache() {
+	if s == nil {
+		return
+	}
+	s.openAICodexTicketTargetLengthSF.Forget(SettingKeyOpenAICodexTicketPlanLengths)
+	s.openAICodexTicketTargetLengthCache.Store(&cachedOpenAICodexTicketTargetLength{expiresAt: 0})
+}
+
+// OpenAICodexTicketTargetLengthFor 按账号订阅档位解析门票目标长度，供
+// OpenAIGatewayService 之外的调用方（账号管理接口）使用；yamlDefault 为
+// yaml target_length 兜底值。
+func (s *SettingService) OpenAICodexTicketTargetLengthFor(ctx context.Context, account *Account, yamlDefault int) int {
+	cfg := OpenAICodexTicketTargetLengthConfig{DefaultLength: yamlDefault}
+	if s != nil {
+		cfg = s.GetOpenAICodexTicketTargetLengthConfig(ctx, yamlDefault)
+	}
+	return resolveOpenAICodexTicketTargetLength(openAICodexTicketAccountPlanType(account), cfg.Rules, cfg.DefaultLength)
 }
 
 // GetOpenAICodexUserAgent 返回 OpenAI Codex 上游请求使用的 User-Agent。
@@ -861,6 +1254,8 @@ type gatewayForwardingSettingsResult struct {
 	fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl bool
 	clientDatelineNormalization                                                           bool
 	claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                string
+	kiroTokenizer                                                                         anthropictokenizer.Algorithm
+	kiroCacheScopeClient                                                                  bool
 }
 
 func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context) gatewayForwardingSettingsResult {
@@ -877,6 +1272,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 				rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
 				clientDatelineNormalization:      cached.clientDatelineNormalization,
+				kiroTokenizer:                    cached.kiroTokenizer,
+				kiroCacheScopeClient:             cached.kiroCacheScopeClient,
 			}
 		}
 	}
@@ -894,6 +1291,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 					cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 					rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
 					clientDatelineNormalization:      cached.clientDatelineNormalization,
+					kiroTokenizer:                    cached.kiroTokenizer,
+					kiroCacheScopeClient:             cached.kiroCacheScopeClient,
 				}, nil
 			}
 		}
@@ -910,6 +1309,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyEnableAnthropicCacheTTL1hInjection,
 			SettingKeyRewriteMessageCacheControl,
 			SettingKeyEnableClientDatelineNormalization,
+			SettingKeyGatewayKiroTokenizer,
+			SettingKeyGatewayKiroCacheScopeClient,
 		})
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
@@ -922,9 +1323,10 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				anthropicCacheTTL1hInjection:     false,
 				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
 				clientDatelineNormalization:      true,
+				kiroTokenizer:                    anthropictokenizer.AlgorithmOfficial,
 				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{openAITTFTMode: OpenAITTFTModeSemantic, fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true}, nil
+			return gatewayForwardingSettingsResult{openAITTFTMode: OpenAITTFTModeSemantic, fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true, kiroTokenizer: anthropictokenizer.AlgorithmOfficial}, nil
 		}
 		ttftMode := normalizeOpenAITTFTMode(values[SettingKeyOpenAITTFTMode])
 		fp := true
@@ -959,6 +1361,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			anthropicCacheTTL1hInjection:     cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
 			clientDatelineNormalization:      clientDatelineNormalization,
+			kiroTokenizer:                    anthropictokenizer.ParseAlgorithm(values[SettingKeyGatewayKiroTokenizer]),
+			kiroCacheScopeClient:             values[SettingKeyGatewayKiroCacheScopeClient] == "true",
 			expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
 		return gatewayForwardingSettingsResult{
@@ -972,6 +1376,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			cacheTTL1h:                       cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
 			clientDatelineNormalization:      clientDatelineNormalization,
+			kiroTokenizer:                    anthropictokenizer.ParseAlgorithm(values[SettingKeyGatewayKiroTokenizer]),
+			kiroCacheScopeClient:             values[SettingKeyGatewayKiroCacheScopeClient] == "true",
 		}, nil
 	})
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
@@ -983,6 +1389,16 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 // GetOpenAITTFTMode 返回 Responses first_token_ms 的统计口径。
 func (s *SettingService) GetOpenAITTFTMode(ctx context.Context) string {
 	return s.getGatewayForwardingSettingsCached(ctx).openAITTFTMode
+}
+
+// IsGatewayKiroCacheScopeClientEnabled 返回 Kiro 缓存模拟是否按「API key + 会话」分桶（默认 false）。
+func (s *SettingService) IsGatewayKiroCacheScopeClientEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).kiroCacheScopeClient
+}
+
+// GetGatewayKiroTokenizer 返回 Kiro 渠道的 token 计量算法（默认 official）。
+func (s *SettingService) GetGatewayKiroTokenizer(ctx context.Context) anthropictokenizer.Algorithm {
+	return s.getGatewayForwardingSettingsCached(ctx).kiroTokenizer
 }
 
 // GetGatewayForwardingSettings returns cached gateway forwarding settings.

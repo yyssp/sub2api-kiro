@@ -163,3 +163,30 @@ func TestGetDefaultImagePrice_FallbackHardcoded(t *testing.T) {
 	cost = svc.CalculateImageCost("gemini-3-pro-image", "2K", 1, nil, 1.0)
 	require.InDelta(t, 0.201, cost.TotalCost, 0.0001)
 }
+
+func TestCalculateImageCost_OpenAIGptImageUsesGenericDefault(t *testing.T) {
+	svc := &BillingService{}
+	cost := svc.CalculateImageCost("gpt-image-1", "1K", 1, nil, 1.0)
+	require.InDelta(t, defaultImageGenerationPrice, cost.TotalCost, 1e-9,
+		"gpt-image-1 无 LiteLLM 价时走通用 $0.134")
+	cost = svc.CalculateImageCostWithPlatform("gpt-image-1", "1K", 1, nil, 1.0, PlatformOpenAI)
+	require.InDelta(t, defaultImageGenerationPrice, cost.TotalCost, 1e-9)
+	cost = svc.CalculateImageCostWithPlatform("gpt-image-2.5-flare", "1K", 1, nil, 1.0, PlatformOpenAI)
+	require.InDelta(t, defaultImageGenerationPrice, cost.TotalCost, 1e-9)
+	cost = svc.CalculateImageCostWithPlatform("gpt-image-2.5-flare", "4K", 1, nil, 1.0, PlatformOpenAI)
+	require.InDelta(t, defaultImageGenerationPrice*2, cost.TotalCost, 1e-9,
+		"flare 4K 应是通用 $0.268")
+}
+
+func TestCalculateImageCost_LiteLLMImagePriceUsed(t *testing.T) {
+	svc := &BillingService{
+		pricingService: &PricingService{
+			pricingData: map[string]*LiteLLMModelPricing{
+				"gpt-image-2.5-flare": {OutputCostPerImage: 0.04},
+			},
+		},
+	}
+	cost := svc.CalculateImageCostWithPlatform("gpt-image-2.5-flare", "1K", 1, nil, 1.0, PlatformOpenAI)
+	require.InDelta(t, 0.04, cost.TotalCost, 1e-9,
+		"必须能落到 LiteLLM output_cost_per_image")
+}

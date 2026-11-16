@@ -413,6 +413,10 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return DefaultOpenCodeGoModelIDs()
 	case PlatformTypeSafe:
 		return []string{typesafe.JevLatestModel}
+	case PlatformLeonardo:
+		return LeonardoModelIDs()
+	case PlatformFish:
+		return domain.FishModelNames()
 	case PlatformComposite:
 		return compositeDefaultModelsListCandidateIDs()
 	default:
@@ -427,10 +431,11 @@ func defaultModelsListCandidateIDs(platform string) []string {
 // DefaultAllowImageGenerationForPlatform reports whether new groups on the platform allow
 // image generation. CreateGroup ORs the requested value with it, so a false in the create
 // request does not turn it off. Composite defaults disabled because the same switch also
-// gates OpenAI image generation there.
+// gates OpenAI image generation there. Grok image and video generation share this gate;
+// Leonardo and Fish are images-only platforms, so they default enabled too.
 func DefaultAllowImageGenerationForPlatform(platform string) bool {
 	switch platform {
-	case PlatformGrok, PlatformGemini, PlatformAntigravity:
+	case PlatformGrok, PlatformGemini, PlatformAntigravity, PlatformLeonardo, PlatformFish:
 		return true
 	default:
 		return false

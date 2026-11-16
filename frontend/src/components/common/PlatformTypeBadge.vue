@@ -9,7 +9,7 @@
       <span :class="['inline-flex items-center gap-1 px-1.5 py-1', typeClass]">
         <!-- OAuth icon -->
         <svg
-          v-if="type === 'oauth'"
+          v-if="type === 'oauth' || type === 'bps-oauth'"
           class="h-3 w-3"
           fill="none"
           viewBox="0 0 24 24"
@@ -30,8 +30,8 @@
         <span>{{ typeLabel }}</span>
       </span>
     </div>
-    <!-- Row 2: Plan type + Privacy mode (only if either exists) -->
-    <div v-if="planLabel || privacyBadge" class="inline-flex items-center overflow-hidden rounded-md">
+    <!-- Row 2: Plan type + Privacy mode + Telemetry + Overages -->
+    <div v-if="planLabel || privacyBadge || telemetryEnabled || overagesBadge" class="inline-flex items-center overflow-hidden rounded-md">
       <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1', planBadgeClass]">
         <GrokFreeIcon
           v-if="isGrokFreePlan"
@@ -47,6 +47,14 @@
         <span>{{ planLabel }}</span>
       </span>
       <span
+        v-if="overagesBadge"
+        :class="['inline-flex items-center gap-1 px-1.5 py-1', overagesBadge.class]"
+        :title="overagesBadge.title"
+      >
+        <Icon name="sparkles" size="xs" />
+        <span>{{ overagesBadge.label }}</span>
+      </span>
+      <span
         v-if="privacyBadge"
         :class="['inline-flex items-center gap-1 px-1.5 py-1', privacyBadge.class]"
         :title="privacyBadge.title"
@@ -55,6 +63,13 @@
           <path stroke-linecap="round" stroke-linejoin="round" :d="privacyBadge.icon" />
         </svg>
         <span>{{ privacyBadge.label }}</span>
+      </span>
+      <span
+        v-if="telemetryEnabled"
+        data-testid="platform-telemetry-badge"
+        class="inline-flex items-center gap-1 px-1.5 py-1 bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
+      >
+        <span>Telemetry</span>
       </span>
     </div>
     <!-- Row 3: Subscription expiration (non-free paid accounts only) -->
@@ -81,11 +96,15 @@ interface Props {
   type: AccountType
   authMode?: string
   planType?: string
+  overagesEnabled?: boolean
   privacyMode?: string
   subscriptionExpiresAt?: string
+  telemetryEnabled?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  telemetryEnabled: false
+})
 
 const platformLabel = computed(() => sharedPlatformLabel(props.platform))
 
@@ -101,6 +120,8 @@ const typeLabel = computed(() => {
   switch (props.type) {
     case 'oauth':
       return 'OAuth'
+    case 'bps-oauth':
+      return 'BPS OAuth'
     case 'setup-token':
       return 'Token'
     case 'apikey':
@@ -243,6 +264,16 @@ const typeClass = computed(() => {
   return 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
 })
 
+// Kiro 超刷（overage）已开启时在套餐旁挂一枚琥珀色徽标。
+const overagesBadge = computed(() => {
+  if (props.platform !== 'kiro' || !props.overagesEnabled) return null
+  return {
+    label: t('admin.accounts.status.overageActive'),
+    title: t('admin.accounts.usageWindow.kiroOverage'),
+    class: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  }
+})
+
 const planBadgeClass = computed(() => {
   if (normalizedPlanType.value === 'abnormal') {
     return 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
@@ -266,6 +297,10 @@ const planBadgeClass = computed(() => {
     }
     // Any other non-free Grok plan (future tiers) → amber so it still stands out
     return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  }
+  // Leonardo 套餐（Ultimate / Premium 等）→ 品牌 indigo，与全站 leonardo 配色一致
+  if (props.platform === 'leonardo' && normalizedPlanType.value) {
+    return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
   }
   // OpenAI / other paid plan labels: keep readable distinction from free gray
   if (normalizedPlanType.value === 'plus') {
@@ -307,8 +342,10 @@ const expiresLabel = computed(() => {
 })
 
 // Privacy badge — shows different states for OpenAI/Antigravity OAuth privacy setting
+// (OpenAI BPS OAuth accounts get the same training opt-out on authorization)
 const privacyBadge = computed(() => {
-  if (props.type !== 'oauth' || !props.privacyMode) return null
+  const privacyCapable = props.type === 'oauth' || (props.platform === 'openai' && props.type === 'bps-oauth')
+  if (!privacyCapable || !props.privacyMode) return null
   // 支持 OpenAI 和 Antigravity 平台
   if (props.platform !== 'openai' && props.platform !== 'antigravity') return null
 

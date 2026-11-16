@@ -986,7 +986,8 @@ export type AccountType =
   | "apikey"
   | "upstream"
   | "bedrock"
-  | "service_account";
+  | "service_account"
+  | "bps-oauth";
 export type OAuthAddMethod = "oauth" | "setup-token";
 export type ProxyProtocol = "http" | "https" | "socks5" | "socks5h";
 
@@ -1311,6 +1312,14 @@ export interface Account {
   credentials?: Record<string, unknown>;
   credentials_status?: Record<string, boolean>;
   ollama_cloud_usage?: OllamaCloudUsageState;
+  codex_turn_tickets?: Array<{
+    model: string;
+    length?: number;
+    ready: boolean;
+    remaining_seconds: number;
+    blocked: boolean;
+    expires_at?: string;
+  }>;
   opencode_go_usage?: OpenCodeGoUsageState;
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: CodexUsageSnapshot &
@@ -1324,6 +1333,11 @@ export interface Account {
         { activated_at: string; active_until: string }
       >;
       kiro_credit_unit_price_usd?: number;
+      leonardo_credit_unit_price_usd?: number;
+      leonardo_max_quality?: string;
+      leonardo_max_short_edge?: number;
+      leonardo_max_upscale_factor?: number;
+      fish_max_quality?: string;
       upstream_billing_probe_enabled?: boolean;
       upstream_billing_rate_sync_enabled?: boolean;
       upstream_billing_probe?: UpstreamBillingProbeSnapshot;
@@ -1531,6 +1545,40 @@ export interface KiroCreditProgress {
   expiry_date?: string | null;
 }
 
+// Kiro bonuses[] 中的一条赠送额度（兑换码/活动）
+export interface KiroBonusProgress {
+  name?: string
+  status?: string // ACTIVE | EXHAUSTED
+  bonus_code?: string
+  description?: string
+  current_usage: number
+  usage_limit: number
+  percentage_used: number
+  days_remaining?: number
+  expiry_date?: string | null
+  redeemed_at?: string | null
+}
+
+// Kiro 账号的超刷（overage）状态：超额用量与产生的费用
+export interface KiroOverageInfo {
+  current_overages: number
+  overage_charges: number
+  currency_code?: string
+  currency_symbol?: string
+}
+
+// Leonardo 积分余额快照：上游只给各池剩余量，上限来自套餐常量表（未知套餐时为 0）
+export interface LeonardoCreditsSnapshot {
+  total: number
+  usable?: number
+  subscription: number
+  paid: number
+  rollover: number
+  fast_limit?: number
+  rollover_limit?: number
+  fast_daily?: boolean
+}
+
 export interface GrokQuotaWindow {
   limit?: number | null;
   remaining?: number | null;
@@ -1615,14 +1663,29 @@ export interface AccountUsageInfo {
   kiro_subscription_name?: string | null;
   kiro_subscription_type?: string | null;
   kiro_reset_at?: string | null;
+  kiro_overages_enabled?: boolean;
   kiro_credit?: KiroCreditProgress | null;
   kiro_bonus?: KiroCreditProgress | null;
+  kiro_bonuses?: KiroBonusProgress[] | null;
+  kiro_overage?: KiroOverageInfo | null;
   kiro_quota_state?: string | null;
   kiro_quota_reason?: string | null;
   kiro_quota_reset_at?: string | null;
   kiro_runtime_state?: string | null;
   kiro_runtime_reason?: string | null;
   kiro_runtime_reset_at?: string | null;
+
+  // Fish token 号：钱包已用/总额、每日出图窗口、套餐
+  fish_plan?: string | null
+  fish_credits?: KiroCreditProgress | null
+  fish_daily?: KiroCreditProgress | null
+  fish_reset_at?: string | null
+
+  // Leonardo 积分余额快照
+  leonardo_plan?: string | null
+  leonardo_plan_name?: string | null
+  leonardo_credits?: LeonardoCreditsSnapshot | null
+  leonardo_token_renewal?: string | null
   // Antigravity 403 forbidden 状态
   is_forbidden?: boolean;
   forbidden_reason?: string;
@@ -1998,6 +2061,10 @@ export interface AdminUsageLog extends UsageLog {
   account_rate_multiplier?: number | null;
   // 自定义定价规则计算的账号统计费用（nil 时使用 total_cost * multiplier）
   account_stats_cost?: number | null;
+  // 本次消耗的上游积分（Kiro credits / Leonardo 积分，仅管理员可见）
+  upstream_credits?: number | null
+  // 按账号当前积分单价估算的上游成本（USD，未设单价时为空）
+  upstream_credit_cost?: number | null
 
   // 渠道 ID 和计费等级（仅管理员可见）
   channel_id?: number | null;

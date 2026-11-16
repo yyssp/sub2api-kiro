@@ -3,10 +3,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/tidwall/gjson"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,9 +13,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestAdaptResponsesClientToolsForAnthropic_FlattensNamespace(t *testing.T) {
@@ -79,6 +81,59 @@ func TestAdaptResponsesClientToolsForAnthropic_LiftsAdditionalTools(t *testing.T
 
 // Codex 的 codex_app 工具（如 automation_update）把 parameters 根节点声明成对象
 // 联合；Responses→Anthropic 转换后 input_schema 顶部不能再出现联合关键字。
+func TestAdaptResponsesClientToolsForAnthropic_NormalizesBareNamespaceHistoryForKiro(t *testing.T) {
+	requestBody := map[string]any{
+		"model": "gpt-5.6-sol",
+		"input": []any{
+			map[string]any{
+				"type": "additional_tools", "role": "developer",
+				"tools": []any{map[string]any{
+					"type": "namespace", "name": "functions",
+					"tools": []any{map[string]any{"type": "custom", "name": "exec", "description": "Run JavaScript"}},
+				}},
+			},
+			map[string]any{"type": "custom_tool_call", "name": "exec", "call_id": "custom_1", "input": "run()"},
+			map[string]any{"type": "custom_tool_call_output", "call_id": "custom_1", "output": "ok"},
+			map[string]any{"type": "function_call", "name": "exec", "call_id": "legacy_1", "arguments": "{\"input\":\"legacy()\"}"},
+			map[string]any{"type": "function_call_output", "call_id": "legacy_1", "output": "legacy ok"},
+			map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": "continue"}}},
+		},
+	}
+	body, err := json.Marshal(requestBody)
+	require.NoError(t, err)
+
+	adapted, mapping, err := adaptResponsesClientToolsForAnthropic(body)
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["functions__exec"])
+	require.Equal(t, apicompat.ResponsesNamespaceName{Namespace: "functions", Name: "exec"}, mapping.NamespaceTools["functions__exec"])
+
+	var request apicompat.ResponsesRequest
+	require.NoError(t, json.Unmarshal(adapted, &request))
+	require.Len(t, request.Tools, 1)
+	require.Equal(t, "function", request.Tools[0].Type)
+	require.Equal(t, "functions__exec", request.Tools[0].Name)
+
+	anthropicRequest, err := apicompat.ResponsesToAnthropicRequest(&request)
+	require.NoError(t, err)
+	anthropicBody, err := json.Marshal(anthropicRequest)
+	require.NoError(t, err)
+	kiroBuildResult, err := kiro.BuildKiroPayloadWithContext(anthropicBody, "gpt-5.6-sol", "", "AI_EDITOR", nil)
+	require.NoError(t, err)
+
+	tools := gjson.GetBytes(kiroBuildResult.Payload, "conversationState.currentMessage.userInputMessage.userInputMessageContext.tools").Array()
+	require.Len(t, tools, 1, "裸 exec 历史不得触发额外占位工具")
+	require.Equal(t, "functions__exec", tools[0].Get("toolSpecification.name").String())
+
+	history := gjson.GetBytes(kiroBuildResult.Payload, "conversationState.history").Array()
+	var toolUseNames []string
+	for _, message := range history {
+		for _, toolUse := range message.Get("assistantResponseMessage.toolUses").Array() {
+			toolUseNames = append(toolUseNames, toolUse.Get("name").String())
+		}
+	}
+	require.Equal(t, []string{"functions__exec", "functions__exec"}, toolUseNames)
+}
+
 func TestAdaptResponsesClientToolsForAnthropic_FlattensRootUnionSchema(t *testing.T) {
 	t.Parallel()
 
@@ -634,6 +689,84 @@ func TestClaude55BridgeUsesMappedModelBeforeThinkingConversion(t *testing.T) {
 					require.Equal(t, "xhigh", gjson.GetBytes(upstream.lastBody, "output_config.effort").String())
 					require.False(t, gjson.GetBytes(upstream.lastBody, "thinking.budget_tokens").Exists())
 				}
+			}
+		}
+	}
+}
+
+// Kiro 直连会把客户端的 thinking.enabled/disabled 改写成自己的 adaptive 载荷，
+// 所以 chat/responses 兼容入口只对 Anthropic 官方账号执行 Claude 5.5 校验。
+func TestClaude55BridgeValidatesThinkingOnlyForAnthropic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	thinkingFields := map[string]string{
+		"enabled":  `"thinking":{"type":"enabled","budget_tokens":16000}`,
+		"disabled": `"thinking":{"type":"disabled"}`,
+	}
+	for _, platform := range []string{PlatformKiro, PlatformAnthropic} {
+		for thinkingType, thinkingField := range thinkingFields {
+			for _, chat := range []bool{false, true} {
+				endpoint := "responses"
+				if chat {
+					endpoint = "chat"
+				}
+				t.Run(platform+"/"+thinkingType+"/"+endpoint, func(t *testing.T) {
+					path := "/v1/responses"
+					body := `{"model":"public-claude","input":"hello",` + thinkingField + `}`
+					if chat {
+						path = "/v1/chat/completions"
+						body = `{"model":"public-claude","messages":[{"role":"user","content":"hello"}],` + thinkingField + `}`
+					}
+					rec := httptest.NewRecorder()
+					c, _ := gin.CreateTestContext(rec)
+					c.Request = httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+					c.Request.Header.Set("Content-Type", "application/json")
+
+					upstream := &httpUpstreamRecorder{resp: &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{"Content-Type": []string{"application/vnd.amazon.eventstream"}},
+						Body:       io.NopCloser(bytes.NewReader(kiroChatTestEventStream(t, "ok", 10, 2))),
+					}}
+					svc := &GatewayService{
+						cfg: &config.Config{Gateway: config.GatewayConfig{
+							MaxLineSize: defaultMaxLineSize,
+						}},
+						httpUpstream:        upstream,
+						kiroCooldownStore:   noopKiroChatCooldownStore{},
+						tlsFPProfileService: &TLSFingerprintProfileService{},
+					}
+					account := &Account{
+						ID:          802,
+						Name:        "claude55-bridge",
+						Platform:    platform,
+						Type:        AccountTypeAPIKey,
+						Concurrency: 1,
+						Credentials: map[string]any{
+							"api_key":       "ksk_test",
+							"model_mapping": map[string]any{"public-claude": "claude-opus-5-5"},
+						},
+					}
+
+					var err error
+					if chat {
+						_, err = svc.ForwardAsChatCompletions(context.Background(), c, account, []byte(body), &ParsedRequest{})
+					} else {
+						_, err = svc.ForwardAsResponses(context.Background(), c, account, []byte(body), &ParsedRequest{})
+					}
+
+					if platform == PlatformAnthropic {
+						require.Error(t, err)
+						require.Equal(t, http.StatusBadRequest, rec.Code)
+						require.Contains(t, rec.Body.String(), "claude-opus-5-5 requires adaptive thinking")
+						require.Nil(t, upstream.lastReq)
+						return
+					}
+					require.NoError(t, err)
+					require.Equal(t, http.StatusOK, rec.Code)
+					require.Len(t, upstream.requests, 1)
+					require.Equal(t, "claude-opus-5.5", gjson.GetBytes(upstream.lastBody, "conversationState.currentMessage.userInputMessage.modelId").String())
+					require.Equal(t, "adaptive", gjson.GetBytes(upstream.lastBody, "additionalModelRequestFields.thinking.type").String())
+					require.NotEmpty(t, gjson.GetBytes(upstream.lastBody, "additionalModelRequestFields.output_config.effort").String())
+				})
 			}
 		}
 	}

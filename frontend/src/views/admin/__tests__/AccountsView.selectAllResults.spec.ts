@@ -100,6 +100,13 @@ const AccountTableFiltersStub = {
   template: '<button data-test="change-filter" @click="$emit(\'change\')">change filter</button>'
 }
 
+const ConfirmDialogStub = {
+  name: 'ConfirmDialog',
+  props: ['show', 'title', 'message'],
+  emits: ['confirm', 'cancel'],
+  template: '<button v-if="show" data-test="confirm-dialog" @click="$emit(\'confirm\')">{{ title }}</button>'
+}
+
 const mountView = () => mount(AccountsView, {
   global: {
     stubs: {
@@ -112,13 +119,7 @@ const mountView = () => mount(AccountsView, {
         template: '<div data-test="data-table"><div v-for="row in data" :key="row.id"><slot name="cell-select" :row="row" /></div></div>'
       },
       Pagination: true,
-      // 本 fork 的批量操作使用 ConfirmDialog 而非 window.confirm，
-      // 因此桩件需要暴露一个可点击的确认入口。
-      ConfirmDialog: {
-        props: ['show'],
-        emits: ['confirm', 'cancel'],
-        template: '<button v-if="show" data-test="confirm-dialog" @click="$emit(\'confirm\')">confirm</button>'
-      },
+      ConfirmDialog: ConfirmDialogStub,
       AccountTableActions: { template: '<div><slot name="beforeCreate" /><slot name="after" /></div>' },
       AccountTableFilters: AccountTableFiltersStub,
       AccountBulkActionsBar: AccountBulkActionsBarStub,
@@ -180,11 +181,12 @@ describe('admin AccountsView select all filtered results', () => {
   ])('$name after a batch token refresh and table reload', async ({ result, expectedIds }) => {
     listAccounts.mockResolvedValue({ items: makeAccounts(3), total: 3, page: 1, page_size: 20, pages: 1 })
     batchRefresh.mockResolvedValue(result)
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-test="select-page"]').trigger('click')
     await wrapper.get('[data-test="refresh-token"]').trigger('click')
+    expect(batchRefresh).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="confirm-dialog"]').text()).toBe('admin.accounts.bulkRefreshTokenTitle')
     await wrapper.get('[data-test="confirm-dialog"]').trigger('click')
     await flushPromises()
 

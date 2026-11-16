@@ -118,7 +118,10 @@ func newGatewayModelsHandlerForTest(repo service.AccountRepository, routeRepo ..
 			nil,      // deferredService
 			nil,      // claudeTokenProvider
 			nil,      // kiroTokenProvider
+			nil,      // leonardoTokenProvider
 			nil,      // kiroCooldownStore
+			nil,      // kiroCacheEmulationRemote
+			nil,      // kiroPromptCacheRemote
 			nil,      // sessionLimitCache
 			nil,      // rpmCache
 			nil,      // digestStore
@@ -199,6 +202,15 @@ func TestDefaultModelIDsForCompositeIncludesAntigravityDefaults(t *testing.T) {
 
 	compositeIDs := defaultModelIDsForPlatform(service.PlatformComposite)
 	require.Contains(t, compositeIDs, antigravityIDs[0])
+}
+
+func TestDefaultModelIDsForCompositeOmitsKiro(t *testing.T) {
+	compositeIDs := defaultModelIDsForPlatform(service.PlatformComposite)
+
+	// Kiro is deliberately omitted from the composite static fallback: its
+	// claude-*/gpt-* model names collide with Anthropic/OpenAI. claude-opus-4-8-thinking
+	// only exists in the kiro catalog, so its absence proves the omission.
+	require.NotContains(t, compositeIDs, "claude-opus-4-8-thinking")
 }
 
 // Scenario: Anthropic defaults contain only Claude while Antigravity keeps its own Gemini models.
@@ -2005,4 +2017,36 @@ func TestGatewayModels_CompositeCodexRouteLookupErrorKeepsFallback(t *testing.T)
 			}
 		})
 	}
+}
+
+// A group left on a removed platform (old migrations still allow "adobe" in the
+// CHECK constraint) must not advertise any models, and its leftover accounts
+// must not leak their mappings into the list.
+func TestGatewayModels_RemovedPlatformGroupListsNothing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(21)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {{ID: 1, Platform: "adobe", Credentials: map[string]any{
+					"model_mapping": map[string]any{"gpt-image-2": "firefly-gpt-image-2"},
+				}}},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: "adobe"},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Empty(t, got.Data)
 }

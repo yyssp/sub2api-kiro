@@ -114,8 +114,8 @@ func cursorRequestFromBodyWithModels(body []byte, model string, models []cursor.
 	return cursor.AgentRequest{
 		Model:  resolvedModel,
 		System: system,
-		// MaxMode 必须跟随模型名里的 -max 后缀，否则 max 模型按普通模式跑。
-		MaxMode: strings.Contains(strings.ToLower(resolvedModel), "max"),
+		// 目录解析可能去掉 -max；仍需保留客户端请求的模式。
+		MaxMode: strings.Contains(strings.ToLower(model), "max") || strings.Contains(strings.ToLower(resolvedModel), "max"),
 		Message: cursor.BuildAgentMessage(msgs, tools),
 		Tools:   tools,
 		// ⚠️ ReadFileContent 不可省：Cursor 原生 Edit 只回传新内容，

@@ -6,7 +6,7 @@
     @close="handleClose"
   >
     <!-- Step Indicator for OAuth accounts -->
-    <div v-if="isOAuthFlow" class="mb-6 flex items-center justify-center">
+    <div v-if="needsCredentialStep" class="mb-6 flex items-center justify-center">
       <div class="flex items-center space-x-4">
         <div class="flex items-center">
           <div
@@ -74,7 +74,8 @@
       <!-- Platform Selection - Segmented Control Style -->
       <div>
         <label class="input-label">{{ t('admin.accounts.platform') }}</label>
-        <div class="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-700 sm:grid-cols-5" data-tour="account-form-platform">
+        <!-- 手机 3 列、sm 起 4 列的统一平台容器 -->
+        <div class="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-700 sm:grid-cols-4" data-tour="account-form-platform">
           <button
             type="button"
             @click="form.platform = 'anthropic'"
@@ -153,19 +154,6 @@
           </button>
           <button
             type="button"
-            @click="form.platform = 'kiro'"
-            :class="[
-              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
-              form.platform === 'kiro'
-                ? 'bg-white text-amber-700 shadow-sm dark:bg-dark-600 dark:text-amber-300'
-                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
-            ]"
-          >
-            <PlatformIcon platform="kiro" size="sm" />
-            Kiro
-          </button>
-          <button
-            type="button"
             @click="form.platform = 'cursor'"
             :class="[
               'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
@@ -194,7 +182,7 @@
             type="button"
             @click="selectTypeSafePlatform()"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
               form.platform === 'typesafe'
                 ? 'bg-white text-sky-700 shadow-sm dark:bg-dark-600 dark:text-sky-300'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -203,14 +191,11 @@
             <PlatformIcon platform="typesafe" size="sm" />
             TypeSafe / Jev
           </button>
-        </div>
-        <!-- 国产厂商：Kimi / Zhipu GLM / DeepSeek / MiniMax -->
-        <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700" data-testid="platform-row-cn">
           <button
             type="button"
             @click="selectCNPlatform('kimi')"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
               form.platform === 'kimi'
                 ? 'bg-white text-pink-600 shadow-sm dark:bg-dark-600 dark:text-pink-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -223,7 +208,7 @@
             type="button"
             @click="selectCNPlatform('zhipu')"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
               form.platform === 'zhipu'
                 ? 'bg-white text-indigo-600 shadow-sm dark:bg-dark-600 dark:text-indigo-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -236,7 +221,7 @@
             type="button"
             @click="selectCNPlatform('deepseek')"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
               form.platform === 'deepseek'
                 ? 'bg-white text-teal-600 shadow-sm dark:bg-dark-600 dark:text-teal-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -249,7 +234,7 @@
             type="button"
             @click="selectCNPlatform('minimax')"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
               form.platform === 'minimax'
                 ? 'bg-white text-rose-600 shadow-sm dark:bg-dark-600 dark:text-rose-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -258,16 +243,12 @@
             <PlatformIcon platform="minimax" size="sm" />
             MiniMax
           </button>
-        </div>
-
-        <!-- 多模型聚合平台：OpenCode 与平台清单中登记的其他多协议供应商 -->
-        <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700" data-testid="platform-row-aggregators">
           <button
             type="button"
             data-testid="platform-button-opencode_go"
             @click="selectOpenCodeGoPlatform()"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
               form.platform === 'opencode_go'
                 ? 'bg-white text-amber-700 shadow-sm dark:bg-dark-600 dark:text-amber-300'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -284,7 +265,7 @@
             :data-testid="`platform-button-${spec.id}`"
             @click="selectGenericMultiProtocolPlatform(spec.id)"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
               form.platform === spec.id
                 ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-600 dark:text-primary-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -292,6 +273,67 @@
           >
             <PlatformIcon :platform="spec.id" size="sm" />
             {{ spec.display_name }}
+          </button>
+          <!-- fork 定制：Kiro 专属入口 -->
+          <button
+            type="button"
+            @click="form.platform = 'kiro'"
+            :class="[
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
+              form.platform === 'kiro'
+                ? 'bg-white text-amber-700 shadow-sm dark:bg-dark-600 dark:text-amber-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+            data-testid="platform-tab-kiro"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 1200 1200" fill="none" aria-hidden="true">
+              <defs>
+                <mask id="kiro-platform-mono" maskUnits="userSpaceOnUse">
+                  <path
+                    d="M398.554 818.914C316.315 1001.03 491.477 1046.74 620.672 940.156C658.687 1059.66 801.052 970.473 852.234 877.795C964.787 673.567 919.318 465.357 907.64 422.374C827.637 129.443 427.623 128.946 358.8 423.865C342.651 475.544 342.402 534.18 333.458 595.051C328.986 625.86 325.507 645.488 313.83 677.785C306.873 696.424 297.68 712.819 282.773 740.645C259.915 783.881 269.604 867.113 387.87 823.883L399.051 818.914H398.554Z"
+                    fill="white"
+                  />
+                  <path
+                    d="M636.123 549.353C603.328 549.353 598.359 510.097 598.359 486.742C598.359 465.623 602.086 448.977 609.293 438.293C615.504 428.852 624.697 424.131 636.123 424.131C647.555 424.131 657.492 428.852 664.447 438.541C672.398 449.474 676.623 466.12 676.623 486.742C676.623 525.998 661.471 549.353 636.375 549.353H636.123Z"
+                    fill="black"
+                  />
+                  <path
+                    d="M771.24 549.353C738.445 549.353 733.477 510.097 733.477 486.742C733.477 465.623 737.203 448.977 744.41 438.293C750.621 428.852 759.814 424.131 771.24 424.131C782.672 424.131 792.609 428.852 799.564 438.541C807.516 449.474 811.74 466.12 811.74 486.742C811.74 525.998 796.588 549.353 771.492 549.353H771.24Z"
+                    fill="black"
+                  />
+                </mask>
+              </defs>
+              <rect width="1200" height="1200" fill="currentColor" mask="url(#kiro-platform-mono)" />
+            </svg>
+            Kiro
+          </button>
+          <button
+            type="button"
+            @click="form.platform = 'leonardo'"
+            :class="[
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
+              form.platform === 'leonardo'
+                ? 'bg-white text-violet-600 shadow-sm dark:bg-dark-600 dark:text-violet-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+            data-testid="platform-tab-leonardo"
+          >
+            <PlatformIcon platform="leonardo" size="sm" />
+            Leonardo
+          </button>
+          <button
+            type="button"
+            @click="form.platform = 'fish'"
+            :class="[
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
+              form.platform === 'fish'
+                ? 'bg-white text-cyan-600 shadow-sm dark:bg-dark-600 dark:text-cyan-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+            data-testid="platform-tab-fish"
+          >
+            <PlatformIcon platform="fish" size="sm" />
+            Fish Audio
           </button>
         </div>
       </div>
@@ -429,13 +471,13 @@
       <!-- Account Type Selection (OpenAI) -->
       <div v-if="form.platform === 'openai'">
         <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
-        <div class="mt-2 grid grid-cols-2 gap-3" data-tour="account-form-type">
+        <div class="mt-2 grid grid-cols-3 gap-3" data-tour="account-form-type" data-testid="openai-account-type-grid">
           <button
             type="button"
-            @click="accountCategory = 'oauth-based'"
+            @click="accountCategory = 'oauth-based'; openaiBPSOAuth = false"
             :class="[
               'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              accountCategory === 'oauth-based'
+              accountCategory === 'oauth-based' && !openaiBPSOAuth
                 ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
                 : 'border-gray-200 hover:border-green-300 dark:border-dark-600 dark:hover:border-green-700'
             ]"
@@ -443,7 +485,7 @@
             <div
               :class="[
                 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                accountCategory === 'oauth-based'
+                accountCategory === 'oauth-based' && !openaiBPSOAuth
                   ? 'bg-green-500 text-white'
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
@@ -458,7 +500,35 @@
 
           <button
             type="button"
-            @click="accountCategory = 'apikey'"
+            data-testid="openai-bps-oauth"
+            @click="accountCategory = 'oauth-based'; openaiBPSOAuth = true"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              isOpenAIBPSOAuth
+                ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                : 'border-gray-200 hover:border-green-300 dark:border-dark-600 dark:hover:border-green-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                isOpenAIBPSOAuth
+                  ? 'bg-green-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="link" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">BPS OAuth</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.oauth.openai.excelTypeDesc') }}</span>
+            </div>
+          </button>
+
+
+          <button
+            type="button"
+            @click="accountCategory = 'apikey'; openaiBPSOAuth = false"
             :class="[
               'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
               accountCategory === 'apikey'
@@ -1266,6 +1336,314 @@
           </button>
         </div>
       </div>
+      <!-- Leonardo: Cookie 原生直连 vs OpenAI 形中转兜底。 -->
+      <div v-if="form.platform === 'leonardo'">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <button
+            type="button"
+            @click="accountCategory = 'oauth-based'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'oauth-based'
+                ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20'
+                : 'border-gray-200 hover:border-violet-300 dark:border-dark-600 dark:hover:border-violet-700'
+            ]"
+            data-testid="leonardo-account-type-oauth"
+          >
+            <div :class="['flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', accountCategory === 'oauth-based' ? 'bg-violet-500 text-white' : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400']">
+              <Icon name="key" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.accounts.types.oauth') }}
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.types.leonardoOauth') }}
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            @click="accountCategory = 'apikey-relay'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'apikey-relay'
+                ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
+                : 'border-gray-200 hover:border-sky-300 dark:border-dark-600 dark:hover:border-sky-700'
+            ]"
+            data-testid="leonardo-account-type-relay"
+          >
+            <div :class="['flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', accountCategory === 'apikey-relay' ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400']">
+              <Icon name="cloud" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                API Key + Base URL
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.types.leonardoApikeyRelay') }}
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+      <!-- Fish：Oauth Token 直连 vs OpenAI 兼容中转。两种都落库 apikey，不走 OAuth 授权。 -->
+      <div v-if="form.platform === 'fish'">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <button
+            type="button"
+            @click="fishAccountMode = 'token'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              fishAccountMode === 'token'
+                ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                : 'border-gray-200 hover:border-amber-300 dark:border-dark-600 dark:hover:border-amber-700'
+            ]"
+            data-testid="fish-account-type-token"
+          >
+            <div :class="['flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', fishAccountMode === 'token' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400']">
+              <Icon name="key" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.accounts.types.fishOauthToken') }}
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.types.fishOauth') }}
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            @click="fishAccountMode = 'relay'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              fishAccountMode === 'relay'
+                ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
+                : 'border-gray-200 hover:border-sky-300 dark:border-dark-600 dark:hover:border-sky-700'
+            ]"
+            data-testid="fish-account-type-relay"
+          >
+            <div :class="['flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', fishAccountMode === 'relay' ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400']">
+              <Icon name="cloud" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                API Key + Base URL
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.types.fishApikeyRelay') }}
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+      <!-- Leonardo Cookie 账号的每积分单价：仅用于今日统计估算积分消耗金额，不参与计费 -->
+      <div v-if="form.platform === 'leonardo' && accountCategory === 'oauth-based'" class="space-y-2">
+        <label class="input-label">{{ t('admin.accounts.leonardoCreditUnitPriceUsd') }}</label>
+        <input
+          v-model.number="leonardoCreditUnitPriceUsd"
+          type="number"
+          min="0"
+          step="0.0001"
+          class="input"
+          placeholder="0"
+          data-testid="leonardo-credit-unit-price-usd"
+        />
+        <p class="input-hint">{{ t('admin.accounts.leonardoCreditUnitPriceUsdHint') }}</p>
+      </div>
+      <!-- Leonardo Cookie 账号的出图上限：超过时按上限出图，再超分回请求尺寸，按交付尺寸计费 -->
+      <div v-if="form.platform === 'leonardo' && accountCategory === 'oauth-based'" class="space-y-3" data-testid="leonardo-image-limits">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.leonardoMaxQuality') }}</label>
+          <Select v-model="leonardoImageLimits.maxQuality" :options="leonardoMaxQualityOptions" data-testid="leonardo-max-quality" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.leonardoMaxShortEdge') }}</label>
+            <input
+              v-model.number="leonardoImageLimits.maxShortEdge"
+              type="number"
+              min="0"
+              step="16"
+              class="input"
+              placeholder="0"
+              data-testid="leonardo-max-short-edge"
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.leonardoMaxUpscaleFactor') }}</label>
+            <input
+              v-model.number="leonardoImageLimits.maxUpscaleFactor"
+              type="number"
+              min="1"
+              max="4"
+              step="0.1"
+              class="input"
+              placeholder="2"
+              data-testid="leonardo-max-upscale-factor"
+            />
+          </div>
+        </div>
+        <p class="input-hint">{{ t('admin.accounts.leonardoImageLimitsHint') }}</p>
+      </div>
+      <!-- Leonardo 外部中转(API Key + Base URL)：转发到 OpenAI 兼容出图上游，作为原生账号全部故障时的兜底 -->
+      <div v-if="form.platform === 'leonardo' && accountCategory === 'apikey-relay'" class="space-y-4" data-testid="leonardo-relay-fields">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
+          <input
+            v-model="apiKeyBaseUrl"
+            type="text"
+            required
+            class="input"
+            placeholder="https://api.openai.com"
+            data-testid="leonardo-relay-base-url"
+          />
+          <p class="input-hint">{{ t('admin.accounts.leonardo.relayBaseUrlHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
+          <input
+            v-model="apiKeyValue"
+            type="password"
+            required
+            class="input font-mono"
+            placeholder="sk-..."
+            data-testid="leonardo-relay-api-key"
+          />
+          <p class="input-hint">{{ t('admin.accounts.leonardo.relayApiKeyHint') }}</p>
+        </div>
+      </div>
+      <!-- Fish Oauth Token：第一步直接粘贴会话 token，仍以 apikey 落库，不进第二步。 -->
+      <div v-if="form.platform === 'fish' && fishAccountMode === 'token'" class="space-y-4" data-testid="fish-token-fields">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.fish.tokenLabel') }}</label>
+          <textarea
+            v-model="fishToken"
+            rows="3"
+            class="input font-mono text-xs"
+            placeholder="46471c2b-7cdc-4671-acc4-c0b2fd111817"
+            data-testid="fish-token-input"
+          ></textarea>
+          <p class="input-hint">{{ t('admin.accounts.fish.tokenHint') }}</p>
+        </div>
+        <div data-testid="fish-max-quality-section">
+          <label class="input-label">{{ t('admin.accounts.fishMaxQuality') }}</label>
+          <Select v-model="fishMaxQuality" :options="fishMaxQualityOptions" data-testid="fish-max-quality" />
+          <p class="input-hint">{{ t('admin.accounts.fishMaxQualityHint') }}</p>
+        </div>
+      </div>
+      <!-- Fish 中转：第一步直接填 Base URL + API Key，仍以 apikey 落库。 -->
+      <div v-if="form.platform === 'fish' && fishAccountMode === 'relay'" class="space-y-4" data-testid="fish-relay-fields">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
+          <input
+            v-model="apiKeyBaseUrl"
+            type="text"
+            required
+            class="input"
+            placeholder="https://api.openai.com"
+            data-testid="fish-relay-base-url"
+          />
+          <p class="input-hint">{{ t('admin.accounts.fish.relayBaseUrlHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
+          <input
+            v-model="apiKeyValue"
+            type="password"
+            required
+            class="input font-mono"
+            placeholder="sk-..."
+            data-testid="fish-relay-api-key"
+          />
+          <p class="input-hint">{{ t('admin.accounts.fish.relayApiKeyHint') }}</p>
+        </div>
+      </div>
+      <!-- Fish 模型白名单 / 映射。token 号和中转号都在第一步设置。 -->
+      <div
+        v-if="form.platform === 'fish'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="fish-model-restriction-section"
+      >
+        <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+        <div class="mb-4 flex gap-2">
+          <button
+            type="button"
+            @click="modelRestrictionMode = 'whitelist'"
+            :class="[
+              'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+              modelRestrictionMode === 'whitelist'
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+            ]"
+          >
+            {{ t('admin.accounts.modelWhitelist') }}
+          </button>
+          <button
+            type="button"
+            @click="modelRestrictionMode = 'mapping'"
+            :class="[
+              'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+              modelRestrictionMode === 'mapping'
+                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+            ]"
+          >
+            {{ t('admin.accounts.modelMapping') }}
+          </button>
+        </div>
+        <div v-if="modelRestrictionMode === 'whitelist'">
+          <ModelWhitelistSelector
+            v-model="allowedModels"
+            :model-mappings="modelMappings"
+            platform="fish"
+          />
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+            <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
+          </p>
+        </div>
+        <div v-else>
+          <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+            <p class="text-xs text-purple-700 dark:text-purple-400">{{ t('admin.accounts.mapRequestModels') }}</p>
+          </div>
+          <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+            <div
+              v-for="(mapping, index) in modelMappings"
+              :key="'fish-' + getModelMappingKey(mapping)"
+              class="flex items-center gap-2"
+            >
+              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.requestModel')" />
+              <span class="text-gray-400">→</span>
+              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.actualModel')" />
+              <button type="button" @click="removeModelMapping(index)" class="rounded-lg p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
+                ×
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            @click="addModelMapping"
+            class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 dark:border-dark-500 dark:text-gray-400"
+          >
+            + {{ t('admin.accounts.addMapping') }}
+          </button>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="preset in presetMappings"
+              :key="'fish-' + preset.label"
+              type="button"
+              @click="addPresetMapping(preset.from, preset.to)"
+              :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+            >
+              + {{ preset.label }}
+            </button>
+          </div>
+        </div>
+      </div>
       <div v-if="form.platform === 'kiro' && accountCategory === 'oauth-based'">
         <label class="input-label">{{ t('admin.accounts.oauth.kiro.authModeTitle') }}</label>
         <div class="mt-2 grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -1525,7 +1903,7 @@
       </div>
 
       <div
-        v-if="form.platform === 'kiro' && (accountCategory === 'apikey' || accountCategory === 'apikey-relay')"
+        v-if="(form.platform === 'kiro' && (accountCategory === 'apikey' || accountCategory === 'apikey-relay'))"
         class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div>
@@ -1681,6 +2059,117 @@
                 {{ t('admin.accounts.noneSelectedUsesDefault') }}
               </span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="form.platform === 'kiro'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+        <div class="mb-4 flex gap-2">
+          <button
+            type="button"
+            data-testid="model-mode-whitelist"
+            @click="modelRestrictionMode = 'whitelist'"
+            :class="[
+              'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+              modelRestrictionMode === 'whitelist'
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+            ]"
+          >
+            {{ t('admin.accounts.modelWhitelist') }}
+          </button>
+          <button
+            type="button"
+            data-testid="model-mode-mapping"
+            @click="modelRestrictionMode = 'mapping'"
+            :class="[
+              'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+              modelRestrictionMode === 'mapping'
+                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+            ]"
+          >
+            {{ t('admin.accounts.modelMapping') }}
+          </button>
+        </div>
+
+        <div v-if="modelRestrictionMode === 'whitelist'">
+          <ModelWhitelistSelector
+            v-model="allowedModels"
+            platform="kiro"
+            :sync-credentials="kiroCreateSyncCredentials"
+            @update:kiroUpstreamIDs="mergeKiroUpstreamIDs"
+          />
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+            <span v-if="allowedModels.length === 0 && modelMappings.length === 0" data-testid="kiro-default-mapping-hint">{{
+              t('admin.accounts.kiroUsesDefaultMapping')
+            }}</span>
+          </p>
+        </div>
+
+        <div v-else>
+          <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+            <p class="text-xs text-purple-700 dark:text-purple-400">
+              {{ t('admin.accounts.mapRequestModels') }}
+            </p>
+          </div>
+
+          <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+            <div
+              v-for="(mapping, index) in modelMappings"
+              :key="getModelMappingKey(mapping)"
+              class="flex items-center gap-2"
+            >
+              <input
+                v-model="mapping.from"
+                type="text"
+                :class="[
+                  'input flex-1',
+                  !isValidWildcardPattern(mapping.from) ? 'border-red-500 dark:border-red-500' : ''
+                ]"
+                :placeholder="t('admin.accounts.requestModel')"
+              />
+              <svg class="h-4 w-4 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+              <input
+                v-model="mapping.to"
+                type="text"
+                :class="[
+                  'input flex-1',
+                  mapping.to.includes('*') ? 'border-red-500 dark:border-red-500' : ''
+                ]"
+                :placeholder="t('admin.accounts.actualModel')"
+              />
+              <button
+                type="button"
+                @click="removeModelMapping(index)"
+                class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+              >
+                <Icon name="x" size="sm" />
+              </button>
+            </div>
+          </div>
+
+          <button type="button" @click="addModelMapping" class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300">
+            <svg class="mr-1 inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            {{ t('admin.accounts.addMapping') }}
+          </button>
+
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="preset in kiroPresetMappings"
+              :key="preset.label"
+              type="button"
+              @click="addPresetMapping(preset.from, preset.to)"
+              :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+            >
+              + {{ preset.label }}
+            </button>
           </div>
         </div>
       </div>
@@ -1992,8 +2481,8 @@
         </div>
       </div>
 
-      <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
-      <div v-if="form.type === 'apikey' && form.platform !== 'antigravity' && form.platform !== 'kiro'" class="space-y-4">
+      <!-- API Key input (only for apikey type, excluding Antigravity / Kiro which have their own fields) -->
+      <div v-if="form.type === 'apikey' && form.platform !== 'antigravity' && form.platform !== 'kiro' && form.platform !== 'leonardo' && form.platform !== 'fish'" class="space-y-4">
         <div v-if="!isMultiProtocolPlatform || apiProtocol !== 'adaptive'">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -2940,10 +3429,11 @@
         </div>
       </div>
 
-      <!-- OpenAI / Grok / Cursor / Kiro 模型白名单与映射（这些平台的连接参数不走通用 apikey 区，需要独立区域） -->
+      <!-- OAuth 平台和 Leonardo 使用独立的模型限制区域。 -->
       <div
-        v-if="((form.platform === 'openai' || form.platform === 'grok' || form.platform === 'cursor') && isOAuthFlow) || form.platform === 'kiro'"
+        v-if="((form.platform === 'openai' || form.platform === 'grok' || form.platform === 'cursor') && isOAuthFlow) || form.platform === 'leonardo'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="oauth-model-restriction-section"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
@@ -2993,6 +3483,7 @@
               v-model="allowedModels"
               :model-mappings="modelMappings"
               :platform="form.platform"
+              :available-models="isOpenAIBPSOAuth ? bpsCandidateModels : undefined"
               :sync-credentials="syncPreviewCredentials"
               @upstream-synced="upstreamModelsPreviewed = true"
             />
@@ -3074,6 +3565,7 @@
                 v-for="preset in presetMappings"
                 :key="'oauth-' + preset.label"
                 type="button"
+                data-testid="oauth-preset-mapping"
                 @click="addPresetMapping(preset.from, preset.to)"
                 :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
               >
@@ -3734,7 +4226,7 @@
 
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
       <div
-        v-if="form.platform === 'openai'"
+        v-if="form.platform === 'openai' && !isOpenAIBPSOAuth"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
@@ -3793,9 +4285,9 @@
         </div>
       </div>
 
-      <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
+      <!-- OpenAI WS Mode（off/ctx_pool/passthrough/http_bridge/ws_bridge） -->
       <div
-        v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        v-if="form.platform === 'openai' && !isOpenAIBPSOAuth && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
         data-testid="create-openai-ws-mode"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
@@ -3914,7 +4406,7 @@
       </div>
 
       <div
-        v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
+        v-if="form.platform === 'openai' && accountCategory === 'oauth-based' && !isOpenAIBPSOAuth"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
@@ -3970,7 +4462,7 @@
 
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
-        v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
+        v-if="form.platform === 'openai' && accountCategory === 'oauth-based' && !isOpenAIBPSOAuth"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -3986,9 +4478,39 @@
         </div>
       </div>
 
+      <div
+        v-if="form.platform === 'openai' && form.type === 'oauth' && oauthFlowRef?.inputMethod !== 'agent_identity'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTelemetry') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.codexTelemetryDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="create-codex-telemetry-toggle"
+            @click="codexTelemetryEnabled = !codexTelemetryEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              codexTelemetryEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                codexTelemetryEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI Compact 能力配置 -->
       <div
-        v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        v-if="form.platform === 'openai' && !isOpenAIBPSOAuth && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
         <div class="flex items-center justify-between">
@@ -4216,10 +4738,24 @@
 
     </form>
 
-    <!-- Step 2: OAuth Authorization -->
+    <!-- Step 2: OAuth Authorization / Leonardo credentials -->
     <div v-else class="space-y-5">
+      <!-- Leonardo：长期凭据是 Better Auth cookie，JWT 由后台刷新器维护。 -->
+      <div v-if="form.platform === 'leonardo'" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.leonardo.cookieLabel') }}</label>
+          <textarea
+            v-model="leonardoCookie"
+            rows="6"
+            class="input font-mono text-xs"
+            :placeholder="t('admin.accounts.leonardo.cookiePlaceholder')"
+            data-testid="leonardo-cookie-input"
+          ></textarea>
+          <p class="input-hint">{{ t('admin.accounts.leonardo.cookieHint') }}</p>
+        </div>
+      </div>
       <KiroCredentialImportPanel
-        v-if="isKiroImportMode"
+        v-else-if="isKiroImportMode"
         :importer="kiroImporter"
         :error="currentOAuthError"
       />
@@ -4229,9 +4765,10 @@
         :error="currentOAuthError"
       />
       <OAuthAuthorizationFlow
-        v-else
+        v-else-if="form.platform !== 'leonardo'"
         ref="oauthFlowRef"
         :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
+        :excel-oauth="isOpenAIBPSOAuth"
         :auth-url="currentAuthUrl"
         :session-id="currentSessionId"
         :loading="currentOAuthLoading"
@@ -4241,12 +4778,12 @@
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
         :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok'"
-        :show-mobile-refresh-token-option="form.platform === 'openai'"
+        :show-mobile-refresh-token-option="form.platform === 'openai' && !isOpenAIBPSOAuth"
         :show-session-token-option="false"
         :show-access-token-option="false"
-        :show-codex-session-import-option="form.platform === 'openai'"
-        :show-agent-identity-option="form.platform === 'openai'"
-        :show-codex-pat-option="form.platform === 'openai'"
+        :show-codex-session-import-option="form.platform === 'openai' && !isOpenAIBPSOAuth"
+        :show-agent-identity-option="form.platform === 'openai' && !isOpenAIBPSOAuth"
+        :show-codex-pat-option="form.platform === 'openai' && !isOpenAIBPSOAuth"
         :show-sso-option="form.platform === 'grok'"
         :show-email-password-option="false"
         :show-manual-option="true"
@@ -4301,7 +4838,7 @@
             ></path>
           </svg>
           {{
-            isOAuthFlow
+            needsCredentialStep
               ? t('common.next')
               : submitting
                 ? t('admin.accounts.creating')
@@ -4315,7 +4852,17 @@
         </button>
         <!-- 导入分两步：先解析预览，确认无误再落库，避免脏数据直接建号。 -->
         <button
-          v-if="isKiroImportMode && !kiroImporter.entries.value.length"
+          v-if="form.platform === 'leonardo'"
+          type="button"
+          :disabled="submitting"
+          class="btn btn-primary"
+          data-testid="leonardo-create-account"
+          @click="handleLeonardoCreate"
+        >
+          {{ submitting ? t('admin.accounts.creating') : t('common.create') }}
+        </button>
+        <button
+          v-else-if="isKiroImportMode && !kiroImporter.entries.value.length"
           type="button"
           :disabled="!kiroImporter.canParse.value"
           class="btn btn-primary"
@@ -4636,6 +5183,7 @@ import { useAppStore } from '@/stores/app'
 import {
   claudeModels,
   getPresetMappingsByPlatform,
+  getBPSPresetMappings,
   getModelsByPlatform,
   commonErrorCodes,
   buildModelMappingObject,
@@ -4643,6 +5191,7 @@ import {
   getKiroDefaultWhitelistModels,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
+import { useBPSCandidateModels } from '@/composables/useBPSCandidateModels'
 import { adminAPI } from '@/api/admin'
 import type { KiroImportEntry } from '@/api/admin/kiro'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
@@ -4651,7 +5200,7 @@ import {
   type AddMethod,
   type AuthInputMethod
 } from '@/composables/useAccountOAuth'
-import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
+import { useOpenAIOAuth, OPENAI_EXCEL_OAUTH_CLIENT_ID } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useKiroOAuth } from '@/composables/useKiroOAuth'
@@ -4677,6 +5226,13 @@ import type {
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import {
+  LEONARDO_MAX_QUALITY_VALUES,
+  applyLeonardoImageLimitsToExtra,
+  defaultLeonardoImageLimits,
+  type LeonardoImageLimitsForm
+} from '@/utils/leonardoImageLimits'
+import { FISH_MAX_QUALITY_VALUES, applyFishMaxQualityToExtra } from '@/utils/fishImageLimits'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import OpenAIImageSizeTiersField from '@/components/account/OpenAIImageSizeTiersField.vue'
@@ -4735,13 +5291,14 @@ import {
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { supportsAccountQuota } from '@/utils/accountQuota'
 import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
-import { VERTEX_LOCATION_SELECT_OPTIONS, BEDROCK_REGION_SELECT_OPTIONS } from '@/constants/account'
+import { VERTEX_LOCATION_SELECT_OPTIONS, BEDROCK_REGION_SELECT_OPTIONS, DEFAULT_EXCEL_BPS_MODELS } from '@/constants/account'
 import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
   OPENAI_WS_MODE_HTTP_BRIDGE,
+  OPENAI_WS_MODE_WS_BRIDGE,
   isOpenAIWSModeEnabled,
   resolveOpenAIWSModeHintKey,
   type OpenAIWSMode
@@ -4876,6 +5433,8 @@ const hideAccountLongContextBilling = computed(() => {
 // OAuth composables
 const oauth = useAccountOAuth() // For Anthropic OAuth
 const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
+const openaiBPSOAuth = ref(false)
+const isOpenAIBPSOAuth = computed(() => form.platform === 'openai' && accountCategory.value === 'oauth-based' && openaiBPSOAuth.value)
 const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
 const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
 const kiroOAuth = useKiroOAuth() // For Kiro OAuth / IDC
@@ -5186,6 +5745,15 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+// BPS OAuth 账号的白名单候选只列 BPS 模型
+const { candidates: bpsCandidateModels, reset: resetBPSCandidateModels } = useBPSCandidateModels(allowedModels)
+// 白名单模式按平台预填；Kiro 排除上游不支持的 Claude 系列，BPS OAuth 限定 BPS 目录。
+const defaultWhitelistModels = (platform = form.platform) => {
+  if (platform === 'kiro') return getKiroDefaultWhitelistModels()
+  if (platform === 'openai' && isOpenAIBPSOAuth.value) return [...DEFAULT_EXCEL_BPS_MODELS]
+  return [...getModelsByPlatform(platform)]
+}
+
 const upstreamModelsPreviewed = ref(false)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
@@ -5270,6 +5838,7 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
+const codexTelemetryEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 const codexFingerprintModeOptions = computed(() => [
@@ -5328,18 +5897,113 @@ const cursorImporter = useCursorCredentialImport()
 const cursorCreating = ref(false)
 const cursorCreateError = ref('')
 /** Kiro 落库用的 model_mapping：与其它平台共用同一套白名单 / 映射表单状态。 */
-const buildKiroModelMapping = () =>
- buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
 // 选中 Kiro 时回到白名单模式并填默认模型：Claude 默认清单去掉 fable 族（见 getKiroDefaultWhitelistModels）。
 // 过去这里会自动塞一整张默认映射表，用户看到一堆并不需要的映射。
 /** 新建账号白名单的默认勾选：Kiro 用 Claude 清单去掉 fable 族，其余平台用平台模型清单。 */
-const defaultWhitelistModels = (platform: string): string[] =>
-  platform === 'kiro' ? getKiroDefaultWhitelistModels() : [...getModelsByPlatform(platform)]
 const resetKiroModelRestriction = () => {
  modelRestrictionMode.value = 'whitelist'
  allowedModels.value = getKiroDefaultWhitelistModels()
  modelMappings.value = []
 }
+
+// Leonardo：长期凭据是浏览器 cookie；粘贴支持完整 k=v 串或裸 session token。
+const leonardoCookie = ref('')
+const leonardoCreditUnitPriceUsd = ref(0)
+const leonardoImageLimits = ref<LeonardoImageLimitsForm>(defaultLeonardoImageLimits())
+const leonardoMaxQualityOptions = computed(() => [
+  { value: '', label: t('admin.accounts.leonardoMaxQualityUnlimited') },
+  ...LEONARDO_MAX_QUALITY_VALUES.map((value) => ({ value, label: value }))
+])
+const fishMaxQuality = ref('')
+const fishMaxQualityOptions = computed(() => [
+  { value: '', label: t('admin.accounts.fishMaxQualityUnlimited') },
+  ...FISH_MAX_QUALITY_VALUES.map((value) => ({ value, label: value }))
+])
+const kiroUpstreamIDs = ref<Record<string, string>>({})
+const mergeKiroUpstreamIDs = (ids: Record<string, string>) => {
+  kiroUpstreamIDs.value = { ...kiroUpstreamIDs.value, ...ids }
+}
+const kiroCreateSyncCredentials = computed(() => {
+  if (form.platform !== 'kiro' || !apiKeyValue.value.trim()) return undefined
+  if (accountCategory.value === 'apikey') {
+    return { platform: 'kiro', type: 'apikey', api_key: apiKeyValue.value.trim() }
+  }
+  if (accountCategory.value === 'apikey-relay' && apiKeyBaseUrl.value.trim()) {
+    return {
+      platform: 'kiro',
+      type: 'apikey',
+      base_url: apiKeyBaseUrl.value.trim(),
+      api_key: apiKeyValue.value.trim()
+    }
+  }
+  return undefined
+})
+const kiroPresetMappings = computed(() => getPresetMappingsByPlatform('kiro'))
+// Leonardo Cookie 建号：cookie 必填；空白名单 = 不下发 model_mapping，
+// 由后端回落到平台默认映射。
+// Fish 建号：token 原生号（{token}）或 OpenAI 兼容中转号（{base_url, api_key}）。
+const fishAccountMode = ref<'token' | 'relay'>('token')
+const fishToken = ref('')
+const handleFishCreate = async () => {
+  if (!form.name.trim()) {
+    appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+    return
+  }
+  const token = fishToken.value.trim()
+  if (!token) {
+    appStore.showError(t('admin.accounts.fish.tokenRequired'))
+    return
+  }
+  const credentials: Record<string, unknown> = { api_key: token }
+  const modelMapping = buildModelMappingObject(
+    modelRestrictionMode.value,
+    allowedModels.value,
+    modelMappings.value
+  )
+  if (modelMapping) {
+    credentials.model_mapping = modelMapping
+  }
+  await createAccountAndFinish(
+    'fish',
+    'apikey' as AccountType,
+    credentials,
+    applyFishMaxQualityToExtra({}, fishMaxQuality.value)
+  )
+}
+
+const handleLeonardoCreate = async () => {
+  if (!form.name.trim()) {
+    appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+    return
+  }
+  const cookie = leonardoCookie.value.trim()
+  if (!cookie) {
+    appStore.showError(t('admin.accounts.leonardo.cookieRequired'))
+    return
+  }
+
+  const credentials: Record<string, unknown> = {
+    cookie
+  }
+  const modelMapping = buildModelMappingObject(
+    modelRestrictionMode.value,
+    allowedModels.value,
+    modelMappings.value
+  )
+  if (modelMapping) {
+    credentials.model_mapping = modelMapping
+  }
+
+  await createAccountAndFinish('leonardo', 'oauth' as AccountType, credentials)
+}
+
+const buildCreateKiroMapping = (direct: boolean) =>
+  buildModelMappingObject(
+    modelRestrictionMode.value,
+    allowedModels.value,
+    modelMappings.value,
+    direct ? { kiroDirect: true, kiroUpstreamIDs: kiroUpstreamIDs.value } : undefined
+  )
 const kiroCreditUnitPriceUsd = ref(0)
 const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 
@@ -5547,7 +6211,8 @@ const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
   { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') },
-  { value: OPENAI_WS_MODE_HTTP_BRIDGE, label: t('admin.accounts.openai.wsModeHttpBridge') }
+  { value: OPENAI_WS_MODE_HTTP_BRIDGE, label: t('admin.accounts.openai.wsModeHttpBridge') },
+  { value: OPENAI_WS_MODE_WS_BRIDGE, label: t('admin.accounts.openai.wsModeWsBridge') }
 ])
 
 const openaiResponsesWebSocketV2Mode = computed({
@@ -5570,8 +6235,9 @@ const openAIWSModeHintKey = computed(() =>
   resolveOpenAIWSModeHintKey(openaiResponsesWebSocketV2Mode.value)
 )
 
+// Passthrough is a Codex-only option: BPS OAuth always applies the model mapping.
 const isOpenAIModelRestrictionDisabled = computed(() =>
-  form.platform === 'openai' && openaiPassthroughEnabled.value
+  form.platform === 'openai' && !isOpenAIBPSOAuth.value && openaiPassthroughEnabled.value
 )
 
 const mixedChannelWarningMessageText = computed(() => {
@@ -5597,7 +6263,9 @@ const geminiHelpLinks = {
 }
 
 // Computed: current preset mappings based on platform
-const presetMappings = computed(() => getPresetMappingsByPlatform(form.platform))
+const presetMappings = computed(() =>
+  isOpenAIBPSOAuth.value ? getBPSPresetMappings() : getPresetMappingsByPlatform(form.platform)
+)
 const tempUnschedScopeOptions = computed<Array<{ value: TempUnschedulableScope; label: string; description: string }>>(() => [
   {
     value: 'model',
@@ -5661,6 +6329,11 @@ const form = reactive({
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
+  // Leonardo 的长期凭据是浏览器 cookie，没有授权重定向环节（两步建号由
+  // needsCredentialStep 单独处理）。
+  if (form.platform === 'leonardo' || form.platform === 'fish') {
+    return false
+  }
   // Antigravity upstream 类型不需要 OAuth 流程
   if (form.platform === 'antigravity' && antigravityAccountType.value === 'upstream') {
     return false
@@ -5671,6 +6344,12 @@ const isOAuthFlow = computed(() => {
   }
   return accountCategory.value === 'oauth-based'
 })
+
+// Leonardo Cookie 分两步。Fish 的 token 和中转都在第一步直接建号。
+const needsCredentialStep = computed(() =>
+  isOAuthFlow.value ||
+  (form.platform === 'leonardo' && accountCategory.value !== 'apikey-relay')
+)
 
 const isKiroImportMode = computed(() => form.platform === 'kiro' && kiroAccountType.value === 'import')
 // Cursor 只有导入这一条路，选中该平台即进入导入模式。
@@ -5720,7 +6399,10 @@ watch(
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
         .catch(() => { tlsFingerprintProfiles.value = [] })
       // Modal opened - fill related models
-      allowedModels.value = defaultWhitelistModels(form.platform)
+      // Leonardo 留空白名单：不下发 model_mapping = 后端回落默认映射。
+      if (form.platform !== 'leonardo') {
+        allowedModels.value = defaultWhitelistModels(form.platform)
+      }
       // Antigravity: 默认使用映射模式并填充默认映射
       if (form.platform === 'antigravity') {
         antigravityModelRestrictionMode.value = 'mapping'
@@ -5730,6 +6412,7 @@ watch(
         antigravityWhitelistModels.value = []
       } else if (form.platform === 'kiro') {
         resetKiroModelRestriction()
+        kiroUpstreamIDs.value = {}
       } else {
         antigravityWhitelistModels.value = []
         antigravityModelMappings.value = []
@@ -5743,7 +6426,7 @@ watch(
 
 // Sync form.type based on accountCategory, addMethod, and platform-specific type
 watch(
-  [accountCategory, addMethod, antigravityAccountType, () => form.platform],
+  [accountCategory, addMethod, antigravityAccountType, () => form.platform, openaiBPSOAuth],
   ([category, method, agType]) => {
     // Antigravity upstream 类型（实际创建为 apikey）
     if (form.platform === 'antigravity' && agType === 'upstream') {
@@ -5761,6 +6444,16 @@ watch(
       form.type = 'oauth'
       return
     }
+    // Leonardo: Cookie 落库 oauth；中转落库 apikey。
+    if (form.platform === 'leonardo') {
+      form.type = category === 'apikey-relay' ? 'apikey' : 'oauth'
+      return
+    }
+    // Fish 的两种卡片都是 apikey：token 凭据或 base_url + api_key。
+    if (form.platform === 'fish') {
+      form.type = 'apikey'
+      return
+    }
     // Bedrock 类型
     if (form.platform === 'anthropic' && category === 'bedrock') {
       form.type = 'bedrock' as AccountType
@@ -5769,7 +6462,10 @@ watch(
     if ((form.platform === 'gemini' || form.platform === 'anthropic') && category === 'service_account') {
       form.type = 'service_account' as AccountType
     } else if (category === 'oauth-based') {
-      form.type = form.platform === 'anthropic' ? method as AccountType : 'oauth'
+      // BPS OAuth（官方 Excel 授权）是独立的 BPS-only 账号类型
+      form.type = form.platform === 'anthropic'
+        ? method as AccountType
+        : form.platform === 'openai' && openaiBPSOAuth.value ? 'bps-oauth' : 'oauth'
     } else {
       form.type = 'apikey'
     }
@@ -5801,7 +6497,9 @@ watch(
                 ? 'https://api.x.ai/v1'
                 : newPlatform === 'typesafe'
                   ? 'https://api.typesafe.ai'
-                  : 'https://api.anthropic.com'
+                    : newPlatform === 'leonardo' || newPlatform === 'fish'
+                      ? ''
+                      : 'https://api.anthropic.com'
     }
     // Clear model-related settings
     allowedModels.value = []
@@ -5824,6 +6522,7 @@ watch(
       antigravityAccountType.value = 'oauth'
     } else if (newPlatform === 'kiro') {
       resetKiroModelRestriction()
+      kiroUpstreamIDs.value = {}
       accountCategory.value = 'oauth-based'
       kiroAccountType.value = 'oauth'
       kiroLoginProvider.value = 'google'
@@ -5851,6 +6550,15 @@ watch(
       form.concurrency = 1
       form.load_factor = null
     }
+    // Leonardo 默认 Cookie 原生模式；模型限制用白名单模式且默认空白名单
+    //（不下发 model_mapping = 后端回落默认映射，历史别名都还在）。
+    if (newPlatform === 'leonardo') {
+      apiKeyValue.value = ''
+      if (accountCategory.value !== 'oauth-based' && accountCategory.value !== 'apikey-relay') {
+        accountCategory.value = 'oauth-based'
+      }
+      modelRestrictionMode.value = 'whitelist'
+    }
     if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
       accountCategory.value = 'oauth-based'
     }
@@ -5876,6 +6584,7 @@ watch(
       interceptWarmupRequests.value = false
     }
     if (newPlatform !== 'openai') {
+      openaiBPSOAuth.value = false
       openaiPassthroughEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
@@ -5883,6 +6592,7 @@ watch(
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
+      codexTelemetryEnabled.value = false
     }
     if (newPlatform !== 'anthropic') {
       anthropicPassthroughEnabled.value = false
@@ -5900,6 +6610,7 @@ watch(
     // Reset OAuth states
     oauth.resetState()
     openaiOAuth.resetState()
+    openaiBPSOAuth.value = false
 
     geminiOAuth.resetState()
     antigravityOAuth.resetState()
@@ -5918,6 +6629,7 @@ watch(
     if (platform === 'openai' && category !== 'oauth-based') {
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
+      codexTelemetryEnabled.value = false
     }
     if (platform !== 'anthropic' || category !== 'apikey') {
       anthropicPassthroughEnabled.value = false
@@ -5967,15 +6679,30 @@ const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'google_one' | '
   geminiOAuthType.value = oauthType
 }
 
-// Auto-fill related models when switching to whitelist mode or changing platform
+// 切换白名单模式或平台时，按平台目录预填。Fish 留空：空映射由后端回落默认模型，
+// 不把上一个平台的模型带过来。
 watch(
   [modelRestrictionMode, () => form.platform],
-  ([newMode]) => {
+  ([newMode, platform]) => {
+    if (platform === 'fish') {
+      allowedModels.value = []
+      return
+    }
     if (newMode === 'whitelist') {
       allowedModels.value = defaultWhitelistModels(form.platform)
     }
   }
 )
+
+// 切到 BPS OAuth 时白名单预填默认 BPS 模型（映射模式不读白名单，一并替换以免带入原生模型）；
+// 切回其他 OpenAI 类型时恢复平台默认白名单。
+watch(isOpenAIBPSOAuth, (bps) => {
+  if (form.platform !== 'openai') return
+  if (bps || modelRestrictionMode.value === 'whitelist') {
+    allowedModels.value = defaultWhitelistModels()
+  }
+  resetBPSCandidateModels()
+})
 
 watch(
   [antigravityModelRestrictionMode, () => form.platform],
@@ -6311,6 +7038,12 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
 
 // Methods
 const resetForm = () => {
+  fishAccountMode.value = 'token'
+  fishToken.value = ''
+  fishMaxQuality.value = ''
+  leonardoCookie.value = ''
+  leonardoCreditUnitPriceUsd.value = 0
+  leonardoImageLimits.value = defaultLeonardoImageLimits()
   step.value = 1
   form.name = ''
   form.notes = ''
@@ -6363,6 +7096,7 @@ const resetForm = () => {
   cursorImporter.resetAll()
   kiroCreditUnitPriceUsd.value = 0
   resetKiroModelRestriction()
+  kiroUpstreamIDs.value = {}
   poolModeEnabled.value = false
   poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
   poolModeRetryStatusCodesInput.value = ''
@@ -6390,6 +7124,7 @@ const resetForm = () => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
+  codexTelemetryEnabled.value = false
   codexFingerprintMode.value = 'off'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -6432,6 +7167,7 @@ const resetForm = () => {
   geminiTierAIStudio.value = 'aistudio_free'
   oauth.resetState()
   openaiOAuth.resetState()
+  openaiBPSOAuth.value = false
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   kiroOAuth.resetState()
@@ -6454,6 +7190,12 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   }
 
   const extra: Record<string, unknown> = { ...(base || {}) }
+  if (isOpenAIBPSOAuth.value) {
+    // BPS-only 账号只走 BPS：只写计费开关（可服务的模型以通用模型限制为准），
+    // Codex 专属设置（WS、透传、CLI only、指纹、compact 等）一律不落库。
+    extra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
+    return extra
+  }
   if (accountCategory.value === 'oauth-based') {
     extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
     extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
@@ -6499,6 +7241,11 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.codex_fingerprint_mode = codexFingerprintMode.value
   } else {
     delete extra.codex_fingerprint_mode
+  }
+  if (form.type === 'oauth' && oauthFlowRef.value?.inputMethod !== 'agent_identity' && codexTelemetryEnabled.value) {
+    extra.codex_telemetry_enabled = true
+  } else {
+    delete extra.codex_telemetry_enabled
   }
   if (openAICompactMode.value !== 'auto') {
     extra.openai_compact_mode = openAICompactMode.value
@@ -6653,9 +7400,10 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
-  // For OAuth-based type, handle OAuth flow (goes to step 2)
-  if (isOAuthFlow.value) {
-    // 导入模式的账号名来自预览表里逐条可编辑的那一列，不走这里的单账号名称。
+  // 两步建号（OAuth 授权，以及 Leonardo Cookie 粘贴）：第一步只校验名称后进入第二步。
+  // 必须与模板里「下一步」按钮的 needsCredentialStep 同口径，否则 Leonardo Cookie 号
+  // 会落到下面的通用 API Key 分支。
+  if (needsCredentialStep.value) {
     if (!isGrokSSOInputMethod.value && !isCredentialImportMode.value && !form.name.trim()) {
       appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
       return
@@ -6667,6 +7415,75 @@ const handleSubmit = async () => {
       return
     }
     step.value = 2
+    return
+  }
+
+  // Leonardo 外部中转(API Key + Base URL)：存为 type=apikey，带 base_url → OpenAI 出图转发。
+  if (form.platform === 'leonardo' && accountCategory.value === 'apikey-relay') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    if (!apiKeyBaseUrl.value.trim()) {
+      appStore.showError(t('admin.accounts.upstream.pleaseEnterBaseUrl'))
+      return
+    }
+    if (!apiKeyValue.value.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
+      return
+    }
+
+    const credentials: Record<string, unknown> = {
+      api_key: apiKeyValue.value.trim(),
+      base_url: apiKeyBaseUrl.value.trim()
+    }
+    const modelMapping = buildModelMappingObject(
+      modelRestrictionMode.value,
+      allowedModels.value,
+      modelMappings.value
+    )
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    }
+
+    await createAccountAndFinish('leonardo', 'apikey', credentials)
+    return
+  }
+
+  // Fish 两种账号都在第一步创建，用凭据区分：token，或 base_url + api_key。
+  if (form.platform === 'fish' && fishAccountMode.value === 'token') {
+    await handleFishCreate()
+    return
+  }
+
+  if (form.platform === 'fish' && fishAccountMode.value === 'relay') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    if (!apiKeyBaseUrl.value.trim()) {
+      appStore.showError(t('admin.accounts.upstream.pleaseEnterBaseUrl'))
+      return
+    }
+    if (!apiKeyValue.value.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
+      return
+    }
+
+    const credentials: Record<string, unknown> = {
+      api_key: apiKeyValue.value.trim(),
+      base_url: apiKeyBaseUrl.value.trim()
+    }
+    const modelMapping = buildModelMappingObject(
+      modelRestrictionMode.value,
+      allowedModels.value,
+      modelMappings.value
+    )
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    }
+
+    await createAccountAndFinish('fish', 'apikey', credentials)
     return
   }
 
@@ -6833,7 +7650,7 @@ const handleSubmit = async () => {
       api_region: kiroAPIRegion.value.trim() || 'us-east-1'
     }
 
-    const modelMapping = buildKiroModelMapping()
+    const modelMapping = buildCreateKiroMapping(true)
     if (modelMapping) {
       credentials.model_mapping = modelMapping
     }
@@ -6872,7 +7689,7 @@ const handleSubmit = async () => {
       base_url: apiKeyBaseUrl.value.trim()
     }
 
-    const modelMapping = buildKiroModelMapping()
+    const modelMapping = buildCreateKiroMapping(false)
     if (modelMapping) {
       credentials.model_mapping = modelMapping
     }
@@ -7018,6 +7835,7 @@ const handleSubmit = async () => {
   })
 }
 
+// Going back keeps the chosen account type (BPS OAuth included) and its models.
 const goBackToBasicInfo = () => {
   step.value = 1
   oauth.resetState()
@@ -7035,7 +7853,7 @@ const goBackToBasicInfo = () => {
 
 const handleGenerateUrl = async () => {
   if (form.platform === 'openai') {
-    await openaiOAuth.generateAuthUrl(form.proxy_id)
+    await openaiOAuth.generateAuthUrl(form.proxy_id, undefined, isOpenAIBPSOAuth.value ? 'excel' : 'codex')
   } else if (form.platform === 'gemini') {
     await geminiOAuth.generateAuthUrl(
       form.proxy_id,
@@ -7142,6 +7960,12 @@ const createAccountAndFinish = async (
     const unitPrice = Number(kiroCreditUnitPriceUsd.value ?? 0)
     kiroExtra.kiro_credit_unit_price_usd = Number.isFinite(unitPrice) ? unitPrice : 0
     finalExtra = kiroExtra
+  }
+  if (platform === 'leonardo' && type === 'oauth') {
+    const leonardoExtra: Record<string, unknown> = { ...(finalExtra || {}) }
+    const unitPrice = Number(leonardoCreditUnitPriceUsd.value ?? 0)
+    leonardoExtra.leonardo_credit_unit_price_usd = Number.isFinite(unitPrice) ? unitPrice : 0
+    finalExtra = applyLeonardoImageLimitsToExtra(leonardoExtra, leonardoImageLimits.value)
   }
   if (platform === 'grok') {
     if (!credentials.base_url) {
@@ -7472,6 +8296,9 @@ const handleOpenAIExchange = async (authCode: string) => {
     )
     if (!tokenInfo) return
 
+    if (isOpenAIBPSOAuth.value && tokenInfo.client_id !== OPENAI_EXCEL_OAUTH_CLIENT_ID) {
+      throw new Error(t('admin.accounts.oauth.openai.excelSessionMismatch'))
+    }
     const credentials = oauthClient.buildCredentials(tokenInfo)
     const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
     const extra = buildOpenAIExtra(oauthExtra)
@@ -7484,7 +8311,8 @@ const handleOpenAIExchange = async (authCode: string) => {
         credentials.model_mapping = modelMapping
       }
     }
-    if (shouldCreateOpenAI) {
+    // Compact is Codex-only; BPS OAuth hides the setting, so never store it.
+    if (shouldCreateOpenAI && !isOpenAIBPSOAuth.value) {
       const compactModelMapping = buildOpenAICompactModelMapping()
       if (compactModelMapping) {
         credentials.compact_model_mapping = compactModelMapping
@@ -7501,7 +8329,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         name: form.name,
         notes: form.notes,
         platform: 'openai',
-        type: 'oauth',
+        type: isOpenAIBPSOAuth.value ? 'bps-oauth' : 'oauth',
         credentials,
         extra: withUpstreamRequestIdHeader(extra),
         proxy_id: form.proxy_id,
@@ -7766,7 +8594,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             credentials.model_mapping = modelMapping
           }
         }
-        if (shouldCreateOpenAI) {
+        if (shouldCreateOpenAI && !isOpenAIBPSOAuth.value) {
           const compactModelMapping = buildOpenAICompactModelMapping()
           if (compactModelMapping) {
             credentials.compact_model_mapping = compactModelMapping
@@ -7782,7 +8610,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             name: accountName,
             notes: form.notes,
             platform: 'openai',
-            type: 'oauth',
+            type: isOpenAIBPSOAuth.value ? 'bps-oauth' : 'oauth',
             credentials,
             extra: withUpstreamRequestIdHeader(extra),
             proxy_id: form.proxy_id,
@@ -7829,7 +8657,9 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
 }
 
 // 手动输入 RT（Codex CLI client_id，默认）
-const handleOpenAIValidateRT = (rt: string) => handleOpenAIBatchRT(rt)
+// BPS OAuth 账号的 RT 属于官方 Excel 客户端，必须用 Excel client_id 兑换；
+// 用 Codex client_id 校验会失败，或把 Codex RT 建成带 BPS 标记的账号。
+const handleOpenAIValidateRT = (rt: string) => handleOpenAIBatchRT(rt, isOpenAIBPSOAuth.value ? OPENAI_EXCEL_OAUTH_CLIENT_ID : undefined)
 
 // 手动输入 Mobile RT
 const handleOpenAIValidateMobileRT = (rt: string) => handleOpenAIBatchRT(rt, OPENAI_MOBILE_RT_CLIENT_ID)
@@ -8011,7 +8841,7 @@ const handleAntigravityExchange = async (authCode: string) => {
 
 const buildKiroCredentials = (tokenInfo: Parameters<typeof kiroOAuth.buildCredentials>[0]) => {
   const credentials = kiroOAuth.buildCredentials(tokenInfo)
-  const modelMapping = buildKiroModelMapping()
+  const modelMapping = buildCreateKiroMapping(true)
   if (modelMapping) {
     credentials.model_mapping = modelMapping
   }
@@ -8020,7 +8850,7 @@ const buildKiroCredentials = (tokenInfo: Parameters<typeof kiroOAuth.buildCreden
 
 const buildKiroImportedAPIKeyCredentials = (entry: KiroImportEntry) => {
   const credentials = kiroOAuth.buildImportedAPIKeyCredentials(entry)
-  const modelMapping = buildKiroModelMapping()
+  const modelMapping = buildCreateKiroMapping(true)
   if (modelMapping) {
     credentials.model_mapping = modelMapping
   }

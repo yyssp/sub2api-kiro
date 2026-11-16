@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 28 // v28: upstream v27 (image_count_billing, require_privacy_set) merged with fork cache strategy ID / Kiro fields
+const apiKeyAuthSnapshotVersion = 28 // v28 includes upstream v27 fields and the fork cache strategy binding.
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int

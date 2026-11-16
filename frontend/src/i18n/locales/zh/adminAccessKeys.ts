@@ -66,6 +66,7 @@ export default {
   "ruleLegend": "账户与分组资源规则 {index}",
   "groupFallback": "分组 #{id}",
   "ruleSummary": "{groups}；账户类型：{types}（仅限制账户操作）；平台：{platforms}；操作：{count} 项",
+  "confirmTitle": "确认操作",
   "rotateConfirm": "轮换“{name}”将立即使原密钥失效，是否继续？",
   "revokeConfirm": "永久撤销“{name}”后无法恢复，是否继续？",
   "deleteConfirm": "确定删除“{name}”的密钥记录？删除只是从列表移除，历史操作记录仍会继续保留。",

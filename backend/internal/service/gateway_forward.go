@@ -104,11 +104,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			validationModel = account.GetMappedModel(validationModel)
 		}
 	}
-	if account != nil && account.Platform == PlatformAnthropic {
-		if err := validateClaude55Request(parsed.Body.Bytes(), validationModel); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"type": "error", "error": gin.H{"type": "invalid_request_error", "message": err.Error()}})
-			return nil, err
-		}
+	if err := validateClaude55RequestForAccount(parsed.Body.Bytes(), account, validationModel); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"type": "error", "error": gin.H{"type": "invalid_request_error", "message": err.Error()}})
+		return nil, err
 	}
 	// Anthropic Fast is requested with speed=fast rather than OpenAI's
 	// service_tier. Attach it at this shared boundary so passthrough, OAuth and
@@ -150,7 +148,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			passthroughBody,
 			passthroughModel,
 			"anthropic_messages",
-			estimateKiroInputTokens(ctx, passthroughBody),
+			estimateKiroInputTokens(ctx, s.kiroMeteringAlgorithm(ctx), passthroughBody),
 		)
 		return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
 			Body:          passthroughBody,
@@ -413,7 +411,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// OpenAI compatibility adapters.
 	var cachePlan *cacheEmulationPlan
 	if parsed != nil {
-		cachePlan = s.prepareCacheEmulationUsage(ctx, account, parsed.Group, body, reqModel, estimateKiroInputTokens(ctx, body))
+		cachePlan = s.prepareCacheEmulationUsage(ctx, account, parsed.Group, body, reqModel, estimateKiroInputTokens(ctx, s.kiroMeteringAlgorithm(ctx), body))
 		setCachePlanContext(c, cachePlan)
 	}
 

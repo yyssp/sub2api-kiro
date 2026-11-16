@@ -106,6 +106,7 @@ type cacheEmulationPlan struct {
 	usage    *cacheEmulationUsage
 	cacheKey uint64
 	profile  *cacheProfile
+	remote   KiroCacheEmulationRemoteStore
 	// nonStream 取自请求体的 stream 字段（缺失按非流式算，与各网关的默认一致）。
 	// 只用来判断 skip_non_stream_usage_projection 是否命中：投影的调用点散落在
 	// 二十来处流式/非流式处理函数里，在计划上记一次比逐个透传参数可靠。
@@ -157,7 +158,7 @@ func (p *cacheEmulationPlan) commit() {
 	if !p.committed.CompareAndSwap(false, true) {
 		return
 	}
-	globalCacheTracker.update(p.cacheKey, p.profile)
+	globalCacheTracker.update(p.cacheKey, p.profile, p.remote)
 	if p.creationControlDecision.enabled {
 		globalCacheTracker.recordSuccess(p.cacheKey, p.creationControlDecision.attempted,
 			p.creationControlDecision.allowed)
@@ -944,13 +945,13 @@ func (s *GatewayService) prepareCacheEmulationUsage(ctx context.Context, account
 		return nil
 	}
 	minCacheable := effectiveMinCacheableTokens(group, model)
-	profile, ok := buildCacheProfileWithMin(ctx, body, model, inputTokens, minCacheable)
+	profile, ok := buildCacheProfileWithMin(ctx, s.kiroMeteringAlgorithm(ctx), body, model, inputTokens, minCacheable)
 	if !ok {
 		return nil
 	}
 	profile.rawBody = append([]byte(nil), body...)
 	profile.protocolFamily = "anthropic_messages"
-	return s.prepareCacheEmulationPlanFromProfile(account, group, profile, inputTokens)
+	return s.prepareCacheEmulationPlanFromProfile(ctx, account, group, profile, inputTokens)
 }
 
 func (s *GatewayService) prepareResponsesCacheUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *cacheEmulationPlan {
@@ -965,7 +966,7 @@ func (s *GatewayService) prepareResponsesCacheUsage(ctx context.Context, account
 	}
 	profile.rawBody = append([]byte(nil), body...)
 	profile.protocolFamily = "openai_responses"
-	return s.prepareCacheEmulationPlanFromProfile(account, group, profile, inputTokens)
+	return s.prepareCacheEmulationPlanFromProfile(ctx, account, group, profile, inputTokens)
 }
 
 func (s *GatewayService) prepareChatCompletionsCacheUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *cacheEmulationPlan {
@@ -984,10 +985,10 @@ func (s *GatewayService) prepareChatCompletionsCacheUsage(ctx context.Context, a
 		effectiveInputTokens = profile.totalInputTokens
 	}
 	profile.protocolFamily = "openai_chat_completions"
-	return s.prepareCacheEmulationPlanFromProfile(account, group, profile, effectiveInputTokens)
+	return s.prepareCacheEmulationPlanFromProfile(ctx, account, group, profile, effectiveInputTokens)
 }
 
-func (s *GatewayService) prepareCacheEmulationPlanFromProfile(account *Account, group *Group, profile *cacheProfile, inputTokens int) *cacheEmulationPlan {
+func (s *GatewayService) prepareCacheEmulationPlanFromProfile(ctx context.Context, account *Account, group *Group, profile *cacheProfile, inputTokens int) *cacheEmulationPlan {
 	if group == nil || account == nil || account.ID <= 0 || profile == nil {
 		return nil
 	}
@@ -1001,11 +1002,20 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(account *Account, 
 	if policy.MinCacheableTokens > 0 {
 		profile.minCacheable = policy.MinCacheableTokens
 	}
-	cacheKey := cacheStrategyCacheKey(account, group, profile.protocolFamily, profile.model, profile.rawBody)
+	var apiKeyID int64
+	if ctx != nil {
+		apiKeyID, _ = ctx.Value(ctxkey.APIKeyID).(int64)
+	}
+	scopeClient := ctx != nil && account.Platform == PlatformKiro && s.settingService != nil && s.settingService.IsGatewayKiroCacheScopeClientEnabled(ctx)
+	cacheKey := cacheStrategyCacheKey(account, group, profile.protocolFamily, profile.model, profile.rawBody, scopeClient, apiKeyID)
 	if cacheKey == 0 {
 		return nil
 	}
-	result := globalCacheTracker.compute(cacheKey, profile)
+	var remote KiroCacheEmulationRemoteStore
+	if account.Platform == PlatformKiro {
+		remote = s.kiroCacheEmulationRemoteStore()
+	}
+	result := globalCacheTracker.compute(ctx, remote, cacheKey, profile)
 	if result == nil {
 		return nil
 	}
@@ -1090,7 +1100,7 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(account *Account, 
 		creationControlDecision = cacheCreationControlDecision{}
 	}
 	return &cacheEmulationPlan{
-		usage: result, cacheKey: cacheKey, profile: profile, usagePolicy: policy.Usage,
+		usage: result, cacheKey: cacheKey, profile: profile, remote: remote, usagePolicy: policy.Usage,
 		nonStream:               !requestBodyWantsStream(profile.rawBody),
 		creationControlDecision: creationControlDecision,
 	}
@@ -1651,7 +1661,7 @@ type pendingCacheBlock struct {
 	isMessageEnd  bool
 }
 
-func buildCacheProfileWithMin(ctx context.Context, body []byte, model string, inputTokens int, minCacheable int) (*cacheProfile, bool) {
+func buildCacheProfileWithMin(ctx context.Context, alg anthropictokenizer.Algorithm, body []byte, model string, inputTokens int, minCacheable int) (*cacheProfile, bool) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, false
@@ -1676,7 +1686,7 @@ func buildCacheProfileWithMin(ctx context.Context, body []byte, model string, in
 	}
 	totalTokens := inputTokens
 	if totalTokens <= 0 {
-		totalTokens = countKiroInputTokensFromPayload(ctx, payload)
+		totalTokens = countKiroInputTokensFromPayload(ctx, alg, payload)
 	}
 	prelude := map[string]any{
 		"model":       payload["model"],
@@ -2295,7 +2305,7 @@ func (p *cacheProfile) lastCacheableBreakpoint() *resolvedCacheBreakpoint {
 	return &last
 }
 
-func (t *cacheTracker) compute(cacheKey uint64, profile *cacheProfile) *cacheEmulationUsage {
+func (t *cacheTracker) compute(ctx context.Context, remote KiroCacheEmulationRemoteStore, cacheKey uint64, profile *cacheProfile) *cacheEmulationUsage {
 	out := &cacheEmulationUsage{}
 	if t == nil || profile == nil || cacheKey == 0 {
 		return out
@@ -2307,7 +2317,6 @@ func (t *cacheTracker) compute(cacheKey uint64, profile *cacheProfile) *cacheEmu
 	lastBreakpointTokens := profile.cacheTokensForBreakpoint(lastBreakpoint.cumulativeTokens)
 	now := time.Now()
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.pruneLocked(now)
 
 	matchedTokens := 0
@@ -2348,11 +2357,56 @@ func (t *cacheTracker) compute(cacheKey uint64, profile *cacheProfile) *cacheEmu
 			}
 		}
 	}
+	t.mu.Unlock()
+
+	if matchedTokens == 0 && remote != nil && ctx != nil {
+		matchedTokens = t.lookupRemoteAndBackfill(ctx, remote, cacheKey, profile, now)
+	}
 	newTokens := max(lastBreakpointTokens-matchedTokens, 0)
 	out.CacheReadInputTokens = max(matchedTokens, 0)
 	out.CacheCreationInputTokens = newTokens
 	out.CacheCreation5mInputTokens, out.CacheCreation1hInputTokens = profile.ttlBreakdown(matchedTokens)
 	return out
+}
+
+func (t *cacheTracker) lookupRemoteAndBackfill(ctx context.Context, remote KiroCacheEmulationRemoteStore, cacheKey uint64, profile *cacheProfile, now time.Time) int {
+	breakpoints := profile.cacheableBreakpoints()
+	candidates := make([]resolvedCacheBreakpoint, 0, cachePrefixLookbackLimit)
+	fingerprints := make([][32]byte, 0, cachePrefixLookbackLimit)
+	for i, seen := len(breakpoints)-1, 0; i >= 0 && seen < cachePrefixLookbackLimit; i, seen = i-1, seen+1 {
+		breakpoint := breakpoints[i]
+		candidates = append(candidates, breakpoint)
+		fingerprints = append(fingerprints, profile.blocks[breakpoint.blockIndex].prefixFingerprint)
+	}
+	alive, err := remote.LookupAlive(ctx, cacheKey, fingerprints)
+	if err != nil {
+		return 0
+	}
+	for i, breakpoint := range candidates {
+		ttl, ok := alive[fingerprints[i]]
+		if !ok || ttl <= 0 {
+			continue
+		}
+		ttl = minDuration(ttl, breakpoint.ttl)
+		block := profile.blocks[breakpoint.blockIndex]
+		t.mu.Lock()
+		accountEntries := t.entries[cacheKey]
+		if accountEntries == nil {
+			accountEntries = make(map[[32]byte]cacheEntry)
+			t.entries[cacheKey] = accountEntries
+		}
+		accountEntries[fingerprints[i]] = cacheEntry{
+			tokens:             block.cumulativeTokens,
+			ttl:                ttl,
+			expiresAt:          now.Add(ttl),
+			lastUsedAt:         now,
+			estimatedBytes:     64,
+			expireAfterIdleSec: profile.policy.ExpireAfterIdleSeconds,
+		}
+		t.mu.Unlock()
+		return profile.cacheTokensForBreakpoint(breakpoint.cumulativeTokens)
+	}
+	return 0
 }
 
 func (p *cacheProfile) cacheTokensForBreakpoint(cumulativeTokens int) int {
@@ -2484,13 +2538,12 @@ func applyTTLTierToClaudeUsage(usage *ClaudeUsage, tier string) {
 	usage.CacheCreation1hTokens = 0
 }
 
-func (t *cacheTracker) update(cacheKey uint64, profile *cacheProfile) {
+func (t *cacheTracker) update(cacheKey uint64, profile *cacheProfile, remote KiroCacheEmulationRemoteStore) {
 	if t == nil || profile == nil || cacheKey == 0 {
 		return
 	}
 	now := time.Now()
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.pruneLocked(now)
 	accountEntries := t.entries[cacheKey]
 	if accountEntries == nil {
@@ -2524,6 +2577,27 @@ func (t *cacheTracker) update(cacheKey uint64, profile *cacheProfile) {
 		}
 	}
 	t.enforceBoundsLocked(cacheKey, profile.policy)
+	t.mu.Unlock()
+
+	if remote == nil {
+		return
+	}
+	breakpoints := profile.cacheableBreakpoints()
+	entries := make([]KiroCacheRemoteEntry, 0, len(breakpoints))
+	for _, breakpoint := range breakpoints {
+		block := profile.blocks[breakpoint.blockIndex]
+		entries = append(entries, KiroCacheRemoteEntry{
+			Fingerprint: block.prefixFingerprint,
+			Tokens:      block.cumulativeTokens,
+			TTL:         breakpoint.ttl,
+		})
+	}
+	remoteStore := remote
+	kiroCacheEmulationAsyncDispatch(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), kiroCacheEmulationRemoteWriteTimeout)
+		defer cancel()
+		_ = remoteStore.StoreEntries(ctx, cacheKey, entries)
+	})
 }
 
 func (t *cacheTracker) controlState(cacheKey uint64) cacheControlState {
@@ -2901,20 +2975,20 @@ func stripCacheControl(v any) any {
 	}
 }
 
-func countKiroInputTokensFromPayload(ctx context.Context, payload map[string]any) int {
+func countKiroInputTokensFromPayload(ctx context.Context, alg anthropictokenizer.Algorithm, payload map[string]any) int {
 	if payload == nil {
 		return 1
 	}
 	tokens := 0
 	for _, block := range normalizeKiroSystemBlocks(payload["system"]) {
-		tokens += countKiroSystemBlockTokens(block)
+		tokens += countKiroSystemBlockTokensWithAlgorithm(alg, block)
 	}
 	messages, _ := payload["messages"].([]any)
 	if len(messages) > 0 {
 		sanitizedMessages, imageTokens := sanitizeKiroImagesForTokenEstimate(ctx, messages)
 		canonical, err := canonicalJSON(sanitizedMessages)
 		if err == nil {
-			tokens += anthropictokenizer.CountTokens(string(canonical))
+			tokens += alg.CountTokens(string(canonical))
 		}
 		tokens += imageTokens
 		tokens += len(messages) * kiroTokensPerMessage
@@ -2926,12 +3000,16 @@ func countKiroInputTokensFromPayload(ctx context.Context, payload map[string]any
 }
 
 func countKiroSystemBlockTokens(value any) int {
+	return countKiroSystemBlockTokensWithAlgorithm(anthropictokenizer.AlgorithmOfficial, value)
+}
+
+func countKiroSystemBlockTokensWithAlgorithm(alg anthropictokenizer.Algorithm, value any) int {
 	switch typed := value.(type) {
 	case string:
-		return anthropictokenizer.CountTokens(typed)
+		return alg.CountTokens(typed)
 	case map[string]any:
 		if text, ok := typed["text"].(string); ok {
-			return anthropictokenizer.CountTokens(text)
+			return alg.CountTokens(text)
 		}
 		return 0
 	default:
