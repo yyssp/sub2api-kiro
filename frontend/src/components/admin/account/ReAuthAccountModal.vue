@@ -339,7 +339,6 @@
         v-if="!isKiroImportMode && !isLeonardo"
         ref="oauthFlowRef"
         :add-method="addMethod"
-        :excel-oauth="isOpenAIBPSOAuth"
         :auth-url="currentAuthUrl"
         :session-id="currentSessionId"
         :loading="currentLoading"
@@ -444,7 +443,7 @@ import {
 } from '@/composables/useAccountOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useKiroOAuth } from '@/composables/useKiroOAuth'
-import { useOpenAIOAuth, OPENAI_EXCEL_OAUTH_CLIENT_ID } from '@/composables/useOpenAIOAuth'
+import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useAppStore } from '@/stores/app'
 import type { Account, AccountPlatform } from '@/types'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
@@ -520,9 +519,6 @@ const kiroImportTokenPlaceholder = computed(
 const leonardoCookie = ref('')
 
 const isOpenAI = computed(() => props.account?.platform === 'openai')
-// BPS-only（BPS OAuth）账号必须用官方 Excel 客户端重新授权，换回的凭据才能继续走 BPS。
-const isOpenAIBPSOAuth = computed(() => isOpenAI.value && props.account?.type === 'bps-oauth')
-const openAIReauthType = computed(() => (isOpenAIBPSOAuth.value ? 'bps-oauth' : 'oauth'))
 const isOpenAILike = computed(() => isOpenAI.value)
 const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
@@ -715,7 +711,7 @@ const buildUpdatedCredentials = (next: Record<string, unknown>) => ({
 })
 
 const updateAccountCredentials = async (payload: {
-  type: 'oauth' | 'setup-token' | 'bps-oauth'
+  type: 'oauth' | 'setup-token'
   credentials: Record<string, unknown>
   extra?: Record<string, unknown>
 }) => {
@@ -742,7 +738,7 @@ const handleGenerateUrl = async () => {
   if (!props.account) return
 
   if (isOpenAILike.value) {
-    await openaiOAuth.generateAuthUrl(props.account.proxy_id, undefined, isOpenAIBPSOAuth.value ? 'excel' : 'codex')
+    await openaiOAuth.generateAuthUrl(props.account.proxy_id)
     return
   }
 
@@ -804,15 +800,10 @@ const handleExchangeCode = async () => {
 
     const tokenInfo = await openaiOAuth.exchangeAuthCode(authCode.trim(), sessionId, stateToUse, props.account.proxy_id)
     if (!tokenInfo) return
-    if (isOpenAIBPSOAuth.value && tokenInfo.client_id !== OPENAI_EXCEL_OAUTH_CLIENT_ID) {
-      openaiOAuth.error.value = t('admin.accounts.oauth.openai.excelSessionMismatch')
-      appStore.showError(openaiOAuth.error.value)
-      return
-    }
 
     try {
       await updateAccountCredentials({
-        type: openAIReauthType.value,
+        type: 'oauth',
         credentials: buildUpdatedCredentials(openaiOAuth.buildCredentials(tokenInfo)),
         extra: openaiOAuth.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
       })
@@ -1098,21 +1089,12 @@ const handleValidateRefreshToken = async (refreshTokenInput: string) => {
     openaiOAuth.loading.value = true
     openaiOAuth.error.value = ''
     try {
-      const tokenInfo = await openaiOAuth.validateRefreshToken(
-        refreshToken,
-        props.account.proxy_id,
-        isOpenAIBPSOAuth.value ? OPENAI_EXCEL_OAUTH_CLIENT_ID : undefined
-      )
+      const tokenInfo = await openaiOAuth.validateRefreshToken(refreshToken, props.account.proxy_id)
       if (!tokenInfo) return
-      const credentials = openaiOAuth.buildCredentials(tokenInfo)
-      if (isOpenAIBPSOAuth.value) {
-        // Excel 客户端的 RT 只能用 Excel client_id 刷新，必须随凭据落库。
-        credentials.client_id = OPENAI_EXCEL_OAUTH_CLIENT_ID
-      }
 
       const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
-        type: openAIReauthType.value,
-        credentials,
+        type: 'oauth',
+        credentials: openaiOAuth.buildCredentials(tokenInfo),
         extra: openaiOAuth.buildExtraInfo(tokenInfo)
       })
       appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))

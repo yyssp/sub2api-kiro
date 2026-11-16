@@ -60,7 +60,7 @@ func legacyIsUpstreamBillingProbeIdentity(platform, accountType string) bool {
 		return false
 	}
 	switch platform {
-	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrok, PlatformKiro,
+	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformKiro, PlatformGrok,
 		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo,
 		PlatformTypeSafe, PlatformCommandCode, PlatformCline, PlatformCursor, PlatformLeonardo, PlatformFish:
 		return true

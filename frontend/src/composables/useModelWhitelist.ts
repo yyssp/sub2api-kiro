@@ -1,5 +1,4 @@
 import { getProviderProfile } from '@/constants/platformCatalog'
-import { DEFAULT_EXCEL_BPS_MODELS } from '@/constants/account'
 
 // =====================
 // 模型列表（硬编码，与 new-api 一致）
@@ -215,7 +214,8 @@ const kiroModels = [
   'claude-haiku-4-5-20251001',
   'claude-haiku-4-5-20251001-thinking',
   'claude-haiku-5-5',
-  'claude-haiku-5-5-thinking'
+  'claude-haiku-5-5-thinking',
+  'grok-4.7'
 ]
 
 // Cursor 是多厂商聚合（Claude / GPT / Gemini / Grok 之外还有自研 composer），
@@ -608,7 +608,8 @@ const kiroPresetMappings = [
   { label: 'Haiku 4.5', from: 'claude-haiku-4-5-20251001', to: 'claude-haiku-4.5', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300' },
   { label: 'Haiku 4.5 Thinking', from: 'claude-haiku-4-5-20251001-thinking', to: 'claude-haiku-4.5', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300' },
   { label: 'Haiku 5.5', from: 'claude-haiku-5-5', to: 'claude-haiku-5.5', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300' },
-  { label: 'Haiku 5.5 Thinking', from: 'claude-haiku-5-5-thinking', to: 'claude-haiku-5.5', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300' }
+  { label: 'Haiku 5.5 Thinking', from: 'claude-haiku-5-5-thinking', to: 'claude-haiku-5.5', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300' },
+  { label: 'Grok 4.7', from: 'grok-4.7', to: 'grok-4.7', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-300' }
 ]
 
 // Bedrock 预设映射（与后端 DefaultBedrockModelMapping 保持一致）
@@ -768,18 +769,6 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'fish') return fishPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings
-}
-
-// BPS OAuth 账号只服务 BPS 模型：快速添加只给默认 BPS 模型（from = to），颜色沿用 OpenAI 预设。
-export function getBPSPresetMappings() {
-  return DEFAULT_EXCEL_BPS_MODELS.map(model =>
-    openaiPresetMappings.find(preset => preset.from === model && preset.to === model) ?? {
-      label: model,
-      from: model,
-      to: model,
-      color: 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-300'
-    }
-  )
 }
 
 // =====================

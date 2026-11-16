@@ -11,6 +11,7 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -939,3 +940,74 @@ func TestNormalizeCacheStrategyConfigAcceptsToolAwareKind(t *testing.T) {
 }
 
 func cacheStrategyPtrInt64(v int64) *int64 { return &v }
+
+// minimumCacheableTokens 决定「一个前缀至少要多少 token 才值得记进缓存」，直接
+// 影响模拟出的 cache_creation / cache_read 分布，进而影响账单。这里把每个 Kiro 实际
+// 暴露的模型的阈值钉死：GPT-5.6 三兄弟必须是 1024（对齐 OpenAI 官方最小缓存粒度），
+// opus 系必须是 4096。特例断言写字面量、默认档断言写常量名，这样任何一侧被单独改动
+// 都会让测试失败，而不是静默漂移。
+func TestKiroMinimumCacheableTokens(t *testing.T) {
+	t.Parallel()
+
+	// GPT-5.6 是本用例的核心诉求：1024 是显式契约，不是「恰好等于默认档」。
+	for _, model := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		require.Equal(t, 1024, minimumCacheableTokens(model), model)
+	}
+
+	// opus 系走 4096，含 -thinking 变体与带日期后缀的 4.5。
+	for _, model := range []string{
+		"claude-opus-5", "claude-opus-5-thinking",
+		"claude-opus-5-5", "claude-opus-5-5-thinking",
+		"claude-opus-4-8", "claude-opus-4-8-thinking",
+		"claude-opus-4-5-20251101", "claude-opus-4-5-20251101-thinking",
+	} {
+		require.Equal(t, 4096, minimumCacheableTokens(model), model)
+	}
+
+	// 非 opus 的 Claude 走默认档。断言常量而非字面量：默认档本身允许调整，
+	// 但调整时必须同步 GPT 的显式 case（GPT 那侧断言的是字面量 1024）。
+	for _, model := range []string{
+		"claude-sonnet-5", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
+	} {
+		require.Equal(t, cacheMinTokensDefault, minimumCacheableTokens(model), model)
+	}
+
+	// 遍历 Kiro 实际暴露的全量模型，确保没有未归类的漏网之鱼。上游新增模型时，
+	// 这里会立刻因缺少 expected 条目而失败，迫使新模型被显式归类。
+	expected := map[string]int{
+		"gpt-5.6-sol":                         1024,
+		"gpt-5.6-terra":                       1024,
+		"gpt-5.6-luna":                        1024,
+		"grok-4.7":                            1024,
+		"kimi-k3":                             1024,
+		"claude-opus-4-8":                     4096,
+		"claude-opus-4-8-thinking":            4096,
+		"claude-opus-4-7":                     4096,
+		"claude-opus-4-7-thinking":            4096,
+		"claude-opus-4-6":                     4096,
+		"claude-opus-4-6-thinking":            4096,
+		"claude-opus-5":                       4096,
+		"claude-opus-5-thinking":              4096,
+		"claude-opus-5-5":                     4096,
+		"claude-opus-5-5-thinking":            4096,
+		"claude-opus-4-5-20251101":            4096,
+		"claude-opus-4-5-20251101-thinking":   4096,
+		"claude-sonnet-5":                     1024,
+		"claude-sonnet-5-thinking":            1024,
+		"claude-sonnet-5-5":                   1024,
+		"claude-sonnet-5-5-thinking":          1024,
+		"claude-sonnet-4-6":                   1024,
+		"claude-sonnet-4-6-thinking":          1024,
+		"claude-sonnet-4-5-20250929":          1024,
+		"claude-sonnet-4-5-20250929-thinking": 1024,
+		"claude-haiku-4-5-20251001":           1024,
+		"claude-haiku-4-5-20251001-thinking":  1024,
+		"claude-haiku-5-5":                    1024,
+		"claude-haiku-5-5-thinking":           1024,
+	}
+	for _, model := range kiropkg.DefaultModels {
+		want, ok := expected[model.ID]
+		require.Truef(t, ok, "model %q 未在本测试中归类，请为其显式指定最小可缓存 token 数", model.ID)
+		require.Equal(t, want, minimumCacheableTokens(model.ID), model.ID)
+	}
+}
