@@ -1163,6 +1163,7 @@ func reconcileCRSUpstreamBillingProbeExtra(
 	for _, key := range []string{
 		UpstreamBillingProbeEnabledExtraKey,
 		UpstreamBillingRateSyncEnabledExtraKey,
+		UpstreamBillingGroupSyncEnabledExtraKey,
 		UpstreamBillingProbeExtraKey,
 		OllamaCloudUsageSessionExtraKey,
 		OllamaCloudUsageAutoRefreshExtraKey,
@@ -1173,6 +1174,13 @@ func reconcileCRSUpstreamBillingProbeExtra(
 	if existing == nil {
 		return
 	}
+	// The IQ check is configured here, not in CRS: keep its settings and last result.
+	for _, key := range []string{IQCheckEnabledExtraKey, IQCheckAutoDisableExtraKey, IQCheckModelExtraKey, IQCheckIntervalExtraKey, IQCheckStateExtraKey} {
+		delete(extra, key)
+		if value, ok := existing.Extra[key]; ok {
+			extra[key] = value
+		}
+	}
 	target := &Account{Platform: targetPlatform, Type: targetType, Credentials: targetCredentials}
 	if IsUpstreamBillingProbeIdentity(targetPlatform, targetType) {
 		probeEnabled := false
@@ -1180,8 +1188,10 @@ func reconcileCRSUpstreamBillingProbeExtra(
 			extra[UpstreamBillingProbeEnabledExtraKey] = enabled
 			probeEnabled, _ = enabled.(bool)
 		}
-		if enabled, ok := existing.Extra[UpstreamBillingRateSyncEnabledExtraKey].(bool); ok {
-			extra[UpstreamBillingRateSyncEnabledExtraKey] = enabled && probeEnabled
+		for _, key := range []string{UpstreamBillingRateSyncEnabledExtraKey, UpstreamBillingGroupSyncEnabledExtraKey} {
+			if enabled, ok := existing.Extra[key].(bool); ok {
+				extra[key] = enabled && probeEnabled
+			}
 		}
 		if reflect.DeepEqual(upstreamBillingProbeIdentity(existing), upstreamBillingProbeIdentity(target)) {
 			if snapshot, ok := existing.Extra[UpstreamBillingProbeExtraKey]; ok {

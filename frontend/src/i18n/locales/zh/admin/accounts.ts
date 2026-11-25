@@ -208,13 +208,6 @@ export default {
       kiroCooldown: 'Kiro 冷却中',
       kiroCreditUnitPriceUsd: '每积分单价',
       kiroCreditUnitPriceUsdHint: '仅用于 Kiro 今日统计的 Credits 金额估算，0 表示不显示估算金额',
-      leonardoCreditUnitPriceUsd: '每积分单价（USD）',
-      leonardoCreditUnitPriceUsdHint: '仅用于今日统计中估算 Leonardo 积分消耗的金额，0 表示不显示估算。参考价（月费 ÷ 每月快速积分）：Essential $12 / 8,500 ≈ $0.0014，Premium $30 / 25,000 = $0.0012，Ultimate $60 / 60,000 = $0.001；按年付费更便宜。',
-      leonardoMaxQuality: '最大质量',
-      leonardoMaxQualityUnlimited: '不限',
-      leonardoMaxShortEdge: '最大短边（像素）',
-      leonardoMaxUpscaleFactor: '最大放大倍数',
-      leonardoImageLimitsHint: '用于控制 Leonardo 积分消耗。请求的质量超过上限时按上限出图；请求尺寸的短边超过上限时，先出一张比例完全相同的小图，再超分放大到请求的尺寸（不拉伸、不裁剪），按交付尺寸计费。0 或"不限"表示不限制；放大倍数默认 2，可设 1 到 4。',
       fishMaxQuality: '最大质量',
       fishMaxQualityUnlimited: '不限',
       fishMaxQualityHint: '请求的质量超过上限时按上限出图，响应仍回显客户请求的档位。不限表示不限制。gpt-image-2.5 额外支持 xhigh 和 max，max 是最高档。',
@@ -224,6 +217,43 @@ export default {
       kiroSuspended: 'Kiro 暂停中',
       kiroUsageForbidden: 'Usage 无权访问',
       kiroUsageForbiddenHint: '该账号当前无法读取 Kiro Usage，但不代表转发一定不可用',
+      iqCheck: {
+        title: '降智检测',
+        hint: '定时用 2 道随机推理题检测。只记录：只统计结果。自动停调度：最近两轮 4 道题错 3 道及以上就停止调度，之后整轮答对自动恢复。',
+        model: '检测模型',
+        modelPlaceholder: '留空使用默认测试模型',
+        interval: '检测间隔（分钟，10–1440）',
+        modes: {
+          record: '只记录',
+          auto: '自动停调度'
+        },
+        stoppedWarning: '该账号目前由降智检测停止调度。关闭检测不会恢复调度，需要手动打开。',
+        status: {
+          pending: '待检测',
+          passed: '正常',
+          wrong: '答错 {wrong}/{total}',
+          triggered: '达到降智条件',
+          disabled: '已降智·已停调度',
+          unknown: '未知'
+        },
+        drawing: {
+          title: '鹈鹕骑自行车',
+          view: '查看大图',
+          failed: '未画出',
+          meta: '模型 {model} · 耗时 {seconds}s · {time}'
+        },
+        details: {
+          mode: '模式：{mode}',
+          off: '检测已关闭',
+          checkedAt: '最近检测：{time}',
+          score: '本轮答对 {correct}/{total}',
+          recent: '最近两轮错 {wrong}/4',
+          accuracy: '累计答对 {correct}/{answered}（{percent}%）',
+          model: '模型：{model}',
+          error: '错误：{error}',
+          nextCheckAt: '下次检测：{time}'
+        }
+      },
       columns: {
         name: '名称',
         id: '账号ID',
@@ -239,6 +269,7 @@ export default {
         schedulerScore: '调度权值',
         status: '状态',
         schedulable: '调度',
+        iqCheck: '降智检测',
         todayStats: '今日统计',
         groups: '分组',
         usageWindows: '用量窗口',
@@ -305,6 +336,14 @@ export default {
         }
       },
       upstreamBilling: {
+        autoSyncGroup: '自动同步上游分组名称与备注',
+        autoSyncGroupHint: '成功探测后，上游提供的名称和描述会覆盖本地名称与备注。账号倍率由单独的开关控制。',
+        syncGroup: '同步上游分组名称与备注',
+        saveGroup: '同步并保存上游分组名称与备注',
+        groupCredentials: '请填写上游地址和 API Key。更换地址或代理后需重新输入密钥。',
+        groupUnavailable: '上游没有返回可同步的分组名称或描述。',
+        groupFailed: '同步上游分组信息失败',
+        groupSynced: '账号名称与备注已同步',
         trustWarning: '此倍率由上游站点针对当前 API Key 自行声明。Sub2API 无法验证该值是否与实际扣费一致；上游站点或中间代理可能返回伪造、过期或被篡改的数据。请结合账单、余额变化和实际用量自行核验。',
         autoProbe: '自动探测上游声明倍率',
         autoProbeHint: '启用后按全局周期刷新上游声明倍率；此开关本身不会修改账号倍率。',
@@ -420,6 +459,8 @@ export default {
       testConnection: '测试连接',
       reAuthorize: '重新授权',
       refreshToken: '刷新令牌',
+      refreshTokenHint: '系统已在后台自动刷新令牌，频繁手动刷新可能与自动刷新相互冲突，导致令牌失效、账号被暂停',
+      refreshTokenFrequentWarning: '距离上次手动刷新不足一分钟：频繁刷新可能与后台自动刷新冲突，导致令牌失效。如无必要请稍候再试。',
       noAccountsYet: '暂无账号',
       createFirstAccount: '添加 AI 平台账号以开始使用 API 网关。',
       tokenRefreshed: 'Token 刷新成功',
@@ -430,7 +471,6 @@ export default {
       deleteConfirm: "确定要删除账号 '{name}' 吗？此操作无法撤销。",
       failedToClearRateLimit: '清除速率限制失败',
       platforms: {
-        leonardo: 'Leonardo',
         claude: 'Claude',
         openai: 'OpenAI',
         anthropic: 'Anthropic',
@@ -549,8 +589,6 @@ export default {
         grokOauth: 'Grok OAuth',
         kiroApikey: '通过 API Key 直连 AWS',
         kiroApikeyRelay: '通过外部 API Key + Base URL 中转',
-        leonardoOauth: 'Leonardo 网页版 Cookie 直连',
-        leonardoApikeyRelay: 'OpenAI 兼容 API 中转兜底',
         fishOauthToken: 'API Key',
         fishOauth: '通过 API Key 直连 Fish Audio',
         fishApikeyRelay: 'OpenAI 兼容 API 中转兜底',
@@ -655,14 +693,6 @@ export default {
         relayApiKeyHint: '该外部上游的 API Key（通过 Authorization: Bearer 发送）',
         relayBaseUrlHint: '承接 fish 原生无法处理的请求（白名单外尺寸 / mask / n>8 / webp）。模型名经渠道映射改写（如 gpt-image-2 → gpt-image-1）。'
       },
-      leonardo: {
-        cookieLabel: 'Leonardo Cookie',
-        cookieHint: '登录 app.leonardo.ai 后，从浏览器 DevTools（Application → Cookies 或 Network 请求头的 Cookie）复制完整 cookie 串；必须包含 __Secure-better-auth.session_token，分片 session_data.* 建议一并复制。也支持只粘贴裸 session token 值。短期 JWT 由后台自动用该 cookie 换取并保活。',
-        cookiePlaceholder: '__Secure-better-auth.session_token=...; __Secure-better-auth.session_data.0=...',
-        cookieRequired: '请填写 Leonardo Cookie',
-        relayApiKeyHint: '该外部上游的 API Key（通过 Authorization: Bearer 发送）',
-        relayBaseUrlHint: 'OpenAI 兼容上游地址（官方 https://api.openai.com 或三方中转）；原生账号全部故障时兜底'
-      },
 
       usageWindow: {
         statsTitle: '5小时窗口用量统计',
@@ -702,12 +732,6 @@ export default {
         passiveSampled: '被动采样',
         activeQuery: '查询',
         kiroBonus: 'Bonus',
-        leonardoCredits: '积分',
-        leonardoFast: 'Fast 积分',
-        leonardoFastDaily: 'Fast 积分（每日）',
-        leonardoRollover: '结转积分',
-        leonardoTopUp: '充值积分',
-        leonardoReset: '重置',
         kiroCredits: 'Credits',
         fishCredits: 'Credits',
         fishReset: '重置',
@@ -716,6 +740,10 @@ export default {
         kiroReset: '重置',
         kiroBonusGift: '赠送额度',
         kiroOverage: '超额',
+        quotaRefreshFailedCached: '刷新失败，当前显示历史额度，不能确认剩余额度。',
+        quotaRefreshFailedUnknown: '刷新失败，当前额度未知。',
+        quotaObservedAt: '额度采样时间：',
+        quotaObservationUnknown: '未知（历史缓存）',
         estimatedTotalCost: '预计总费用 ${cost}',
         estimatedTotalCostTooltip: '根据当前窗口费用和使用率估算达到 100% 使用率时的总费用'
       },
@@ -937,6 +965,9 @@ export default {
         oauthPassthrough: '自动透传（仅替换认证）',
         oauthPassthroughDesc:
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
+        passthroughModelFilter: '透传时按账号模型筛选',
+        passthroughModelFilterDesc:
+          '使用账号模型白名单与映射的来源模型名筛选候选账号，映射目标不会改写透传请求的模型名。列表为空时允许所有模型。默认关闭。',
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
         flattenNamespacesDesc:
           '默认关闭：/responses 上的 namespace 工具声明原样转发，这正是 ChatGPT Codex 后端期望的形态。仅当该 OAuth 账号指向不认识 namespace 的兼容上游时才开启——摊平会把工具改名为 namespace__tool，使按 functions.<命名空间>.<工具> 寻址的模型（如 gpt-5.6 多智能体）无法调用。压缩（compact）请求不受该开关影响，始终摊平。',
@@ -1041,7 +1072,7 @@ export default {
         testMode: '测试模式',
         testModeDefault: '常规请求',
         testModeCompact: 'Compact 探测',
-        modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
+        modelRestrictionDisabledByPassthrough: '自动透传默认忽略模型限制；开启“透传时按账号模型筛选”后，模型限制仅用于筛选候选账号。',
       },
       grok: {
         baseUrlHint: 'Grok OAuth 账号会转发到官方 xAI API Base URL。',
@@ -1142,6 +1173,7 @@ export default {
       enterCustomModelName: '输入自定义模型名称',
       addModel: '填入',
       modelExists: '该模型已存在',
+      modelWildcardNotSupported: '模型白名单不支持通配符，请输入完整的模型名称。',
       modelMappingConflict: '该模型已配置映射 {from} → {to}，请在模型映射中修改或删除后再添加白名单模型',
       modelCount: '{count} 个模型',
       poolMode: '池模式',
@@ -1194,7 +1226,25 @@ export default {
         blockedName: '该请求头不允许覆写（认证头与连接控制头由系统管理）',
         duplicateName: '存在重复的请求头名称（匹配不区分大小写）',
         invalidValue: '请求头值不合法（不允许控制字符，长度不超过 8192）',
-        tooManyEntries: '请求头覆写条目过多（最多 64 条）'
+        tooManyEntries: '请求头覆写条目过多（最多 64 条）',
+        invalidVariable: '变量写法不正确：请从下方「身份上报变量」中选择，不支持其它变量名',
+        variableNotAllowed: 'OAuth 账号不支持身份上报变量，请删除该行或改为固定值',
+        removeRow: '删除该请求头',
+        previewLabel: '发送示例',
+        variablesTitle: '身份上报变量',
+        variablesHint: '把网关内的用户身份随请求头报给上游，方便逐层定位到具体用户。光标在某个值输入框内时点击变量会插入到光标处，否则新增一行。',
+        variablesUnavailable: 'OAuth 账号不支持身份上报变量：订阅上游不会收到网关内的用户身份，这里只能填写固定值。',
+        variables: {
+          user_id: { label: '用户 ID', desc: '发起请求的网关用户' },
+          api_key_id: { label: 'API Key ID', desc: '本次请求使用的 Key，同一用户多把 Key 时可区分' },
+          group_id: { label: '分组 ID', desc: 'Key 绑定的分组；未绑定分组时该请求头不发送' },
+          request_id: { label: '请求 ID', desc: '与错误记录里的「请求 ID」一致，可直接对账；字母数字和 . _ - 以外的字符会替换为下划线' }
+        },
+        variableNotes: {
+          unresolved: '取不到值时（测试连接、模型同步等没有用户的后台请求）整条请求头不发送，也不会沿用客户端自带的同名头。',
+          apiKeyOnly: '仅对 API Key 账号生效，OAuth 账号永远不会上报。',
+          websocket: 'OpenAI WebSocket 模式下握手头按连接发送：含请求 ID 的请求头不发送，不同上报身份的请求不会共用上游连接。'
+        }
       },
       grokModelDiagnostics: {
         title: '模型目录诊断',
@@ -2054,8 +2104,7 @@ export default {
         usageTrend: '30天费用与请求趋势',
         noData: '该账号暂无使用数据',
         approxCost: '约{amount}',
-        kiroCredits: '消费Credits',
-        leonardoCredits: '消耗积分'
+        kiroCredits: '消费Credits'
       }
     },
 

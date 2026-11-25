@@ -227,13 +227,16 @@ type OpenAIUsage struct {
 	ImageCacheReadTokens        int `json:"image_cache_read_tokens,omitempty"`
 	OutputTokens                int `json:"output_tokens"`
 	CacheCreationInputTokens    int `json:"cache_creation_input_tokens,omitempty"`
+	CacheCreation5mTokens       int `json:"cache_creation_5m_tokens,omitempty"`
+	CacheCreation1hTokens       int `json:"cache_creation_1h_tokens,omitempty"`
 	CacheCreation30mInputTokens int `json:"cache_creation_30m_input_tokens,omitempty"`
 	CacheCreation12hInputTokens int `json:"cache_creation_12h_input_tokens,omitempty"`
 	CacheReadInputTokens        int `json:"cache_read_input_tokens,omitempty"`
 	ImageOutputTokens           int `json:"image_output_tokens,omitempty"`
 	KiroCredits                 float64
-	// UpstreamBillingScale 与 ClaudeUsage 同名字段同义：上游给的是计费口径而非
-	// 真实 token 数，preserve_upstream_cache_usage 不能采信。
+
+	cacheCreationInputTokensPresent bool
+	// 与 ClaudeUsage.UpstreamBillingScale 同义，禁止用上游计费口径覆盖真实 token 数。
 	UpstreamBillingScale bool `json:"-"`
 }
 

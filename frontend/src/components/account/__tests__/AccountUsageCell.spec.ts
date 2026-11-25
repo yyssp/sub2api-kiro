@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AccountUsageCell from '../AccountUsageCell.vue'
-import type { Account } from '@/types'
+import type { Account, AccountUsageInfo } from '@/types'
 
 const { getUsage } = vi.hoisted(() => ({
   getUsage: vi.fn()
@@ -128,6 +128,68 @@ const cnUsageCellStubs = {
 }
 
 describe('AccountUsageCell', () => {
+  it.each([
+    ['anthropic', 'oauth'], ['anthropic', 'setup-token'], ['gemini', 'oauth'], ['gemini', 'apikey']
+  ] as const)('refreshes %s %s snapshots without forcing upstream reads and reuses the new cache', async (platform, type) => {
+    const account = makeAccount({ id: 98200 + (platform === 'gemini' ? 10 : 0) + (type === 'oauth' ? 1 : 2), platform, type, extra: {} })
+    getUsage.mockResolvedValue({ five_hour: { utilization: 21 }, seven_day: { utilization: 31 }, gemini_shared_daily: { utilization: 31 } })
+    const wrapper = mount(AccountUsageCell, { props: { account } })
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(1)
+    getUsage.mockResolvedValue({ five_hour: { utilization: 44 }, seven_day: { utilization: 54 }, gemini_shared_daily: { utilization: 54 } })
+    const next = { ...account, last_used_at: platform === 'gemini' ? '2026-11-16T10:00:00Z' : null, extra: { passive_usage_7d_utilization: 0.54 } }
+    await wrapper.setProps({ account: next })
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(getUsage).toHaveBeenLastCalledWith(...(platform === 'anthropic' ? [account.id, 'passive', false] : [account.id]))
+    expect(wrapper.text()).toContain('54')
+    await wrapper.setProps({ account: { ...next, updated_at: 'unrelated', current_concurrency: 3 } })
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it.each(['anthropic', 'gemini'] as const)('asks the desktop batch manager to refresh %s without force', async (platform) => {
+    const account = makeAccount({ id: 98301, platform, extra: {} })
+    const requestBatchedUsage = vi.fn()
+    const wrapper = mount(AccountUsageCell, { props: { account, requestBatchedUsage } })
+    await flushPromises()
+    requestBatchedUsage.mockClear()
+    await wrapper.setProps({ account: { ...account, last_used_at: '2026-11-16T10:00:00Z' } })
+    expect(requestBatchedUsage).toHaveBeenCalledTimes(1)
+    expect(requestBatchedUsage).toHaveBeenCalledWith(expect.objectContaining({ id: account.id }), undefined)
+    expect(getUsage).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it.each(['anthropic', 'gemini'] as const)('defers mobile %s snapshot refresh until visible', async (platform) => {
+    vi.mocked(window.matchMedia).mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList)
+    let notify: IntersectionObserverCallback = () => {}
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: IntersectionObserverCallback) { notify = callback }
+      observe() {}
+      disconnect() {}
+    })
+    const account = makeAccount({ id: 98401, platform, extra: {} })
+    getUsage.mockResolvedValue({ five_hour: { utilization: 44 }, gemini_shared_daily: { utilization: 44 } })
+    const wrapper = mount(AccountUsageCell, { props: { account } })
+    try {
+      await flushPromises()
+      await wrapper.setProps({ account: { ...account, last_used_at: '2026-11-16T10:00:00Z' } })
+      expect(getUsage).not.toHaveBeenCalled()
+      notify([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver)
+      await flushPromises()
+      expect(getUsage).toHaveBeenCalledTimes(1)
+      expect(getUsage).toHaveBeenLastCalledWith(...(platform === 'anthropic' ? [account.id, 'passive', false] : [account.id]))
+      await wrapper.setProps({ account: { ...account, last_used_at: '2026-11-16T10:01:00Z' } })
+      await flushPromises()
+      expect(getUsage).toHaveBeenCalledTimes(2)
+    } finally {
+      wrapper.unmount()
+      vi.unstubAllGlobals()
+    }
+  })
+
   beforeEach(() => {
     getUsage.mockReset()
     Object.defineProperty(window, 'matchMedia', {
@@ -621,6 +683,108 @@ describe('AccountUsageCell', () => {
   })
 
 
+  describe('OpenAI quota freshness', () => {
+    const observedAt = '2026-11-11T03:33:55Z'
+    const snapshot = (): AccountUsageInfo => ({
+      source: 'passive',
+      updated_at: observedAt,
+      five_hour: null,
+      seven_day: { utilization: 100, resets_at: null, remaining_seconds: 0 },
+      seven_day_sonnet: null
+    })
+    const stubs = {
+      UsageProgressBar: {
+        props: ['label', 'utilization'],
+        template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+      },
+      OpenAIQuotaResetCell: { template: '<div><slot name="pre-actions" /></div>' }
+    }
+
+    it('marks a degraded HTTP 200 response as failed without hiding the last observation', async () => {
+      getUsage.mockResolvedValue({
+        ...snapshot(),
+        error_code: 'quota_refresh_failed',
+        error: 'Could not refresh quota'
+      })
+      const wrapper = mount(AccountUsageCell, {
+        props: { account: makeAccount({ id: 8101, platform: 'openai', type: 'oauth' }) },
+        global: { stubs }
+      })
+      await flushPromises()
+      expect(wrapper.get('[role="alert"]').text()).toContain('quotaRefreshFailedCached')
+      expect(wrapper.text()).toContain('7d|100')
+      expect(wrapper.get('time').attributes('datetime')).toBe(observedAt)
+      wrapper.unmount()
+    })
+
+    it('shows a failed manual refresh and clears the warning only after a successful retry', async () => {
+      getUsage.mockResolvedValueOnce(snapshot()).mockRejectedValueOnce(new Error('401'))
+      const wrapper = mount(AccountUsageCell, {
+        props: { account: makeAccount({ id: 8102, platform: 'openai', type: 'oauth' }) },
+        global: { stubs }
+      })
+      await flushPromises()
+      await wrapper.get('button').trigger('click')
+      await flushPromises()
+      expect(getUsage).toHaveBeenLastCalledWith(8102, 'active', true)
+      expect(wrapper.get('[role="alert"]').text()).toContain('quotaRefreshFailedCached')
+      expect(wrapper.text()).toContain('7d|100')
+      expect(wrapper.get('time').attributes('datetime')).toBe(observedAt)
+
+      const refreshedAt = '2026-11-12T15:08:56Z'
+      getUsage.mockResolvedValueOnce({
+        ...snapshot(), source: 'active', updated_at: refreshedAt,
+        seven_day: { utilization: 0, resets_at: null, remaining_seconds: 0 }
+      })
+      await wrapper.get('button').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+      expect(wrapper.text()).toContain('7d|0')
+      expect(wrapper.get('time').attributes('datetime')).toBe(refreshedAt)
+      wrapper.unmount()
+    })
+
+    it('shows batch refresh failure alongside the retained snapshot', async () => {
+      const wrapper = mount(AccountUsageCell, {
+        props: {
+          account: makeAccount({ id: 8103, platform: 'openai', type: 'oauth' }),
+          batchedUsage: snapshot(), batchedUsageError: 'Failed', requestBatchedUsage: vi.fn()
+        },
+        global: { stubs }
+      })
+      await flushPromises()
+      expect(wrapper.get('[role="alert"]').text()).toContain('quotaRefreshFailedCached')
+      expect(wrapper.get('time').attributes('datetime')).toBe(observedAt)
+      wrapper.unmount()
+    })
+
+    it('shows local usage with an unknown percentage when no quota has been fetched', async () => {
+      getUsage.mockResolvedValue({
+        ...snapshot(), updated_at: null,
+        seven_day: {
+          utilization: 0,
+          utilization_unknown: true,
+          resets_at: null,
+          remaining_seconds: 0,
+          window_stats: { requests: 2, tokens: 100, cost: 0, standard_cost: 0, user_cost: 0 }
+        },
+        error_code: 'quota_refresh_failed', error: 'Could not refresh quota'
+      })
+      const wrapper = mount(AccountUsageCell, {
+        props: { account: makeAccount({ id: 8104, platform: 'openai', type: 'oauth' }) },
+        global: { stubs: { OpenAIQuotaResetCell: stubs.OpenAIQuotaResetCell } }
+      })
+      await flushPromises()
+      expect(wrapper.get('[role="alert"]').text()).toContain('quotaRefreshFailedUnknown')
+      expect(wrapper.find('time').exists()).toBe(false)
+      expect(wrapper.text()).toContain('2 req')
+      expect(wrapper.text()).toContain('—')
+      expect(wrapper.text()).not.toContain('0%')
+      expect(wrapper.text()).not.toContain('usage.resetNow')
+      wrapper.unmount()
+    })
+  })
+
   it('OpenAI OAuth 快照已过期时首屏会重新请求 usage', async () => {
     getUsage.mockResolvedValue({
       five_hour: {
@@ -742,6 +906,73 @@ describe('AccountUsageCell', () => {
     // 单一数据源：始终使用 /usage API 返回值，忽略 codex 快照
     expect(wrapper.text()).toContain('5h|18|900')
     expect(wrapper.text()).toContain('7d|36|900')
+  })
+
+  it.each(['oauth', 'setup-token'] as const)('Claude %s 分别估算 5h 和 7d，不混用模型专属窗口费用', async (type) => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 25, resets_at: null, remaining_seconds: 0,
+        window_stats: { requests: 1, tokens: 100, cost: 2, user_cost: 20 }
+      },
+      seven_day: {
+        utilization: 40, resets_at: null, remaining_seconds: 0,
+        window_stats: { requests: 2, tokens: 200, cost: 12, user_cost: 120 }
+      },
+      seven_day_sonnet: { utilization: 50, resets_at: null, remaining_seconds: 0 },
+      seven_day_fable: { utilization: 60, resets_at: null, remaining_seconds: 0 }
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: type === 'oauth' ? 6761 : 6762, platform: 'anthropic', type }) },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'windowStats', 'estimatedTotalCost'],
+            template: '<div>{{ label }}|{{ windowStats?.cost ?? "none" }}|{{ estimatedTotalCost ?? "none" }}</div>'
+          },
+          ClaudeResetCreditsCell: true
+        }
+      }
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('5h|2|8')
+    expect(wrapper.text()).toContain('7d|12|30')
+    expect(wrapper.text()).toContain('7d S|none|none')
+    expect(wrapper.text()).toContain('7d F|none|none')
+    wrapper.unmount()
+  })
+
+  it.each([
+    { utilization: 0, cost: 12 },
+    { utilization: -1, cost: 12 },
+    { utilization: Number.NaN, cost: 12 },
+    { utilization: Number.POSITIVE_INFINITY, cost: 12 },
+    { utilization: 40, cost: 0 },
+    { utilization: 40, cost: -1 },
+    { utilization: 40, cost: Number.POSITIVE_INFINITY },
+    { utilization: 40, cost: undefined },
+    { utilization: undefined, cost: 12 }
+  ])('Claude 缺少有效费用或使用率时隐藏估算 (%o)', async ({ utilization, cost }) => {
+    const window = {
+      utilization, resets_at: null, remaining_seconds: 0,
+      window_stats: { requests: 1, tokens: 100, cost }
+    }
+    getUsage.mockResolvedValue({ five_hour: window, seven_day: window })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 6763, platform: 'anthropic', type: 'setup-token' }) },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'estimatedTotalCost'],
+            template: '<div>{{ label }}|{{ estimatedTotalCost ?? "none" }}</div>'
+          },
+          ClaudeResetCreditsCell: true
+        }
+      }
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('5h|none')
+    expect(wrapper.text()).toContain('7d|none')
+    wrapper.unmount()
   })
 
   it('仅为 OpenAI OAuth 7d 窗口计算预计总费用', async () => {
@@ -2506,111 +2737,5 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('7d|56')
     expect(wrapper.text()).not.toContain('7d S')
     expect(wrapper.text()).not.toContain('7d F')
-  })
-})
-
-describe('AccountUsageCell Leonardo', () => {
-  beforeEach(() => {
-    getUsage.mockReset()
-  })
-
-  const mountLeonardo = (id: number) =>
-    mount(AccountUsageCell, {
-      props: { account: makeAccount({ id, platform: 'leonardo', type: 'oauth', extra: {}, credentials: {} }) },
-      global: { stubs: { UsageProgressBar: true, AccountQuotaInfo: true } }
-    })
-
-  it('Leonardo Cookie 号按池展示 Fast / Rollover 进度条与 Top-up', async () => {
-    getUsage.mockResolvedValue({
-      source: 'passive',
-      leonardo_plan: 'STANDARD',
-      leonardo_plan_name: 'Premium',
-      leonardo_token_renewal: '2026-11-13T09:51:37.672',
-      leonardo_credits: {
-        total: 24992, usable: 24992, subscription: 24992, paid: 0, rollover: 0,
-        fast_limit: 25000, rollover_limit: 75000
-      },
-    })
-
-    const wrapper = mountLeonardo(4001)
-    await flushPromises()
-
-    expect(getUsage).toHaveBeenCalledWith(4001, 'passive', false)
-    // 套餐桥接：把展示名回传给父组件，供「平台/类型」列渲染徽章
-    expect(wrapper.emitted('leonardoUsageMeta')?.[0]).toEqual([
-      {
-        plan_type: 'Premium'
-      }
-    ])
-    expect(wrapper.text()).toContain('Premium')
-    const fast = wrapper.get('[data-testid="leonardo-fast"]')
-    expect(fast.text()).toContain('admin.accounts.usageWindow.leonardoFast')
-    expect(fast.text()).toContain(`${(24992).toLocaleString()} / ${(25000).toLocaleString()}`)
-    expect(fast.find('.bg-emerald-500').exists()).toBe(true)
-    const rollover = wrapper.get('[data-testid="leonardo-rollover"]')
-    expect(rollover.text()).toContain(`0 / ${(75000).toLocaleString()}`)
-    expect(wrapper.get('[data-testid="leonardo-topup"]').text()).toContain('admin.accounts.usageWindow.leonardoTopUp')
-    expect(wrapper.text()).toContain('admin.accounts.usageWindow.leonardoReset')
-  })
-
-  it('Leonardo 未知套餐只显示数字，不画进度条', async () => {
-    getUsage.mockResolvedValue({
-      source: 'passive',
-      leonardo_plan: 'ENTERPRISE',
-      leonardo_credits: { total: 1200, usable: 1200, subscription: 1000, paid: 0, rollover: 200, fast_limit: 0, rollover_limit: 0 },
-    })
-
-    const wrapper = mountLeonardo(4003)
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('ENTERPRISE')
-    // 无展示名时回退原始 plan 码
-    expect(wrapper.emitted('leonardoUsageMeta')?.[0]).toEqual([
-      {
-        plan_type: 'ENTERPRISE'
-      }
-    ])
-    const fast = wrapper.get('[data-testid="leonardo-fast"]')
-    expect(fast.text()).toContain((1000).toLocaleString())
-    expect(fast.text()).not.toContain('/')
-    expect(fast.find('.rounded-full.bg-gray-200').exists()).toBe(false)
-    // 有结转余额时仍显示 Rollover 行（只有数字）。
-    expect(wrapper.get('[data-testid="leonardo-rollover"]').text()).toContain('200')
-  })
-
-  it('Leonardo 免费套餐标注每日 Fast，隐藏空的 Rollover 行', async () => {
-    getUsage.mockResolvedValue({
-      source: 'passive',
-      leonardo_plan: 'FREE',
-      leonardo_plan_name: 'Free',
-      leonardo_credits: { total: 3, usable: 3, subscription: 3, paid: 0, rollover: 0, fast_limit: 150, rollover_limit: 0, fast_daily: true },
-    })
-
-    const wrapper = mountLeonardo(4004)
-    await flushPromises()
-
-    const fast = wrapper.get('[data-testid="leonardo-fast"]')
-    expect(fast.text()).toContain('admin.accounts.usageWindow.leonardoFastDaily')
-    // 剩余 2%：进度条变红。
-    expect(fast.find('.bg-red-500').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="leonardo-rollover"]').exists()).toBe(false)
-  })
-
-  it('Leonardo 中转号不查 Leonardo 用量', async () => {
-    mount(AccountUsageCell, {
-      props: {
-        account: makeAccount({
-          id: 4002,
-          platform: 'leonardo',
-          type: 'apikey',
-          extra: {},
-          credentials: { base_url: 'https://relay.example.com' }
-        })
-      },
-      global: { stubs: { UsageProgressBar: true, AccountQuotaInfo: true } }
-    })
-    await flushPromises()
-
-    expect(getUsage).not.toHaveBeenCalled()
   })
 })

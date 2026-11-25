@@ -8,6 +8,7 @@ import type { OpenAIReferralRefreshResult, OpenAIReferralSendResult } from '@/ty
 import type {
   Account,
   AccountListItem,
+  IQCheckDrawing,
   CreateAccountRequest,
   UpdateAccountRequest,
   PaginatedResponse,
@@ -586,6 +587,17 @@ export async function getBatchTodayStats(accountIds: number[]): Promise<BatchTod
 }
 
 /**
+ * Latest IQ check drawings (animated pelican SVG) of the given accounts.
+ * The SVG must only be shown through <img>, never inserted as HTML.
+ */
+export async function getIQCheckDrawings(accountIds: number[]): Promise<IQCheckDrawing[]> {
+  const { data } = await apiClient.get<IQCheckDrawing[]>('/admin/accounts/iq-check-drawings', {
+    params: { ids: accountIds.join(',') }
+  })
+  return data ?? []
+}
+
+/**
  * Set account schedulable status
  * @param id - Account ID
  * @param schedulable - Whether the account should participate in scheduling
@@ -1078,6 +1090,23 @@ export async function probeUpstreamBilling(id: number): Promise<UpstreamBillingP
   return data
 }
 
+export type UpstreamGroupSource = { account_id: number } | {
+  platform: string
+  base_url: string
+  api_key: string
+  proxy_id?: number | null
+}
+
+export async function previewUpstreamGroup(source: UpstreamGroupSource, signal?: AbortSignal) {
+  const { data } = await apiClient.post<{ group_name?: string; group_description?: string }>(
+    '/admin/accounts/upstream-billing-probe/group-preview', source, { signal }
+  )
+  const fields: { name?: string; notes?: string } = {}
+  if (data.group_name?.trim()) fields.name = data.group_name
+  if (data.group_description?.trim()) fields.notes = data.group_description
+  return fields
+}
+
 export async function probeUpstreamBillingBatch(accountIds: number[]): Promise<UpstreamBillingProbeResult[]> {
   const { data } = await apiClient.post<{ results: UpstreamBillingProbeResult[] }>(
     '/admin/accounts/upstream-billing-probe/batch',
@@ -1164,6 +1193,7 @@ export async function refreshOpenCodeGoUsage(id: number): Promise<OpenCodeGoUsag
 
 export const accountsAPI = {
   list,
+  getIQCheckDrawings,
   listWithEtag,
   getUpstreamBillingRatesWithEtag,
   getById,
@@ -1218,6 +1248,7 @@ export const accountsAPI = {
   updateUpstreamBillingProbeSettings,
   setUpstreamBillingProbeEnabled,
   probeUpstreamBilling,
+  previewUpstreamGroup,
   probeUpstreamBillingBatch,
   getOllamaCloudUsageSettings,
   updateOllamaCloudUsageSettings,

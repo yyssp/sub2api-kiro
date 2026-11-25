@@ -224,24 +224,37 @@
           </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
-              <HelpTooltip
-                v-if="accountHomepageUrl(row)"
-                :content="accountHomepageUrl(row)"
-                width-class="w-max max-w-sm break-all"
-                class="-ml-1 self-start"
-              >
-                <template #trigger>
-                  <a
-                    :href="accountHomepageUrl(row)"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="border-b border-dotted border-gray-300 font-medium text-gray-900 dark:border-dark-600 dark:text-white"
-                  >
-                    {{ value }}
-                  </a>
-                </template>
-              </HelpTooltip>
-              <span v-else class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <div class="flex items-center gap-1">
+                <HelpTooltip
+                  v-if="accountHomepageUrl(row)"
+                  :content="accountHomepageUrl(row)"
+                  width-class="w-max max-w-sm break-all"
+                  class="-ml-1"
+                >
+                  <template #trigger>
+                    <a
+                      :href="accountHomepageUrl(row)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="border-b border-dotted border-gray-300 font-medium text-gray-900 dark:border-dark-600 dark:text-white"
+                    >
+                      {{ value }}
+                    </a>
+                  </template>
+                </HelpTooltip>
+                <span v-else class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+                <button
+                  v-if="row.type === 'apikey' || (row.platform === 'antigravity' && row.type === 'upstream')"
+                  type="button"
+                  class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-blue-600 hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                  :title="t('admin.accounts.upstreamBilling.saveGroup')"
+                  :aria-label="t('admin.accounts.upstreamBilling.saveGroup')"
+                  :disabled="syncingUpstreamGroup.has(row.id)"
+                  @click.stop="syncUpstreamGroup(row)"
+                >
+                  <Icon name="refresh" size="xs" :class="{ 'animate-spin': syncingUpstreamGroup.has(row.id) }" />
+                </button>
+              </div>
               <span
                 v-if="accountDisplayEmail(row)"
                 class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
@@ -301,12 +314,15 @@
               <span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" :class="[row.schedulable ? 'translate-x-4' : 'translate-x-0']" />
             </button>
           </template>
+          <template #cell-iq_check="{ row }">
+            <AccountIQCheckCell :account="row" :drawing="iqDrawingsByAccountId[row.id] ?? null" />
+          </template>
           <template #cell-today_stats="{ row }">
             <AccountTodayStatsCell
               :stats="todayStatsByAccountId[String(row.id)] ?? null"
               :platform="row.platform"
               :kiro-credit-unit-price-usd="getKiroCreditUnitPriceUsd(row)"
-              :is-relay="isTodayStatsRelayAccount(row)"
+              :is-relay="isKiroRelayAccount(row)"
               :loading="todayStatsLoading"
               :error="todayStatsError"
             />
@@ -330,7 +346,6 @@
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
               @kiro-usage-meta="handleUsagePlanMeta(row, $event)"
-              @leonardo-usage-meta="handleUsagePlanMeta(row, $event)"
               @fish-usage-meta="handleFishUsageMeta(row, $event)"
               :batched-usage="usageBatchByAccountId[String(row.id)] ?? null"
               :batched-usage-error="usageBatchErrorByAccountId[String(row.id)] ?? null"
@@ -564,6 +579,7 @@ import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
 import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.vue'
 import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
+import AccountIQCheckCell from '@/components/account/AccountIQCheckCell.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
@@ -575,7 +591,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { fetchAllAccountIds } from '@/utils/accountSelection'
-import { buildGrokUsageRefreshKey, buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { buildGrokUsageRefreshKey, buildAccountUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { isKiroRelayAccount } from '@/utils/kiroAccount'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
@@ -583,7 +599,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
-import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot, IQCheckDrawing } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -671,6 +687,7 @@ const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, anchorRect:DOMRect|null}>({ show: false, acc: null, anchorRect: null })
 const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
+const syncingUpstreamGroup = reactive(new Set<number>())
 const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
 const upstreamBillingNow = ref(Date.now())
 const upstreamBillingRateETag = ref<string | null>(null)
@@ -795,7 +812,7 @@ const usageBatchByAccountId = ref<Record<string, AccountUsageInfo | null>>({})
 const usageBatchErrorByAccountId = ref<Record<string, string | null>>({})
 const usageBatchLoadingByAccountId = ref<Record<string, boolean>>({})
 const usageBatchRequestTokenByAccountId = ref<Record<string, number>>({})
-const usageBatchCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
+const usageBatchCache = new Map<number, { data: AccountUsageInfo; ts: number; refreshKey: string }>()
 const USAGE_BATCH_CACHE_TTL = 5 * 60 * 1000
 const pendingUsageBatchIds = new Set<number>()
 let usageBatchFlushTimer: ReturnType<typeof setTimeout> | null = null
@@ -850,6 +867,7 @@ const flushQueuedUsageBatch = async () => {
   usageBatchFlushTimer = null
   const accountIDs = Array.from(pendingUsageBatchIds)
   const force = queuedUsageBatchForce
+  const refreshKeys = new Map(accounts.value.map(account => [account.id, buildAccountUsageRefreshKey(account)]))
   pendingUsageBatchIds.clear()
   queuedUsageBatchForce = false
 
@@ -880,7 +898,7 @@ const flushQueuedUsageBatch = async () => {
       nextErrors[key] = errorMap[key] ?? null
       nextLoading[key] = false
       if (usage) {
-        usageBatchCache.set(accountID, { data: usage, ts: now })
+        usageBatchCache.set(accountID, { data: usage, ts: now, refreshKey: refreshKeys.get(accountID) ?? '' })
       } else {
         usageBatchCache.delete(accountID)
       }
@@ -918,7 +936,7 @@ const queueBatchedUsage = (account: Account, options?: { force?: boolean }) => {
     usageBatchCache.delete(cacheKey)
   } else {
     const cached = usageBatchCache.get(cacheKey)
-    if (cached && Date.now() - cached.ts < USAGE_BATCH_CACHE_TTL) {
+    if (cached && cached.refreshKey === buildAccountUsageRefreshKey(account) && Date.now() - cached.ts < USAGE_BATCH_CACHE_TTL) {
       setUsageBatchState(cacheKey, cached.data, null)
       setUsageBatchLoading(cacheKey, false)
       return
@@ -1170,6 +1188,54 @@ const {
     sort_order: sortState.sort_order
   }
 })
+
+// 降智检测的鹈鹕图：只为当前页开启过检测的 OpenAI 账号拉取。按账号记下所拉图对应的检测时间，
+// 只重拉检测时间变了或还没拉过的账号；后端单次最多 200 个 ID，超出时分批请求。
+const IQ_DRAWINGS_BATCH_SIZE = 200
+const iqDrawingsByAccountId = ref<Record<number, IQCheckDrawing>>({})
+const iqDrawingsCheckedAt = new Map<number, string>()
+let iqDrawingsReqSeq = 0
+const iqDrawingsKey = computed(() => hiddenColumns.has('iq_check') ? '' : accounts.value
+  .filter(account => account.platform === 'openai' && (account.extra?.iq_check_enabled === true || account.extra?.iq_check_state))
+  .map(account => `${account.id}:${account.extra?.iq_check_state?.checked_at ?? ''}`)
+  .join(','))
+const refreshIQDrawings = async (key: string) => {
+  const reqSeq = ++iqDrawingsReqSeq
+  // checked_at 本身含冒号，只按第一个冒号切出账号 ID。
+  const entries = key ? key.split(',').map(part => {
+    const sep = part.indexOf(':')
+    return { id: Number(part.slice(0, sep)), checkedAt: part.slice(sep + 1) }
+  }) : []
+  const onPage = new Set(entries.map(entry => entry.id))
+  for (const id of [...iqDrawingsCheckedAt.keys()]) {
+    if (!onPage.has(id)) iqDrawingsCheckedAt.delete(id)
+  }
+  // 不在当前页的图丢掉；要重拉的账号在新图到之前先显示旧图。
+  iqDrawingsByAccountId.value = Object.fromEntries(
+    Object.entries(iqDrawingsByAccountId.value).filter(([id]) => onPage.has(Number(id)))
+  )
+  const stale = entries.filter(entry => iqDrawingsCheckedAt.get(entry.id) !== entry.checkedAt)
+  if (stale.length === 0) return
+  const batches: number[][] = []
+  for (let i = 0; i < stale.length; i += IQ_DRAWINGS_BATCH_SIZE) {
+    batches.push(stale.slice(i, i + IQ_DRAWINGS_BATCH_SIZE).map(entry => entry.id))
+  }
+  try {
+    const results = await Promise.all(batches.map(ids => adminAPI.accounts.getIQCheckDrawings(ids)))
+    if (reqSeq !== iqDrawingsReqSeq) return
+    const next = { ...iqDrawingsByAccountId.value }
+    for (const entry of stale) {
+      delete next[entry.id]
+      iqDrawingsCheckedAt.set(entry.id, entry.checkedAt)
+    }
+    for (const drawing of results.flat()) next[drawing.account_id] = drawing
+    iqDrawingsByAccountId.value = next
+  } catch (error) {
+    // 拉图失败只是不显示缩略图，不影响列表。
+    if (reqSeq === iqDrawingsReqSeq) console.error('Failed to load IQ check drawings:', error)
+  }
+}
+watch(iqDrawingsKey, key => { void refreshIQDrawings(key) }, { immediate: true })
 
 const {
   selectedSet,
@@ -1490,20 +1556,20 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.kiro_runtime_reset_at !== next.kiro_runtime_reset_at ||
     current.overload_until !== next.overload_until ||
     current.temp_unschedulable_until !== next.temp_unschedulable_until ||
-    buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next) ||
+    buildAccountUsageRefreshKey(current) !== buildAccountUsageRefreshKey(next) ||
     buildGrokUsageRefreshKey(current) !== buildGrokUsageRefreshKey(next)
   )
 }
 
-// Kiro / Leonardo 的套餐来自用量接口，合并进内存态 credentials.plan_type，
+// Kiro 的套餐来自用量接口，合并进内存态 credentials.plan_type，
 // 供「平台/类型」列的 PlatformTypeBadge 渲染（不落库，刷新后由用量重新回填）。
 // Kiro 同时回填 overage 开关，Badge 据此展示「超量」标记。
 const handleUsagePlanMeta = (account: Account, meta: { plan_type?: string; kiro_overages_enabled?: boolean }) => {
-  if (account.platform !== 'kiro' && account.platform !== 'leonardo') return
+  if (account.platform !== 'kiro') return
   account.credentials = {
     ...(account.credentials || {}),
     ...(meta.plan_type ? { plan_type: meta.plan_type } : {}),
-    ...(account.platform === 'kiro' ? { kiro_overages_enabled: meta.kiro_overages_enabled === true } : {})
+    kiro_overages_enabled: meta.kiro_overages_enabled === true
   }
 }
 
@@ -1519,19 +1585,12 @@ const handleFishUsageMeta = (account: Account, meta: { plan_type?: string }) => 
   }
 }
 
-// 今日统计积分估算单价:Kiro 读 kiro_credit_unit_price_usd,Leonardo 读 leonardo_credit_unit_price_usd。
 const getKiroCreditUnitPriceUsd = (account: Account): number => {
-  let raw: unknown
-  if (account.platform === 'kiro') raw = account.extra?.kiro_credit_unit_price_usd
-  else if (account.platform === 'leonardo') raw = account.extra?.leonardo_credit_unit_price_usd
-  else return 0
+  if (account.platform !== 'kiro') return 0
+  const raw = account.extra?.kiro_credit_unit_price_usd
   const value = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : 0
   return Number.isFinite(value) && value > 0 ? value : 0
 }
-
-// Leonardo 中转账号(apikey)转发到外部 OpenAI 兼容上游,不消耗 Leonardo 积分;Kiro 沿用原中转判定。
-const isTodayStatsRelayAccount = (account: Account): boolean =>
-  account.platform === 'leonardo' ? account.type === 'apikey' : isKiroRelayAccount(account)
 
 const syncAccountRefs = (nextAccount: Account) => {
   if (edAcc.value?.id === nextAccount.id) edAcc.value = nextAccount
@@ -1923,6 +1982,7 @@ const allColumns = computed(() => {
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
+    { key: 'iq_check', label: t('admin.accounts.columns.iqCheck'), sortable: false },
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false }
   ]
   if (!authStore.isSimpleMode) {
@@ -2406,6 +2466,27 @@ const handleAccountUpdated = (updatedAccount: Account) => {
   patchAccountInList(updatedAccount)
   enterAutoRefreshSilentWindow()
 }
+const syncUpstreamGroup = async (account: AccountListItem) => {
+  if (syncingUpstreamGroup.has(account.id)) return
+  syncingUpstreamGroup.add(account.id)
+  try {
+    const fields = await adminAPI.accounts.previewUpstreamGroup({ account_id: account.id })
+    if (!fields.name && !fields.notes) {
+      appStore.showInfo(t('admin.accounts.upstreamBilling.groupUnavailable'))
+      return
+    }
+    if (fields.name === account.name) delete fields.name
+    if (fields.notes === account.notes) delete fields.notes
+    if (fields.name || fields.notes) {
+      handleAccountUpdated(await adminAPI.accounts.update(account.id, fields))
+    }
+    appStore.showSuccess(t('admin.accounts.upstreamBilling.groupSynced'))
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.upstreamBilling.groupFailed')))
+  } finally {
+    syncingUpstreamGroup.delete(account.id)
+  }
+}
 const formatExportTimestamp = () => {
   const now = new Date()
   const pad2 = (value: number) => String(value).padStart(2, '0')
@@ -2504,7 +2585,16 @@ const handleDuplicateAccount = async (a: Account) => {
     duplicatingAccountIDs.delete(a.id)
   }
 }
+const lastManualRefreshAt = new Map<number, number>()
+const MANUAL_REFRESH_WARN_INTERVAL_MS = 60_000
+
 const handleRefresh = async (a: Account) => {
+  // 只提醒不阻拦：短时间内反复手动刷新可能与后台自动刷新竞争同一份轮换令牌
+  const lastAt = lastManualRefreshAt.get(a.id) ?? 0
+  if (Date.now() - lastAt < MANUAL_REFRESH_WARN_INTERVAL_MS) {
+    appStore.showWarning(t('admin.accounts.refreshTokenFrequentWarning'))
+  }
+  lastManualRefreshAt.set(a.id, Date.now())
   try {
     const result = await adminAPI.accounts.refreshCredentials(a.id)
     patchAccountInList(result.account)

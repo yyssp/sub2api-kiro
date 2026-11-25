@@ -650,10 +650,11 @@ export interface Group {
 
 export interface AdminGroup extends Group {
   // 管理端的 name / description 始终是原字段，各语言译文另放在 i18n 里
-  i18n?: GroupI18n;
-  force_openai_fast: boolean;
-  free_openai_fast: boolean;
-  model_pricing: import("@/api/admin/channels").ChannelModelPricing[];
+  i18n?: GroupI18n
+  force_openai_fast: boolean
+  force_openai_ultrafast: boolean
+  free_openai_fast: boolean
+  model_pricing: import('@/api/admin/channels').ChannelModelPricing[]
   // 分组利润控制（openai/anthropic/gemini/grok/antigravity 分组可启用；margin/buffer 为小数存储）。
   // 仅管理员可见：与 rate_multiplier 相乘即可反推上游成本上限，不得下放到 Group。
   profit_control_enabled: boolean;
@@ -815,46 +816,47 @@ export interface UpdateApiKeyRequest {
 }
 
 export interface CreateGroupRequest {
-  name: string;
-  description?: string | null;
-  i18n?: GroupI18n;
-  platform?: GroupPlatform;
-  cache_strategy_id?: number | null;
-  rate_multiplier?: number;
-  is_exclusive?: boolean;
-  subscription_type?: SubscriptionType;
-  daily_limit_usd?: number | null;
-  weekly_limit_usd?: number | null;
-  monthly_limit_usd?: number | null;
-  long_context_pricing_enabled?: boolean;
-  force_openai_fast?: boolean;
-  free_openai_fast?: boolean;
-  model_pricing?: import("@/api/admin/channels").ChannelModelPricing[];
-  allow_image_generation?: boolean;
-  allow_batch_image_generation?: boolean;
-  image_count_billing?: boolean;
-  image_rate_independent?: boolean;
-  image_rate_multiplier?: number;
-  batch_image_discount_multiplier?: number;
-  batch_image_hold_multiplier?: number;
-  image_price_1k?: number | null;
-  image_price_2k?: number | null;
-  image_price_4k?: number | null;
-  video_rate_independent?: boolean;
-  video_rate_multiplier?: number;
-  video_price_480p?: number | null;
-  video_price_720p?: number | null;
-  video_price_1080p?: number | null;
-  video_model_prices?: VideoModelPrices;
-  web_search_price_per_call?: number | null;
-  search_price_per_1k?: number | null;
-  audio_realtime_price_per_min?: number | null;
-  audio_tts_price_per_million_chars?: number | null;
-  audio_stt_price_per_hour?: number | null;
-  peak_rate_enabled?: boolean;
-  peak_start?: string;
-  peak_end?: string;
-  peak_rate_multiplier?: number;
+  name: string
+  description?: string | null
+  i18n?: GroupI18n
+  platform?: GroupPlatform
+  cache_strategy_id?: number | null
+  rate_multiplier?: number
+  is_exclusive?: boolean
+  subscription_type?: SubscriptionType
+  daily_limit_usd?: number | null
+  weekly_limit_usd?: number | null
+  monthly_limit_usd?: number | null
+  long_context_pricing_enabled?: boolean
+  force_openai_fast?: boolean
+  force_openai_ultrafast?: boolean
+  free_openai_fast?: boolean
+  model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
+  allow_image_generation?: boolean
+  allow_batch_image_generation?: boolean
+  image_count_billing?: boolean
+  image_rate_independent?: boolean
+  image_rate_multiplier?: number
+  batch_image_discount_multiplier?: number
+  batch_image_hold_multiplier?: number
+  image_price_1k?: number | null
+  image_price_2k?: number | null
+  image_price_4k?: number | null
+  video_rate_independent?: boolean
+  video_rate_multiplier?: number
+  video_price_480p?: number | null
+  video_price_720p?: number | null
+  video_price_1080p?: number | null
+  video_model_prices?: VideoModelPrices
+  web_search_price_per_call?: number | null
+  search_price_per_1k?: number | null
+  audio_realtime_price_per_min?: number | null
+  audio_tts_price_per_million_chars?: number | null
+  audio_stt_price_per_hour?: number | null
+  peak_rate_enabled?: boolean
+  peak_start?: string
+  peak_end?: string
+  peak_rate_multiplier?: number
   // 分组利润控制（五个 token 平台；margin/buffer 为小数）
   profit_control_enabled?: boolean;
   profit_min_margin?: number;
@@ -886,47 +888,48 @@ export interface CreateGroupRequest {
 }
 
 export interface UpdateGroupRequest {
-  name?: string;
-  description?: string | null;
-  i18n?: GroupI18n;
-  platform?: GroupPlatform;
-  cache_strategy_id?: number | null;
-  rate_multiplier?: number;
-  is_exclusive?: boolean;
-  status?: "active" | "inactive";
-  subscription_type?: SubscriptionType;
-  daily_limit_usd?: number | null;
-  weekly_limit_usd?: number | null;
-  monthly_limit_usd?: number | null;
-  long_context_pricing_enabled?: boolean;
-  force_openai_fast?: boolean;
-  free_openai_fast?: boolean;
-  model_pricing?: import("@/api/admin/channels").ChannelModelPricing[];
-  allow_image_generation?: boolean;
-  allow_batch_image_generation?: boolean;
-  image_count_billing?: boolean;
-  image_rate_independent?: boolean;
-  image_rate_multiplier?: number;
-  batch_image_discount_multiplier?: number;
-  batch_image_hold_multiplier?: number;
-  image_price_1k?: number | null;
-  image_price_2k?: number | null;
-  image_price_4k?: number | null;
-  video_rate_independent?: boolean;
-  video_rate_multiplier?: number;
-  video_price_480p?: number | null;
-  video_price_720p?: number | null;
-  video_price_1080p?: number | null;
-  video_model_prices?: VideoModelPrices;
-  web_search_price_per_call?: number | null;
-  search_price_per_1k?: number | null;
-  audio_realtime_price_per_min?: number | null;
-  audio_tts_price_per_million_chars?: number | null;
-  audio_stt_price_per_hour?: number | null;
-  peak_rate_enabled?: boolean;
-  peak_start?: string;
-  peak_end?: string;
-  peak_rate_multiplier?: number;
+  name?: string
+  description?: string | null
+  i18n?: GroupI18n
+  platform?: GroupPlatform
+  cache_strategy_id?: number | null
+  rate_multiplier?: number
+  is_exclusive?: boolean
+  status?: 'active' | 'inactive'
+  subscription_type?: SubscriptionType
+  daily_limit_usd?: number | null
+  weekly_limit_usd?: number | null
+  monthly_limit_usd?: number | null
+  long_context_pricing_enabled?: boolean
+  force_openai_fast?: boolean
+  force_openai_ultrafast?: boolean
+  free_openai_fast?: boolean
+  model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
+  allow_image_generation?: boolean
+  allow_batch_image_generation?: boolean
+  image_count_billing?: boolean
+  image_rate_independent?: boolean
+  image_rate_multiplier?: number
+  batch_image_discount_multiplier?: number
+  batch_image_hold_multiplier?: number
+  image_price_1k?: number | null
+  image_price_2k?: number | null
+  image_price_4k?: number | null
+  video_rate_independent?: boolean
+  video_rate_multiplier?: number
+  video_price_480p?: number | null
+  video_price_720p?: number | null
+  video_price_1080p?: number | null
+  video_model_prices?: VideoModelPrices
+  web_search_price_per_call?: number | null
+  search_price_per_1k?: number | null
+  audio_realtime_price_per_min?: number | null
+  audio_tts_price_per_million_chars?: number | null
+  audio_stt_price_per_hour?: number | null
+  peak_rate_enabled?: boolean
+  peak_start?: string
+  peak_end?: string
+  peak_rate_multiplier?: number
   // 分组利润控制（五个 token 平台；margin/buffer 为小数）
   profit_control_enabled?: boolean;
   profit_min_margin?: number;
@@ -1141,6 +1144,36 @@ export interface UpstreamBillingData {
 
 export type UpstreamBillingProbeStatus = "ok" | "unsupported" | "failed";
 
+/** Last IQ check result, written by the backend IQ check service. */
+export interface IQCheckState {
+  checked_at?: string
+  next_check_at?: string
+  result?: 'passed' | 'failed' | 'unknown'
+  correct?: number
+  total?: number
+  error?: string
+  /** Wrong answers in the last round, and in the last two rounds together. */
+  last_round_wrong?: number
+  recent_wrong?: number
+  /** Cumulative answered and correct questions for stats_model. */
+  answered?: number
+  answered_correct?: number
+  stats_model?: string
+  disabled_by_check?: boolean
+  model?: string
+}
+
+/** Latest IQ check drawing of an account (GET /admin/accounts/iq-check-drawings). */
+export interface IQCheckDrawing {
+  account_id: number
+  /** Empty when the drawing failed; see error. */
+  svg: string
+  error: string
+  model: string
+  latency_ms: number
+  drawn_at: string
+}
+
 export interface UpstreamBillingProbeSnapshot {
   status: UpstreamBillingProbeStatus;
   data?: UpstreamBillingData;
@@ -1313,64 +1346,47 @@ export interface Account {
   ollama_cloud_usage?: OllamaCloudUsageState;
   opencode_go_usage?: OpenCodeGoUsageState;
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
-  extra?: CodexUsageSnapshot &
-    OpenAICompactState & {
-      model_rate_limits?: Record<
-        string,
-        { rate_limited_at: string; rate_limit_reset_at: string }
-      >;
-      antigravity_credits_overages?: Record<
-        string,
-        { activated_at: string; active_until: string }
-      >;
-      kiro_credit_unit_price_usd?: number;
-      leonardo_credit_unit_price_usd?: number;
-      leonardo_max_quality?: string;
-      leonardo_max_short_edge?: number;
-      leonardo_max_upscale_factor?: number;
-      fish_max_quality?: string;
-      upstream_billing_probe_enabled?: boolean;
-      upstream_billing_rate_sync_enabled?: boolean;
-      upstream_billing_probe?: UpstreamBillingProbeSnapshot;
-      codex_reset_credit_snapshot?: {
-        available_count?: number;
-        credits?: { expires_at?: string }[];
-      };
-      codex_credits_snapshot?: {
-        credits: {
-          has_credits: boolean;
-          unlimited: boolean;
-          balance: string | null;
-        } | null;
-        fetched_at: number;
-      };
-      codex_referral_snapshot?:
-        | import("./openaiReferrals").OpenAIReferralEligibility
-        | null;
-      auto_reset_credit_enabled?: boolean;
-      auto_reset_credit_5h_threshold?: number;
-      auto_reset_credit_7d_threshold?: number;
-      codex_auto_reset_credit_state?: {
-        status?:
-          | "checking"
-          | "available"
-          | "resetting"
-          | "success"
-          | "no_credit"
-          | "failed";
-        trigger_window?: string;
-        available_count?: number;
-        checked_at?: string;
-        last_result_at?: string;
-        error_code?: string;
-      };
-    } & Record<string, unknown>;
-  proxy_id: number | null;
-  proxy_fallback_origin_id?: number | null;
-  proxy_fallback_origin_name?: string | null;
-  concurrency: number;
-  load_factor?: number | null;
-  current_concurrency?: number; // Real-time concurrency count from Redis
+  extra?: (CodexUsageSnapshot & OpenAICompactState & {
+    model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
+    antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
+kiro_credit_unit_price_usd?: number
+    fish_max_quality?: string
+    upstream_billing_probe_enabled?: boolean
+    upstream_billing_group_sync_enabled?: boolean
+    upstream_billing_rate_sync_enabled?: boolean
+    upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    iq_check_enabled?: boolean
+    iq_check_auto_disable?: boolean
+    iq_check_model?: string
+    iq_check_interval_minutes?: number
+    iq_check_state?: IQCheckState
+    codex_reset_credit_snapshot?: {
+      available_count?: number
+      credits?: { expires_at?: string }[]
+    }
+    codex_credits_snapshot?: {
+      credits: { has_credits: boolean; unlimited: boolean; balance: string | null } | null
+      fetched_at: number
+    }
+    codex_referral_snapshot?: import('./openaiReferrals').OpenAIReferralEligibility | null
+    auto_reset_credit_enabled?: boolean
+    auto_reset_credit_5h_threshold?: number
+    auto_reset_credit_7d_threshold?: number
+    codex_auto_reset_credit_state?: {
+      status?: 'checking' | 'available' | 'resetting' | 'success' | 'no_credit' | 'failed'
+      trigger_window?: string
+      available_count?: number
+      checked_at?: string
+      last_result_at?: string
+      error_code?: string
+    }
+  } & Record<string, unknown>)
+  proxy_id: number | null
+  proxy_fallback_origin_id?: number | null
+  proxy_fallback_origin_name?: string | null
+  concurrency: number
+  load_factor?: number | null
+  current_concurrency?: number // Real-time concurrency count from Redis
   scheduler_score?: {
     base_score: number;
     sticky_score?: number;
@@ -1501,12 +1517,13 @@ export interface WindowStats {
 }
 
 export interface UsageProgress {
-  utilization: number; // Percentage (0-100+, 100 = 100%)
-  resets_at: string | null;
-  remaining_seconds: number;
-  window_stats?: WindowStats | null; // 窗口期统计（从窗口开始到当前的使用量）
-  used_requests?: number;
-  limit_requests?: number;
+  utilization: number // Percentage (0-100+, 100 = 100%)
+  utilization_unknown?: boolean
+  resets_at: string | null
+  remaining_seconds: number
+  window_stats?: WindowStats | null // 窗口期统计（从窗口开始到当前的使用量）
+  used_requests?: number
+  limit_requests?: number
 }
 
 // Antigravity 单个模型的配额信息
@@ -1556,18 +1573,6 @@ export interface KiroOverageInfo {
   overage_charges: number
   currency_code?: string
   currency_symbol?: string
-}
-
-// Leonardo 积分余额快照：上游只给各池剩余量，上限来自套餐常量表（未知套餐时为 0）
-export interface LeonardoCreditsSnapshot {
-  total: number
-  usable?: number
-  subscription: number
-  paid: number
-  rollover: number
-  fast_limit?: number
-  rollover_limit?: number
-  fast_daily?: boolean
 }
 
 export interface GrokQuotaWindow {
@@ -1672,11 +1677,6 @@ export interface AccountUsageInfo {
   fish_daily?: KiroCreditProgress | null
   fish_reset_at?: string | null
 
-  // Leonardo 积分余额快照
-  leonardo_plan?: string | null
-  leonardo_plan_name?: string | null
-  leonardo_credits?: LeonardoCreditsSnapshot | null
-  leonardo_token_renewal?: string | null
   // Antigravity 403 forbidden 状态
   is_forbidden?: boolean;
   forbidden_reason?: string;
@@ -1741,45 +1741,47 @@ export interface OpenAIResponsesState {
 }
 
 export interface CreateAccountRequest {
-  name: string;
-  notes?: string | null;
-  platform: AccountPlatform;
-  type: AccountType;
-  credentials: Record<string, unknown>;
-  extra?: Record<string, unknown>;
-  proxy_id?: number | null;
-  concurrency?: number;
-  load_factor?: number | null;
-  priority?: number;
-  status?: "active" | "inactive" | "error";
-  schedulable?: boolean;
-  rate_multiplier?: number; // Account billing multiplier (>=0, 0 means free)
-  group_ids?: number[];
-  expires_at?: number | null;
-  auto_pause_on_expired?: boolean;
-  upstream_billing_probe_enabled?: boolean;
-  confirm_mixed_channel_risk?: boolean;
+  name: string
+  notes?: string | null
+  platform: AccountPlatform
+  type: AccountType
+  credentials: Record<string, unknown>
+  extra?: Record<string, unknown>
+  proxy_id?: number | null
+  concurrency?: number
+  load_factor?: number | null
+  priority?: number
+  status?: 'active' | 'inactive' | 'error'
+  schedulable?: boolean
+  rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
+  group_ids?: number[]
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
+  upstream_billing_probe_enabled?: boolean
+  upstream_billing_group_sync_enabled?: boolean
+  confirm_mixed_channel_risk?: boolean
 }
 
 export interface UpdateAccountRequest {
-  name?: string;
-  notes?: string | null;
-  type?: AccountType;
-  credentials?: Record<string, unknown>;
-  extra?: Record<string, unknown>;
-  proxy_id?: number | null;
-  concurrency?: number;
-  load_factor?: number | null;
-  priority?: number;
-  rate_multiplier?: number; // Account billing multiplier (>=0, 0 means free)
-  schedulable?: boolean;
-  status?: "active" | "inactive" | "error";
-  group_ids?: number[];
-  expires_at?: number | null;
-  auto_pause_on_expired?: boolean;
-  upstream_billing_probe_enabled?: boolean;
-  upstream_billing_rate_sync_enabled?: boolean;
-  confirm_mixed_channel_risk?: boolean;
+  name?: string
+  notes?: string | null
+  type?: AccountType
+  credentials?: Record<string, unknown>
+  extra?: Record<string, unknown>
+  proxy_id?: number | null
+  concurrency?: number
+  load_factor?: number | null
+  priority?: number
+  rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
+  schedulable?: boolean
+  status?: 'active' | 'inactive' | 'error'
+  group_ids?: number[]
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
+  upstream_billing_probe_enabled?: boolean
+  upstream_billing_group_sync_enabled?: boolean
+  upstream_billing_rate_sync_enabled?: boolean
+  confirm_mixed_channel_risk?: boolean
 }
 
 export type GrokMediaEligibilityMode = "auto" | "enabled" | "disabled";
@@ -2051,8 +2053,8 @@ export interface AdminUsageLog extends UsageLog {
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null;
   // 自定义定价规则计算的账号统计费用（nil 时使用 total_cost * multiplier）
-  account_stats_cost?: number | null;
-  // 本次消耗的上游积分（Kiro credits / Leonardo 积分，仅管理员可见）
+  account_stats_cost?: number | null
+  // 本次消耗的上游积分（Kiro credits，仅管理员可见）
   upstream_credits?: number | null
   // 按账号当前积分单价估算的上游成本（USD，未设单价时为空）
   upstream_credit_cost?: number | null
@@ -2236,11 +2238,12 @@ export interface ModelStat {
 }
 
 export interface EndpointStat {
-  endpoint: string;
-  requests: number;
-  total_tokens: number;
-  cost: number;
-  actual_cost: number;
+  endpoint: string
+  requests: number
+  total_tokens: number
+  cost: number // 标准计费
+  actual_cost: number // 实际扣除
+  account_cost?: number // 账号成本（仅管理员接口返回）
 }
 
 export interface GroupStat {

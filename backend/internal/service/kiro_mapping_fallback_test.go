@@ -167,9 +167,8 @@ func TestGatewayServiceCalculateTokenCost_KiroAutoUsesConservativeFallback(t *te
 		nil,                         // httpUpstream
 		nil,                         // deferredService
 		nil,                         // claudeTokenProvider
-		nil, nil,
-		// kiroTokenProvider
-		nil, nil, nil, // kiroCooldownStore
+		nil,                         // kiroTokenProvider
+		nil, nil, nil,               // kiroCooldownStore
 		nil, // sessionLimitCache
 		nil, // rpmCache
 		nil, // digestStore
@@ -341,6 +340,6 @@ func newKiroBillingGatewayForTest(t *testing.T) *GatewayService {
 		cfg,
 		nil, nil,
 		NewBillingService(cfg, nil),
-		nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil,
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 }

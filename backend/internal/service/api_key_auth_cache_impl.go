@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 28 // v28 includes upstream v27 fields and the fork cache strategy binding.
+const apiKeyAuthSnapshotVersion = 30 // v30 adds upstream ultrafast fields while retaining the fork cache strategy binding.
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -428,6 +428,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			AllowMessagesDispatch:           groupForSnapshot.AllowMessagesDispatch,
 			AllowLive:                       groupForSnapshot.AllowLive,
 			ForceOpenAIFast:                 groupForSnapshot.ForceOpenAIFast,
+			ForceOpenAIUltrafast:            groupForSnapshot.ForceOpenAIUltrafast,
 			FreeOpenAIFast:                  groupForSnapshot.FreeOpenAIFast,
 			DefaultMappedModel:              groupForSnapshot.DefaultMappedModel,
 			MessagesDispatchModelConfig:     groupForSnapshot.MessagesDispatchModelConfig,
@@ -537,6 +538,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			AllowMessagesDispatch:           snapshot.Group.AllowMessagesDispatch,
 			AllowLive:                       snapshot.Group.AllowLive,
 			ForceOpenAIFast:                 snapshot.Group.ForceOpenAIFast,
+			ForceOpenAIUltrafast:            snapshot.Group.ForceOpenAIUltrafast,
 			FreeOpenAIFast:                  snapshot.Group.FreeOpenAIFast,
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,

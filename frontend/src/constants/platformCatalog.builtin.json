@@ -292,12 +292,6 @@
       }
     },
     {
-      "id": "leonardo",
-      "display_name": "Leonardo",
-      "gateway": "anthropic",
-      "cn_provider": false
-    },
-    {
       "id": "fish",
       "display_name": "Fish Audio",
       "gateway": "openai",
@@ -320,7 +314,6 @@
     "typesafe",
     "command_code",
     "cline",
-    "leonardo",
     "fish"
   ]
 }

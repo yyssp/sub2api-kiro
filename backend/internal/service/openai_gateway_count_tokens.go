@@ -275,11 +275,10 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 		estimated, err := estimateAnthropicCountTokensLocally(body)
 		if err != nil {
 			writeAnthropicCountTokensError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
-			return fmt.Errorf("count_tokens: estimate local input tokens: %w", err)
+			return fmt.Errorf("count_tokens: estimate cn provider input tokens: %w", err)
 		}
-		logger.L().Debug("openai count_tokens: local estimate",
+		logger.L().Debug("openai count_tokens: cn provider local estimate",
 			zap.Int64("account_id", account.ID),
-			zap.String("account_type", account.Type),
 			zap.Int("estimated_input_tokens", estimated),
 		)
 		c.JSON(http.StatusOK, gin.H{
@@ -477,7 +476,7 @@ func (s *OpenAIGatewayService) buildInputTokensUpstreamRequest(
 	}
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 
 	return req, nil
 }

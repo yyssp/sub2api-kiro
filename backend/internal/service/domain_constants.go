@@ -52,7 +52,6 @@ const (
 	PlatformTypeSafe    = domain.PlatformTypeSafe
 	PlatformCommandCode = domain.PlatformCommandCode
 	PlatformCline       = domain.PlatformCline
-	PlatformLeonardo    = domain.PlatformLeonardo
 	PlatformFish        = domain.PlatformFish
 	PlatformComposite   = domain.PlatformComposite
 	// Kiro 走 Anthropic 协议网关。
