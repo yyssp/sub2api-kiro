@@ -8,6 +8,10 @@ import {
 describe("cache strategy templates", () => {
   it("includes purpose templates with distinct operating modes", () => {
     expect(cacheStrategyTemplates.map((template) => template.id)).toEqual([
+      "usage_multiplier",
+      "stable_segment_cache",
+      "prefix_tool_plus",
+      "bounded_high_cache",
       "kiro_rs_tool",
       "high_cache",
       "steady_growth",
@@ -17,6 +21,35 @@ describe("cache strategy templates", () => {
       "large_read_small_write",
       "large_write_controlled_read",
     ]);
+  });
+
+  it("creates isolated defaults for the additional shaping strategies", () => {
+    const stable = createDefaultCacheStrategyConfig("stable_segment_cache");
+    expect(stable).toMatchObject({
+      state_ttl_seconds: 300,
+      cold_request_guard: true,
+      stable_segment: {
+        reported_input_min_tokens: 32,
+        reported_input_max_tokens: 256,
+      },
+      creation_control: { enabled: false },
+    });
+
+    const plus = createDefaultCacheStrategyConfig("prefix_tool_plus");
+    expect(plus).toMatchObject({
+      tool_plus: {
+        non_stream: { mode: "inherit" },
+        small_request: { enabled: false, max_input_tokens: 4096 },
+        suppressed_creation_target: "input",
+      },
+    });
+
+    const bounded = createDefaultCacheStrategyConfig("bounded_high_cache");
+    expect(bounded).toMatchObject({
+      hit_shaping: { enabled: false, ratio_jitter: 0.04, cost_floor_top_up_input: true },
+      cold_request_guard: true,
+      state_ttl_seconds: 300,
+    });
   });
 
   // 这组断言与后端 kiroRsToolTemplateConfig()（已跑过 60 轮真实调度：命中率
@@ -264,3 +297,21 @@ describe("cache strategy templates", () => {
     });
   });
 });
+
+
+describe('complete defaults without a template', () => {
+  for (const protocol of ['anthropic', 'gemini'] as const) {
+    for (const kind of ['prefix', 'tool_aware', 'stable_segment_cache', 'prefix_tool_plus', 'bounded_high_cache', 'disabled'] as const) {
+      it(`${protocol}/${kind} has backend-generated defaults`, () => {
+        const config = createDefaultCacheStrategyConfig(kind, protocol)
+        expect(config.protocol).toBe(protocol)
+        expect(config.kind).toBe(kind)
+        expect(config.limits).toEqual({max_input_tokens: 0, max_output_tokens: 0})
+        expect(config.allow_derived_session).toBe(true)
+        expect(config.usage.input.mode).toBeTruthy()
+        expect(config.usage.output.mode).toBeTruthy()
+        if (protocol === 'gemini') expect(config.creation_control.enabled).toBe(false)
+      })
+    }
+  }
+})

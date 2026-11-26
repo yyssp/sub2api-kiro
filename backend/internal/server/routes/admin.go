@@ -150,6 +150,7 @@ func registerCacheStrategyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		strategies.GET("", h.Admin.CacheStrategy.List)
 		strategies.POST("", h.Admin.CacheStrategy.Create)
+		strategies.GET("/defaults", h.Admin.CacheStrategy.Defaults)
 		strategies.GET("/:id", h.Admin.CacheStrategy.Get)
 		strategies.PUT("/:id", h.Admin.CacheStrategy.Update)
 		strategies.POST("/:id/duplicate", h.Admin.CacheStrategy.Duplicate)

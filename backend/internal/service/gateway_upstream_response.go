@@ -1321,11 +1321,7 @@ func rewriteClaudeSSEUsageEvent(event map[string]any, accumulated *ClaudeUsage, 
 	}
 
 	projected := *accumulated
-	upstreamEvidence := claudeUsageHasCacheEvidence(&projected)
-	projectClaudeUsage(&projected, plan.result(), plan.usagePolicy, plan.usageSeed())
-	if plan.result() != nil && !upstreamEvidence {
-		constrainClaudeUsageTotal(&projected, plan.profile.reportedInputTokens, plan.profile.policy.ReportedInputMinTokens)
-	}
+	plan.projectClaude(&projected)
 
 	changed := false
 	setInt := func(key string, value int) {
@@ -1342,7 +1338,7 @@ func rewriteClaudeSSEUsageEvent(event map[string]any, accumulated *ClaudeUsage, 
 	// Anthropic exposes the cache creation TTL split as a nested object. Keep
 	// the object present whenever the projection has cache creation evidence so
 	// callers receive a protocol-valid, internally consistent breakdown.
-	if projected.CacheCreation5mTokens > 0 || projected.CacheCreation1hTokens > 0 {
+	if projected.CacheCreation5mTokens > 0 || projected.CacheCreation1hTokens > 0 || usageObj["cache_creation"] != nil {
 		cacheCreation, ok := usageObj["cache_creation"].(map[string]any)
 		if !ok || cacheCreation == nil {
 			cacheCreation = map[string]any{}
@@ -1701,11 +1697,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	// not report authoritative cache buckets. Keep the JSON response and the
 	// returned usage object in sync for non-streaming Messages requests.
 	if plan := cachePlanFromContext(c); plan != nil && !plan.skipProjection() {
-		upstreamEvidence := claudeUsageHasCacheEvidence(&response.Usage)
-		projectClaudeUsage(&response.Usage, plan.result(), plan.usagePolicy, plan.usageSeed())
-		if plan.result() != nil && !upstreamEvidence {
-			constrainClaudeUsageTotal(&response.Usage, plan.profile.reportedInputTokens, plan.profile.policy.ReportedInputMinTokens)
-		}
+		plan.projectClaude(&response.Usage)
 		if next, setErr := sjson.SetBytes(body, "usage.input_tokens", response.Usage.InputTokens); setErr == nil {
 			body = next
 		}

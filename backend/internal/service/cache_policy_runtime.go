@@ -168,6 +168,9 @@ func cacheSessionKey(body []byte, allowDerived bool) string {
 			"tools":           stripCacheControlValue(payload["tools"]),
 			"first_user_turn": firstUserTurnValue(payload),
 		}
+		if value := payload["systemInstruction"]; value != nil {
+			seed["systemInstruction"] = value
+		}
 	}
 	if len(seed) == 0 {
 		return ""
@@ -181,6 +184,12 @@ func cacheSessionKey(body []byte, allowDerived bool) string {
 }
 
 func firstUserTurnValue(payload map[string]any) any {
+	contents, _ := payload["contents"].([]any)
+	for _, content := range contents {
+		if obj, ok := content.(map[string]any); ok && obj["role"] == "user" {
+			return content
+		}
+	}
 	messages, _ := payload["messages"].([]any)
 	for _, message := range messages {
 		obj, ok := message.(map[string]any)

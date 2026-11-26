@@ -1,0 +1,3544 @@
+{
+  "anthropic/bounded_high_cache": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "anthropic",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 1024,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": true,
+    "state_ttl_seconds": 300,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "bounded_high_cache",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 0.85,
+    "usage_ratio": 1,
+    "read_ratio": 1,
+    "creation_ratio": 1,
+    "cache_system": true,
+    "cache_tools": true,
+    "cache_history": true,
+    "cache_tool_results": true,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "hybrid",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 0,
+    "max_new_creation_tokens_per_request": 0,
+    "incremental_create_enabled": true,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 1024,
+    "uncached_input_max_tokens": 4096,
+    "token_scale": 2,
+    "scale_min_input_tokens": 20000,
+    "max_simulated_input_tokens": 300000,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 12000,
+    "cap_jitter_max_tokens": 24000,
+    "preserve_upstream_cache_usage": true,
+    "creation_control": {
+      "enabled": true,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 100000,
+      "creation_budget_window_seconds": 300,
+      "max_creation_tokens_per_window": 600000
+    },
+    "usage": {
+      "enabled": true,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 700000,
+      "final_cache_read_jitter_min_tokens": 12345,
+      "final_cache_read_jitter_max_tokens": 45312,
+      "final_cache_creation_max_tokens": 400000,
+      "final_cache_creation_jitter_min_tokens": 12345,
+      "final_cache_creation_jitter_max_tokens": 45312,
+      "output_uplift_enabled": true,
+      "output_uplift_min_tokens": 1000,
+      "output_uplift_percent": 50,
+      "final_output_guard_enabled": true,
+      "final_output_max_tokens": 200000,
+      "final_output_jitter_min_tokens": 12345,
+      "final_output_jitter_max_tokens": 45312
+    }
+  },
+  "anthropic/disabled": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "anthropic",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 1024,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": false,
+    "state_ttl_seconds": 0,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "disabled",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 0,
+    "usage_ratio": 0,
+    "read_ratio": 0,
+    "creation_ratio": 0,
+    "cache_system": false,
+    "cache_tools": false,
+    "cache_history": false,
+    "cache_tool_results": false,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "hybrid",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 0,
+    "max_new_creation_tokens_per_request": 0,
+    "incremental_create_enabled": false,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 0,
+    "uncached_input_max_tokens": 0,
+    "token_scale": 2,
+    "scale_min_input_tokens": 20000,
+    "max_simulated_input_tokens": 300000,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 0,
+    "cap_jitter_max_tokens": 0,
+    "preserve_upstream_cache_usage": false,
+    "creation_control": {
+      "enabled": false,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 0,
+      "creation_budget_window_seconds": 0,
+      "max_creation_tokens_per_window": 0
+    },
+    "usage": {
+      "enabled": false,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 700000,
+      "final_cache_read_jitter_min_tokens": 12345,
+      "final_cache_read_jitter_max_tokens": 45312,
+      "final_cache_creation_max_tokens": 400000,
+      "final_cache_creation_jitter_min_tokens": 12345,
+      "final_cache_creation_jitter_max_tokens": 45312,
+      "output_uplift_enabled": true,
+      "output_uplift_min_tokens": 1000,
+      "output_uplift_percent": 50,
+      "final_output_guard_enabled": true,
+      "final_output_max_tokens": 200000,
+      "final_output_jitter_min_tokens": 12345,
+      "final_output_jitter_max_tokens": 45312
+    }
+  },
+  "anthropic/prefix": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "anthropic",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 1024,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": false,
+    "state_ttl_seconds": 0,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "prefix",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 0.85,
+    "usage_ratio": 1,
+    "read_ratio": 1,
+    "creation_ratio": 1,
+    "cache_system": true,
+    "cache_tools": true,
+    "cache_history": true,
+    "cache_tool_results": true,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "hybrid",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 0,
+    "max_new_creation_tokens_per_request": 0,
+    "incremental_create_enabled": true,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 1024,
+    "uncached_input_max_tokens": 4096,
+    "token_scale": 2,
+    "scale_min_input_tokens": 20000,
+    "max_simulated_input_tokens": 300000,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 12000,
+    "cap_jitter_max_tokens": 24000,
+    "preserve_upstream_cache_usage": true,
+    "creation_control": {
+      "enabled": true,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 100000,
+      "creation_budget_window_seconds": 300,
+      "max_creation_tokens_per_window": 600000
+    },
+    "usage": {
+      "enabled": true,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 700000,
+      "final_cache_read_jitter_min_tokens": 12345,
+      "final_cache_read_jitter_max_tokens": 45312,
+      "final_cache_creation_max_tokens": 400000,
+      "final_cache_creation_jitter_min_tokens": 12345,
+      "final_cache_creation_jitter_max_tokens": 45312,
+      "output_uplift_enabled": true,
+      "output_uplift_min_tokens": 1000,
+      "output_uplift_percent": 50,
+      "final_output_guard_enabled": true,
+      "final_output_max_tokens": 200000,
+      "final_output_jitter_min_tokens": 12345,
+      "final_output_jitter_max_tokens": 45312
+    }
+  },
+  "anthropic/prefix_tool_plus": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "anthropic",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 1024,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": true,
+    "state_ttl_seconds": 300,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "prefix_tool_plus",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 1,
+    "usage_ratio": 1,
+    "read_ratio": 1,
+    "creation_ratio": 1,
+    "cache_system": true,
+    "cache_tools": true,
+    "cache_history": true,
+    "cache_tool_results": true,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "hybrid",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 0,
+    "max_new_creation_tokens_per_request": 0,
+    "incremental_create_enabled": true,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 32,
+    "uncached_input_max_tokens": 4096,
+    "token_scale": 1,
+    "scale_min_input_tokens": 0,
+    "max_simulated_input_tokens": 0,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 0,
+    "cap_jitter_max_tokens": 0,
+    "preserve_upstream_cache_usage": true,
+    "creation_control": {
+      "enabled": false,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 0,
+      "creation_budget_window_seconds": 0,
+      "max_creation_tokens_per_window": 0
+    },
+    "usage": {
+      "enabled": true,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 700000,
+      "final_cache_read_jitter_min_tokens": 12345,
+      "final_cache_read_jitter_max_tokens": 45312,
+      "final_cache_creation_max_tokens": 400000,
+      "final_cache_creation_jitter_min_tokens": 12345,
+      "final_cache_creation_jitter_max_tokens": 45312,
+      "output_uplift_enabled": false,
+      "output_uplift_min_tokens": 1000,
+      "output_uplift_percent": 50,
+      "final_output_guard_enabled": true,
+      "final_output_max_tokens": 200000,
+      "final_output_jitter_min_tokens": 12345,
+      "final_output_jitter_max_tokens": 45312
+    }
+  },
+  "anthropic/stable_segment_cache": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "anthropic",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 1024,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": true,
+    "state_ttl_seconds": 300,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "stable_segment_cache",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 0.9,
+    "usage_ratio": 1,
+    "read_ratio": 1,
+    "creation_ratio": 1,
+    "cache_system": true,
+    "cache_tools": true,
+    "cache_history": true,
+    "cache_tool_results": true,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "hybrid",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 120000,
+    "max_new_creation_tokens_per_request": 30000,
+    "incremental_create_enabled": true,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 0,
+    "uncached_input_max_tokens": 0,
+    "token_scale": 1,
+    "scale_min_input_tokens": 20000,
+    "max_simulated_input_tokens": 300000,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 0,
+    "cap_jitter_max_tokens": 0,
+    "preserve_upstream_cache_usage": true,
+    "creation_control": {
+      "enabled": false,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 0,
+      "creation_budget_window_seconds": 0,
+      "max_creation_tokens_per_window": 0
+    },
+    "usage": {
+      "enabled": true,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 700000,
+      "final_cache_read_jitter_min_tokens": 12345,
+      "final_cache_read_jitter_max_tokens": 45312,
+      "final_cache_creation_max_tokens": 400000,
+      "final_cache_creation_jitter_min_tokens": 12345,
+      "final_cache_creation_jitter_max_tokens": 45312,
+      "output_uplift_enabled": false,
+      "output_uplift_min_tokens": 1000,
+      "output_uplift_percent": 50,
+      "final_output_guard_enabled": true,
+      "final_output_max_tokens": 200000,
+      "final_output_jitter_min_tokens": 12345,
+      "final_output_jitter_max_tokens": 45312
+    }
+  },
+  "anthropic/tool_aware": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "anthropic",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 1024,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": false,
+    "state_ttl_seconds": 0,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "tool_aware",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 1,
+    "usage_ratio": 1,
+    "read_ratio": 1,
+    "creation_ratio": 1,
+    "cache_system": true,
+    "cache_tools": true,
+    "cache_history": true,
+    "cache_tool_results": true,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "hybrid",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 0,
+    "max_new_creation_tokens_per_request": 0,
+    "incremental_create_enabled": true,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 32,
+    "uncached_input_max_tokens": 4096,
+    "token_scale": 1,
+    "scale_min_input_tokens": 0,
+    "max_simulated_input_tokens": 0,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 0,
+    "cap_jitter_max_tokens": 0,
+    "preserve_upstream_cache_usage": true,
+    "creation_control": {
+      "enabled": false,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 0,
+      "creation_budget_window_seconds": 0,
+      "max_creation_tokens_per_window": 0
+    },
+    "usage": {
+      "enabled": true,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 700000,
+      "final_cache_read_jitter_min_tokens": 12345,
+      "final_cache_read_jitter_max_tokens": 45312,
+      "final_cache_creation_max_tokens": 400000,
+      "final_cache_creation_jitter_min_tokens": 12345,
+      "final_cache_creation_jitter_max_tokens": 45312,
+      "output_uplift_enabled": true,
+      "output_uplift_min_tokens": 1000,
+      "output_uplift_percent": 50,
+      "final_output_guard_enabled": true,
+      "final_output_max_tokens": 200000,
+      "final_output_jitter_min_tokens": 12345,
+      "final_output_jitter_max_tokens": 45312
+    }
+  },
+  "anthropic/usage_multiplier": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "anthropic",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 1024,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": false,
+    "state_ttl_seconds": 0,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "usage_multiplier",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 0.85,
+    "usage_ratio": 1,
+    "read_ratio": 1,
+    "creation_ratio": 1,
+    "cache_system": true,
+    "cache_tools": true,
+    "cache_history": true,
+    "cache_tool_results": true,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "hybrid",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 0,
+    "max_new_creation_tokens_per_request": 0,
+    "incremental_create_enabled": true,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 0,
+    "uncached_input_max_tokens": 0,
+    "token_scale": 1,
+    "scale_min_input_tokens": 0,
+    "max_simulated_input_tokens": 0,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 0,
+    "cap_jitter_max_tokens": 0,
+    "preserve_upstream_cache_usage": true,
+    "creation_control": {
+      "enabled": false,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 0,
+      "creation_budget_window_seconds": 0,
+      "max_creation_tokens_per_window": 0
+    },
+    "usage": {
+      "enabled": true,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 0,
+      "final_cache_read_jitter_min_tokens": 0,
+      "final_cache_read_jitter_max_tokens": 0,
+      "final_cache_creation_max_tokens": 0,
+      "final_cache_creation_jitter_min_tokens": 0,
+      "final_cache_creation_jitter_max_tokens": 0,
+      "output_uplift_enabled": false,
+      "output_uplift_min_tokens": 0,
+      "output_uplift_percent": 0,
+      "final_output_guard_enabled": false,
+      "final_output_max_tokens": 0,
+      "final_output_jitter_min_tokens": 0,
+      "final_output_jitter_max_tokens": 0
+    }
+  },
+  "gemini/bounded_high_cache": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "gemini",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 0,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": true,
+    "state_ttl_seconds": 300,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "bounded_high_cache",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 0.85,
+    "usage_ratio": 1,
+    "read_ratio": 1,
+    "creation_ratio": 0,
+    "cache_system": true,
+    "cache_tools": true,
+    "cache_history": true,
+    "cache_tool_results": true,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "auto",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 0,
+    "max_new_creation_tokens_per_request": 0,
+    "incremental_create_enabled": true,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 1024,
+    "uncached_input_max_tokens": 4096,
+    "token_scale": 2,
+    "scale_min_input_tokens": 20000,
+    "max_simulated_input_tokens": 300000,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 12000,
+    "cap_jitter_max_tokens": 24000,
+    "preserve_upstream_cache_usage": true,
+    "creation_control": {
+      "enabled": false,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 0,
+      "creation_budget_window_seconds": 0,
+      "max_creation_tokens_per_window": 0
+    },
+    "usage": {
+      "enabled": true,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 700000,
+      "final_cache_read_jitter_min_tokens": 12345,
+      "final_cache_read_jitter_max_tokens": 45312,
+      "final_cache_creation_max_tokens": 0,
+      "final_cache_creation_jitter_min_tokens": 0,
+      "final_cache_creation_jitter_max_tokens": 0,
+      "output_uplift_enabled": true,
+      "output_uplift_min_tokens": 1000,
+      "output_uplift_percent": 50,
+      "final_output_guard_enabled": true,
+      "final_output_max_tokens": 200000,
+      "final_output_jitter_min_tokens": 12345,
+      "final_output_jitter_max_tokens": 45312
+    }
+  },
+  "gemini/disabled": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "gemini",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 0,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": false,
+    "state_ttl_seconds": 0,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "disabled",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 0,
+    "usage_ratio": 0,
+    "read_ratio": 0,
+    "creation_ratio": 0,
+    "cache_system": false,
+    "cache_tools": false,
+    "cache_history": false,
+    "cache_tool_results": false,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "hybrid",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 0,
+    "max_new_creation_tokens_per_request": 0,
+    "incremental_create_enabled": false,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 0,
+    "uncached_input_max_tokens": 0,
+    "token_scale": 2,
+    "scale_min_input_tokens": 20000,
+    "max_simulated_input_tokens": 300000,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 0,
+    "cap_jitter_max_tokens": 0,
+    "preserve_upstream_cache_usage": false,
+    "creation_control": {
+      "enabled": false,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 0,
+      "creation_budget_window_seconds": 0,
+      "max_creation_tokens_per_window": 0
+    },
+    "usage": {
+      "enabled": false,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 700000,
+      "final_cache_read_jitter_min_tokens": 12345,
+      "final_cache_read_jitter_max_tokens": 45312,
+      "final_cache_creation_max_tokens": 0,
+      "final_cache_creation_jitter_min_tokens": 0,
+      "final_cache_creation_jitter_max_tokens": 0,
+      "output_uplift_enabled": true,
+      "output_uplift_min_tokens": 1000,
+      "output_uplift_percent": 50,
+      "final_output_guard_enabled": true,
+      "final_output_max_tokens": 200000,
+      "final_output_jitter_min_tokens": 12345,
+      "final_output_jitter_max_tokens": 45312
+    }
+  },
+  "gemini/prefix": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "gemini",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 0,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": false,
+    "state_ttl_seconds": 0,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "prefix",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 0.85,
+    "usage_ratio": 1,
+    "read_ratio": 1,
+    "creation_ratio": 0,
+    "cache_system": true,
+    "cache_tools": true,
+    "cache_history": true,
+    "cache_tool_results": true,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "auto",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 0,
+    "max_new_creation_tokens_per_request": 0,
+    "incremental_create_enabled": true,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 1024,
+    "uncached_input_max_tokens": 4096,
+    "token_scale": 2,
+    "scale_min_input_tokens": 20000,
+    "max_simulated_input_tokens": 300000,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 12000,
+    "cap_jitter_max_tokens": 24000,
+    "preserve_upstream_cache_usage": true,
+    "creation_control": {
+      "enabled": false,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 0,
+      "creation_budget_window_seconds": 0,
+      "max_creation_tokens_per_window": 0
+    },
+    "usage": {
+      "enabled": true,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 700000,
+      "final_cache_read_jitter_min_tokens": 12345,
+      "final_cache_read_jitter_max_tokens": 45312,
+      "final_cache_creation_max_tokens": 0,
+      "final_cache_creation_jitter_min_tokens": 0,
+      "final_cache_creation_jitter_max_tokens": 0,
+      "output_uplift_enabled": true,
+      "output_uplift_min_tokens": 1000,
+      "output_uplift_percent": 50,
+      "final_output_guard_enabled": true,
+      "final_output_max_tokens": 200000,
+      "final_output_jitter_min_tokens": 12345,
+      "final_output_jitter_max_tokens": 45312
+    }
+  },
+  "gemini/prefix_tool_plus": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "gemini",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 0,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": true,
+    "state_ttl_seconds": 300,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "prefix_tool_plus",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 1,
+    "usage_ratio": 1,
+    "read_ratio": 1,
+    "creation_ratio": 0,
+    "cache_system": true,
+    "cache_tools": true,
+    "cache_history": true,
+    "cache_tool_results": true,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "auto",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 0,
+    "max_new_creation_tokens_per_request": 0,
+    "incremental_create_enabled": true,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 32,
+    "uncached_input_max_tokens": 4096,
+    "token_scale": 1,
+    "scale_min_input_tokens": 0,
+    "max_simulated_input_tokens": 0,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 0,
+    "cap_jitter_max_tokens": 0,
+    "preserve_upstream_cache_usage": true,
+    "creation_control": {
+      "enabled": false,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 0,
+      "creation_budget_window_seconds": 0,
+      "max_creation_tokens_per_window": 0
+    },
+    "usage": {
+      "enabled": true,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 700000,
+      "final_cache_read_jitter_min_tokens": 12345,
+      "final_cache_read_jitter_max_tokens": 45312,
+      "final_cache_creation_max_tokens": 0,
+      "final_cache_creation_jitter_min_tokens": 0,
+      "final_cache_creation_jitter_max_tokens": 0,
+      "output_uplift_enabled": false,
+      "output_uplift_min_tokens": 1000,
+      "output_uplift_percent": 50,
+      "final_output_guard_enabled": true,
+      "final_output_max_tokens": 200000,
+      "final_output_jitter_min_tokens": 12345,
+      "final_output_jitter_max_tokens": 45312
+    }
+  },
+  "gemini/stable_segment_cache": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "gemini",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 0,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": true,
+    "state_ttl_seconds": 300,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "stable_segment_cache",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 0.9,
+    "usage_ratio": 1,
+    "read_ratio": 1,
+    "creation_ratio": 0,
+    "cache_system": true,
+    "cache_tools": true,
+    "cache_history": true,
+    "cache_tool_results": true,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "auto",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 120000,
+    "max_new_creation_tokens_per_request": 30000,
+    "incremental_create_enabled": true,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 0,
+    "uncached_input_max_tokens": 0,
+    "token_scale": 1,
+    "scale_min_input_tokens": 20000,
+    "max_simulated_input_tokens": 300000,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 0,
+    "cap_jitter_max_tokens": 0,
+    "preserve_upstream_cache_usage": true,
+    "creation_control": {
+      "enabled": false,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 0,
+      "creation_budget_window_seconds": 0,
+      "max_creation_tokens_per_window": 0
+    },
+    "usage": {
+      "enabled": true,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 700000,
+      "final_cache_read_jitter_min_tokens": 12345,
+      "final_cache_read_jitter_max_tokens": 45312,
+      "final_cache_creation_max_tokens": 0,
+      "final_cache_creation_jitter_min_tokens": 0,
+      "final_cache_creation_jitter_max_tokens": 0,
+      "output_uplift_enabled": false,
+      "output_uplift_min_tokens": 1000,
+      "output_uplift_percent": 50,
+      "final_output_guard_enabled": true,
+      "final_output_max_tokens": 200000,
+      "final_output_jitter_min_tokens": 12345,
+      "final_output_jitter_max_tokens": 45312
+    }
+  },
+  "gemini/tool_aware": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "gemini",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 0,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": false,
+    "state_ttl_seconds": 0,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "tool_aware",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 1,
+    "usage_ratio": 1,
+    "read_ratio": 1,
+    "creation_ratio": 0,
+    "cache_system": true,
+    "cache_tools": true,
+    "cache_history": true,
+    "cache_tool_results": true,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "auto",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 0,
+    "max_new_creation_tokens_per_request": 0,
+    "incremental_create_enabled": true,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 32,
+    "uncached_input_max_tokens": 4096,
+    "token_scale": 1,
+    "scale_min_input_tokens": 0,
+    "max_simulated_input_tokens": 0,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 0,
+    "cap_jitter_max_tokens": 0,
+    "preserve_upstream_cache_usage": true,
+    "creation_control": {
+      "enabled": false,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 0,
+      "creation_budget_window_seconds": 0,
+      "max_creation_tokens_per_window": 0
+    },
+    "usage": {
+      "enabled": true,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 700000,
+      "final_cache_read_jitter_min_tokens": 12345,
+      "final_cache_read_jitter_max_tokens": 45312,
+      "final_cache_creation_max_tokens": 0,
+      "final_cache_creation_jitter_min_tokens": 0,
+      "final_cache_creation_jitter_max_tokens": 0,
+      "output_uplift_enabled": true,
+      "output_uplift_min_tokens": 1000,
+      "output_uplift_percent": 50,
+      "final_output_guard_enabled": true,
+      "final_output_max_tokens": 200000,
+      "final_output_jitter_min_tokens": 12345,
+      "final_output_jitter_max_tokens": 45312
+    }
+  },
+  "gemini/usage_multiplier": {
+    "usage_multiplier": {
+      "input": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "output": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_read": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      },
+      "cache_creation": {
+        "threshold_tokens": 0,
+        "multiplier": 1
+      }
+    },
+    "limits": {
+      "max_input_tokens": 0,
+      "max_output_tokens": 0
+    },
+    "protocol": "gemini",
+    "hit_shaping": {
+      "enabled": false,
+      "target_hit_ratio": 0.9,
+      "ratio_jitter": 0.04,
+      "min_cache_read_tokens": 1024,
+      "min_cache_creation_tokens": 0,
+      "min_cost_ratio": 1,
+      "max_read_multiplier": 0,
+      "min_creation_ratio": 0,
+      "read_aware_cost_floor": false,
+      "cost_floor_top_up_input": true
+    },
+    "cold_request_guard": false,
+    "state_ttl_seconds": 0,
+    "stable_segment": {
+      "min_total_input_tokens": 4096,
+      "min_segment_tokens": 1024,
+      "reported_input_min_tokens": 32,
+      "reported_input_max_tokens": 256,
+      "history_message_limit": 40,
+      "honor_explicit_cache_control": true,
+      "auto_cache_system": true,
+      "auto_cache_tools": true,
+      "auto_cache_history_message_ends": true
+    },
+    "tool_plus": {
+      "shaping": {
+        "input": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "output": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_read": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cache_creation": {
+          "multiplier": 1,
+          "jitter_ratio": 0,
+          "min_tokens": 0,
+          "max_tokens": 0,
+          "max_jitter_tokens": 0
+        },
+        "cap_overflow_to_input": false,
+        "min_cost_ratio": 0
+      },
+      "non_stream": {
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "small_request": {
+        "enabled": false,
+        "max_input_tokens": 4096,
+        "disable_cache": false,
+        "mode": "inherit",
+        "profile": {
+          "input": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "output": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_read": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cache_creation": {
+            "multiplier": 1,
+            "jitter_ratio": 0,
+            "min_tokens": 0,
+            "max_tokens": 0,
+            "max_jitter_tokens": 0
+          },
+          "cap_overflow_to_input": false,
+          "min_cost_ratio": 0
+        }
+      },
+      "suppressed_creation_target": "input"
+    },
+    "kind": "usage_multiplier",
+    "ratio_mode": "uniform",
+    "coverage_ratio": 0.85,
+    "usage_ratio": 1,
+    "read_ratio": 1,
+    "creation_ratio": 0,
+    "cache_system": true,
+    "cache_tools": true,
+    "cache_history": true,
+    "cache_tool_results": true,
+    "cache_current_user_stable_prefix": false,
+    "current_user_stable_prefix_max_tokens": 0,
+    "breakpoint_mode": "auto",
+    "allow_derived_session": true,
+    "dynamic_content_mode": "exclude",
+    "scope_mode": "group_session",
+    "max_coverage_tokens": 0,
+    "max_new_creation_tokens_per_request": 0,
+    "incremental_create_enabled": true,
+    "min_cacheable_tokens": 1024,
+    "reported_input_min_tokens": 0,
+    "reported_input_max_tokens": 0,
+    "uncached_input_min_tokens": 0,
+    "uncached_input_max_tokens": 0,
+    "token_scale": 1,
+    "scale_min_input_tokens": 0,
+    "max_simulated_input_tokens": 0,
+    "default_ttl_seconds": 300,
+    "hour_ttl_seconds": 3600,
+    "forced_ttl_tier": "",
+    "trust_upstream_ttl_tier": true,
+    "max_entries_per_scope": 200,
+    "max_entries_global": 20000,
+    "estimated_bytes_limit": 268435456,
+    "expire_after_idle_seconds": 3600,
+    "cap_jitter_min_tokens": 0,
+    "cap_jitter_max_tokens": 0,
+    "preserve_upstream_cache_usage": true,
+    "creation_control": {
+      "enabled": false,
+      "min_creation_delta_tokens": 0,
+      "min_successful_requests_between": 0,
+      "min_creation_interval_seconds": 0,
+      "max_creation_tokens_per_event": 0,
+      "creation_budget_window_seconds": 0,
+      "max_creation_tokens_per_window": 0
+    },
+    "usage": {
+      "enabled": true,
+      "preserve_upstream_cache_usage": true,
+      "strict_cache_eligibility_stream": false,
+      "strict_cache_eligibility_non_stream": false,
+      "skip_non_stream_usage_projection": false,
+      "input": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "output": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_read": {
+        "mode": "raw",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "cache_creation": {
+        "mode": "preserve",
+        "max_tokens": 0,
+        "target_tokens": 0,
+        "normal_max_multiplier": 1.1,
+        "move_delta_to_cache_read": false
+      },
+      "final_cache_read_max_tokens": 0,
+      "final_cache_read_jitter_min_tokens": 0,
+      "final_cache_read_jitter_max_tokens": 0,
+      "final_cache_creation_max_tokens": 0,
+      "final_cache_creation_jitter_min_tokens": 0,
+      "final_cache_creation_jitter_max_tokens": 0,
+      "output_uplift_enabled": false,
+      "output_uplift_min_tokens": 0,
+      "output_uplift_percent": 0,
+      "final_output_guard_enabled": false,
+      "final_output_max_tokens": 0,
+      "final_output_jitter_min_tokens": 0,
+      "final_output_jitter_max_tokens": 0
+    }
+  }
+}

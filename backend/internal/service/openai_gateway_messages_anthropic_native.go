@@ -52,6 +52,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 	prepareCachePlanForContext(
 		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
 		"anthropic_messages", estimateKiroInputTokens(ctx, s.kiroMeteringAlgorithm(ctx), body),
+		&GatewayService{billingService: s.billingService, channelService: s.channelService},
 	)
 
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)

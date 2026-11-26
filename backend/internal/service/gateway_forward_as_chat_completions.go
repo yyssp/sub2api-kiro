@@ -111,6 +111,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	cachePlan := prepareCachePlanForContext(
 		ctx, c, account, group, body, mappedModel, "openai_chat_completions",
 		estimateOpenAIChatCompletionsInputTokensWithAlgorithm(ctx, s.kiroMeteringAlgorithm(ctx), body),
+		s,
 	)
 
 	// 6. Apply Claude Code mimicry for OAuth accounts.
@@ -492,7 +493,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	ccState := apicompat.NewResponsesEventToChatState()
 	ccState.Model = originalModel
 
-	var usage ClaudeUsage
+	var usage, rawUsage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
 	writerSizeBeforeStream := c.Writer.Size()
@@ -555,8 +556,13 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 
 		// Extract usage from message_delta
 		if event.Type == "message_delta" && event.Usage != nil {
-			mergeAnthropicUsage(&usage, *event.Usage)
+			mergeAnthropicUsage(&rawUsage, *event.Usage)
 		}
+		// Also capture usage from message_start (carries cache fields)
+		if event.Type == "message_start" && event.Message != nil {
+			mergeAnthropicUsage(&rawUsage, event.Message.Usage)
+		}
+		usage = rawUsage
 		if event.Type == "message_stop" ||
 			(event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason != "") {
 			mergeAndCommitCachePlan(c, &usage, false)
@@ -564,10 +570,6 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 			anthState.CacheReadInputTokens = usage.CacheReadInputTokens
 			anthState.CacheCreationInputTokens = usage.CacheCreationInputTokens
 			anthState.OutputTokens = usage.OutputTokens
-		}
-		// Also capture usage from message_start (carries cache fields)
-		if event.Type == "message_start" && event.Message != nil {
-			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
 		if stream.clientDisconnected {
 			return
@@ -615,7 +617,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
 		}
-		mergeKiroSignalsFromAnthropicPayload(&usage, payload)
+		mergeKiroSignalsFromAnthropicPayload(&rawUsage, payload)
 
 		// Forward received usage regardless of the client stream_options.
 		// The intermediate Responses converter synthesizes usage even when absent.

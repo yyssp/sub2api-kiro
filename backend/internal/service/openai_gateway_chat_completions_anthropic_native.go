@@ -59,6 +59,7 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	prepareCachePlanForContext(
 		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
 		"openai_chat_completions", estimateOpenAIChatCompletionsInputTokensWithAlgorithm(ctx, s.kiroMeteringAlgorithm(ctx), body),
+		&GatewayService{billingService: s.billingService, channelService: s.channelService},
 	)
 
 	// 2. Convert CC → Responses → Anthropic (chained conversion)
@@ -354,7 +355,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	ccState := apicompat.NewResponsesEventToChatState()
 	ccState.Model = originalModel
 
-	var usage ClaudeUsage
+	var usage, rawUsage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
@@ -439,11 +440,12 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 
 		// usage 恒累计（含客户端断开后的排水阶段，payg 上游照常计费）。
 		if event.Type == "message_delta" && event.Usage != nil {
-			mergeAnthropicUsage(&usage, *event.Usage)
+			mergeAnthropicUsage(&rawUsage, *event.Usage)
 		}
 		if event.Type == "message_start" && event.Message != nil {
-			mergeAnthropicUsage(&usage, event.Message.Usage)
+			mergeAnthropicUsage(&rawUsage, event.Message.Usage)
 		}
+		usage = rawUsage
 		if event.Type == "message_stop" ||
 			(event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason != "") {
 			sawTerminalEvent = true

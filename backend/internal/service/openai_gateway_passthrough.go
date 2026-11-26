@@ -272,6 +272,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	prepareCachePlanForContext(
 		ctx, c, account, cacheGroupFromContext(c, nil), body, policyModel,
 		"openai_responses", estimateOpenAIResponsesInputTokensWithAlgorithm(ctx, s.kiroMeteringAlgorithm(ctx), body),
+		&GatewayService{billingService: s.billingService, channelService: s.channelService},
 	)
 
 	apiKey := getAPIKeyFromContext(c)

@@ -200,3 +200,12 @@ kiro-credentials-*.json
 
 # 本地缓存策略测试的运行目录（配置、日志、导出的样本数据）
 .cachetest/
+
+# 本地生成的验收页面与证据副本
+.archify/
+
+!docs/cache-shaping-parity.md
+
+!docs/cache-usage-audit.md
+!docs/cache-gateway-e2e.md
+!docs/cache-parameter-audit.md

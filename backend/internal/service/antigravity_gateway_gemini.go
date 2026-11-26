@@ -86,6 +86,8 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 		return nil, s.writeGoogleError(c, http.StatusNotFound, "Unsupported action: "+action)
 	}
 
+	prepareGeminiCacheContext(ctx, c, account, body, originalModel, stream)
+
 	// 裸模型名（gemini-3.8-flash）按 thinkingConfig 解析到 -low/-medium/-high 变体；
 	// 裸名有显式映射时保持原行为。
 	mappedModel := s.getMappedModelForThinkingLevel(account, originalModel, geminiThinkingLevelFromBody(body))
@@ -456,6 +458,8 @@ handleSuccess:
 		// Gemini 图片生成 API 每次请求只生成一张图片（API 限制）
 		imageCount = 1
 	}
+
+	finishGeminiCachePlan(c, !clientDisconnect)
 
 	return &ForwardResult{
 		RequestID:                     requestID,

@@ -1120,6 +1120,10 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		return nil, s.writeGoogleError(c, http.StatusNotFound, "Unsupported action: "+action)
 	}
 
+	if action != "countTokens" {
+		prepareGeminiCacheContext(ctx, c, account, body, originalModel, stream)
+	}
+
 	// Some Gemini upstreams validate tool call parts strictly; ensure any `functionCall` part includes a
 	// `thoughtSignature` to avoid frequent INVALID_ARGUMENT 400s.
 	body = ensureGeminiFunctionCallThoughtSignatures(body)
@@ -1570,6 +1574,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		if useUpstreamStream {
 			var best geminiResponseSignal
 			collected, usageObj, stats, err := collectGeminiSSEObserved(s.cfg, resp.Body, isOAuth, func(rawBytes []byte) {
+				observeGeminiCacheCompletion(c, rawBytes)
 				if sig, ok := detectGeminiResponseSignal(rawBytes); ok && sig.Kind > best.Kind {
 					best = sig
 				}
@@ -1581,6 +1586,12 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			b, _ := json.Marshal(collected)
 			upstreamResponseModelObserverFromContext(c).ObserveGemini(b)
 			observeGeminiImageOutputs(c, b)
+			observeGeminiCacheCompletion(c, b)
+			shapedBody, shapedUsage := shapeGeminiResponse(c, b)
+			b = shapedBody
+			if shapedUsage != nil {
+				usageObj = shapedUsage
+			}
 			c.Data(http.StatusOK, "application/json", b)
 			usage = usageObj
 		} else {
@@ -1595,6 +1606,8 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	if usage == nil {
 		usage = &ClaudeUsage{}
 	}
+
+	finishGeminiCachePlan(c, (!stream || streamFinished) && !clientDisconnect)
 
 	// 图片生成计费
 	imageInputSize := s.extractImageInputSize(body)
@@ -2863,10 +2876,12 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 	if contentType == "" {
 		contentType = "application/json"
 	}
+	observeGeminiCacheCompletion(c, respBody)
+	respBody, shapedUsage := shapeGeminiResponse(c, respBody)
 	c.Data(resp.StatusCode, contentType, respBody)
 
-	if u := extractGeminiUsage(respBody); u != nil {
-		return u, nil
+	if shapedUsage != nil {
+		return shapedUsage, nil
 	}
 	return &ClaudeUsage{}, nil
 }
@@ -2924,7 +2939,9 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 				// Keepalive / done markers
 				if payload == "" || payload == "[DONE]" {
-					_, _ = io.WriteString(c.Writer, line)
+					if _, writeErr := io.WriteString(c.Writer, line); writeErr != nil {
+						clientDisconnect = true
+					}
 					flusher.Flush()
 				} else {
 					var rawToWrite string
@@ -2945,8 +2962,14 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 					if sig, ok := detectGeminiResponseSignal(rawBytes); ok && sig.Kind > best.Kind {
 						best = sig
 					}
-					if u := extractGeminiUsage(rawBytes); u != nil {
+					observeGeminiCacheCompletion(c, rawBytes)
+					shaped, u := shapeGeminiResponse(c, rawBytes)
+					if u != nil {
 						usage = u
+					}
+					if string(shaped) != string(rawBytes) {
+						rawToWrite = string(shaped)
+						line = "data: " + rawToWrite + "\n"
 					}
 					observer.ObserveGemini(rawBytes)
 					observeGeminiImageOutputs(c, rawBytes)
@@ -2962,10 +2985,14 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 
 					if isOAuth {
 						// SSE format requires double newline (\n\n) to separate events
-						_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", rawToWrite)
+						if _, writeErr := fmt.Fprintf(c.Writer, "data: %s\n\n", rawToWrite); writeErr != nil {
+							clientDisconnect = true
+						}
 					} else {
 						// Pass-through for AI Studio responses.
-						_, _ = io.WriteString(c.Writer, line)
+						if _, writeErr := io.WriteString(c.Writer, line); writeErr != nil {
+							clientDisconnect = true
+						}
 					}
 					flusher.Flush()
 				}
@@ -2973,7 +3000,9 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 				if !sawDataEvent {
 					fallback.AddLine(trimmed)
 				}
-				_, _ = io.WriteString(c.Writer, line)
+				if _, writeErr := io.WriteString(c.Writer, line); writeErr != nil {
+					clientDisconnect = true
+				}
 				flusher.Flush()
 			}
 		}

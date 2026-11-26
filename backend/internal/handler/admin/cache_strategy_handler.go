@@ -31,6 +31,15 @@ type CacheStrategyBindingsRequest struct {
 	GroupIDs []int64 `json:"group_ids"`
 }
 
+func (h *CacheStrategyHandler) Defaults(c *gin.Context) {
+	cfg, err := service.ParseCacheStrategyConfig(map[string]any{"kind": c.DefaultQuery("kind", "prefix"), "protocol": c.DefaultQuery("protocol", "anthropic")})
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, cfg)
+}
+
 func (h *CacheStrategyHandler) List(c *gin.Context) {
 	items, err := h.service.List(c.Request.Context(), strings.TrimSpace(c.Query("search")))
 	if err != nil {
@@ -286,7 +295,8 @@ func configFromRequest(raw map[string]any) (service.CacheStrategyConfig, error) 
 	if rawKind, ok := raw["kind"].(string); ok && strings.TrimSpace(rawKind) != "" {
 		kind = strings.TrimSpace(rawKind)
 	}
-	cfg := service.DefaultCacheStrategyConfig(kind)
+	protocol, _ := raw["protocol"].(string)
+	cfg := service.DefaultCacheStrategyConfigForProtocol(kind, protocol)
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return service.CacheStrategyConfig{}, fmt.Errorf("invalid config: %w", err)
 	}

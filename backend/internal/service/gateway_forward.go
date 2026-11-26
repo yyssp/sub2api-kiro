@@ -180,6 +180,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			passthroughModel,
 			"anthropic_messages",
 			estimateKiroInputTokens(ctx, s.kiroMeteringAlgorithm(ctx), passthroughBody),
+			s,
 		)
 		return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
 			Body:          passthroughBody,
@@ -442,8 +443,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// OpenAI compatibility adapters.
 	var cachePlan *cacheEmulationPlan
 	if parsed != nil {
-		cachePlan = s.prepareCacheEmulationUsage(ctx, account, parsed.Group, body, reqModel, estimateKiroInputTokens(ctx, s.kiroMeteringAlgorithm(ctx), body))
-		setCachePlanContext(c, cachePlan)
+		cachePlan = prepareCachePlanForContext(ctx, c, account, parsed.Group, body, reqModel, "anthropic_messages", estimateKiroInputTokens(ctx, s.kiroMeteringAlgorithm(ctx), body), s)
 	}
 
 	// 重试循环

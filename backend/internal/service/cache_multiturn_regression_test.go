@@ -52,13 +52,12 @@ func buildMultiTurnBody(sessionID string, turn int) []byte {
 	return body
 }
 
-// cache_history 与 cache_current_user_stable_prefix 同时关闭时，历史消息被过滤掉，
-// 只剩当前用户消息，而它在没有显式 cache_control 时按设计不作为断点 —— 没有任何
-// 内容可缓存。这种组合必须在写入前被拒绝，否则策略会静默失效（缓存恒为 0）。
-func TestCacheHistoryAndCurrentUserBothDisabledIsRejected(t *testing.T) {
+// A strategy with no eligible content must be rejected; system/tools-only caching is valid.
+func TestCacheAllContentDisabledIsRejected(t *testing.T) {
 	cfg := DefaultCacheStrategyConfig(CacheStrategyKindToolAware)
 	cfg.CacheHistory = false
 	cfg.CacheCurrentUserStablePrefix = false
+	cfg.CacheSystem, cfg.CacheTools = false, false
 
 	_, err := NormalizeCacheStrategyConfig(cfg)
 	require.Error(t, err, "该组合没有任何内容可缓存，必须拒绝")

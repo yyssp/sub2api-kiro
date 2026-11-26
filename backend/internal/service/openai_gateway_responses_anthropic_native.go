@@ -66,6 +66,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	prepareCachePlanForContext(
 		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
 		"openai_responses", estimateOpenAIResponsesInputTokensWithAlgorithm(ctx, s.kiroMeteringAlgorithm(ctx), body),
+		&GatewayService{billingService: s.billingService, channelService: s.channelService},
 	)
 
 	// 3. Convert Responses → Anthropic
@@ -364,7 +365,7 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 	state.PreserveThinkingSignatures = isClaude55SignedThinkingModel(upstreamModel)
 	clientToolRestorer := apicompat.NewResponsesClientToolStreamRestorer(clientToolMapping)
 
-	var usage ClaudeUsage
+	var usage, rawUsage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
@@ -432,11 +433,12 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 		}
 
 		if event.Type == "message_delta" && event.Usage != nil {
-			mergeAnthropicUsage(&usage, *event.Usage)
+			mergeAnthropicUsage(&rawUsage, *event.Usage)
 		}
 		if event.Type == "message_start" && event.Message != nil {
-			mergeAnthropicUsage(&usage, event.Message.Usage)
+			mergeAnthropicUsage(&rawUsage, event.Message.Usage)
 		}
+		usage = rawUsage
 		if event.Type == "message_stop" ||
 			(event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason != "") {
 			sawTerminalEvent = true

@@ -63,6 +63,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		return nil, nil, err
 	}
 	body = stripDeferredToolCacheControl(body)
+	if cfg, enabled := effectiveCacheStrategyConfig(cacheGroupFromContext(c, account)); enabled && normalizeCacheProtocol(cfg.Protocol) == PlatformAnthropic && cfg.StateTTLSeconds > 0 {
+		body = normalizeUpstreamCacheTTL(body)
+	}
 	if account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
 		req, err := s.buildUpstreamRequestAnthropicVertex(ctx, c, account, body, token, modelID, reqStream)
 		return req, body, err

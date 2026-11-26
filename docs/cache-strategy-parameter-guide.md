@@ -180,7 +180,7 @@ OpenAI 兼容响应会把三部分合并到 `input_tokens` 总量，同时保留
 
 ### `dynamic_content_mode`
 
-- `exclude`：尽量排除动态、易变化的内容，命中率更稳定。
+- `exclude`：遇到明确标记的动态内容时停止稳定前缀；覆盖 web search 结果、已识别的动态工具和 `volatile=true` / `dynamic=true` / `cacheable=false` 标记。不猜测普通文本中的时间或随机值。
 - `allow`：允许动态内容进入 profile，可能使每轮 fingerprint 改变，导致 read 下降、
   creation 重复增加。只有确认请求内容稳定时才建议使用。
 
@@ -202,7 +202,7 @@ OpenAI 兼容响应会把三部分合并到 `input_tokens` 总量，同时保留
 ### `min_cacheable_tokens` 和 `model_min_cacheable_overrides`
 
 低于最小阈值的断点不会被当成缓存。全局最小值适合统一约束；模型覆盖用于给某些模型
-设置不同的最低粒度。
+设置不同的最低粒度。模型名大小写与 `models/` 前缀归一化，精确项优先于模型族前缀；显式 0 可覆盖全局门槛。
 
 它们影响的是“是否计入缓存”，不是把小值向上补成阈值。
 

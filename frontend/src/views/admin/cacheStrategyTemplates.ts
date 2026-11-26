@@ -3,6 +3,8 @@ import type {
   CacheUsageFieldPolicy,
 } from "@/api/admin/cacheStrategies";
 
+import sharedDefaults from "./cacheStrategyDefaults.json";
+
 // 缓存类型（config.kind）说明：
 //
 // - prefix「前缀缓存」：把请求开头那段稳定内容（system、tools 定义、已结束的
@@ -15,6 +17,10 @@ import type {
 //
 // - disabled「关闭」：不产生任何缓存证据，请求原样转发。
 export type CacheStrategyTemplateId =
+  | "usage_multiplier"
+  | "stable_segment_cache"
+  | "prefix_tool_plus"
+  | "bounded_high_cache"
   | "blank"
   | "kiro_rs_tool"
   | "high_cache"
@@ -48,114 +54,9 @@ function usageField(
 
 export function createDefaultCacheStrategyConfig(
   kind: CacheStrategyConfig["kind"] = "prefix",
+  protocol: NonNullable<CacheStrategyConfig["protocol"]> = "anthropic",
 ): CacheStrategyConfig {
-  const config: CacheStrategyConfig = {
-    kind,
-    ratio_mode: "uniform",
-    coverage_ratio: 0.85,
-    usage_ratio: 1,
-    read_ratio: 1,
-    creation_ratio: 1,
-    cache_system: true,
-    cache_tools: true,
-    cache_history: true,
-    cache_tool_results: true,
-    cache_current_user_stable_prefix: false,
-    current_user_stable_prefix_max_tokens: 0,
-    breakpoint_mode: "hybrid",
-    allow_derived_session: false,
-    dynamic_content_mode: "exclude",
-    // 默认「分组 + 会话」：缓存按策略与会话隔离，同一会话换账号仍可命中。
-    // 带上账号会让每次账号切换都重新建缓存，前缀白白重写一遍。
-    scope_mode: "group_session",
-    max_coverage_tokens: 0,
-    max_new_creation_tokens_per_request: 0,
-    incremental_create_enabled: true,
-    min_cacheable_tokens: 0,
-    reported_input_min_tokens: 0,
-    reported_input_max_tokens: 0,
-    // 与后端 DefaultCacheStrategyConfig 的 1024/4096 保持一致。
-    uncached_input_min_tokens: 1024,
-    uncached_input_max_tokens: 4096,
-    // 模拟与触顶参数对齐参考实现的通用默认值：token_scale 2.0、
-    // 起算阈值 20000、模拟上限 30 万、触顶抖动 12000~24000。
-    // 这几项此前留 0，等于把「本地模拟」整组关掉，空白策略建出来不具备
-    // 参考实现的默认形态。
-    token_scale: 2,
-    scale_min_input_tokens: 20000,
-    max_simulated_input_tokens: 300000,
-    default_ttl_seconds: 300,
-    hour_ttl_seconds: 3600,
-    // 默认不强制档位、采信上游返回的档位，与后端的优先级链默认一致。
-    forced_ttl_tier: "",
-    trust_upstream_ttl_tier: true,
-    // 容量与生命周期采用通用参考实现的页面默认值：单作用域 200 条、全局 20000 条、
-    // 估算字节上限 256MB、空闲 1 小时过期。
-    max_entries_per_scope: 200,
-    max_entries_global: 20000,
-    estimated_bytes_limit: 268435456,
-    expire_after_idle_seconds: 3600,
-    cap_jitter_min_tokens: 12000,
-    cap_jitter_max_tokens: 24000,
-    preserve_upstream_cache_usage: true,
-    usage: {
-      enabled: true,
-      preserve_upstream_cache_usage: true,
-      input: usageField("raw"),
-      output: usageField("raw"),
-      cache_read: usageField("preserve"),
-      cache_creation: usageField("preserve"),
-      skip_non_stream_usage_projection: false,
-      // 上限与扣减区间对齐参考实现的通用 path policy。此前全留 0（不限制），
-      // 等于把参考实现的护栏整组丢掉。读取上限在参考实现里不配扣减区间，照搬。
-      final_cache_read_max_tokens: 700000,
-      final_cache_read_jitter_min_tokens: 12345,
-      final_cache_read_jitter_max_tokens: 45312,
-      final_cache_creation_max_tokens: 400000,
-      final_cache_creation_jitter_min_tokens: 12345,
-      final_cache_creation_jitter_max_tokens: 45312,
-      output_uplift_enabled: true,
-      output_uplift_min_tokens: 1000,
-      output_uplift_percent: 50,
-      final_output_guard_enabled: true,
-      final_output_max_tokens: 200000,
-      final_output_jitter_min_tokens: 12345,
-      final_output_jitter_max_tokens: 45312,
-    },
-    // 创建控制默认只留「上限」，三个频率闸门一律留 0（= 不节流）。
-    // 与后端 DefaultCacheStrategyConfig 逐项一致，改这里必须同步改那边。
-    //
-    // 上限（单次 10 万 / 5 分钟 60 万）是防离谱值的护栏。而闸门三项
-    // （增量下限 12000、最少间隔 2 次请求、最小间隔 6 秒）抄自参考实现，
-    // 那边一次创建写整段前缀；我们默认开增量创建，每轮只写几百到几千 token，
-    // 于是每个闸门都能单独把每轮上报的 cache_creation 压成 0。
-    // 真实上游 20 轮实测：闸门开着时 create 唯一值 2/20、read&create 同时为正
-    // 0/20；三项归零后是 20/20 与 19/20。需要节流请显式配置（见 rapid_growth）。
-    creation_control: {
-      enabled: true,
-      min_creation_delta_tokens: 0,
-      min_successful_requests_between: 0,
-      min_creation_interval_seconds: 0,
-      max_creation_tokens_per_event: 100000,
-      creation_budget_window_seconds: 300,
-      max_creation_tokens_per_window: 600000,
-    },
-  };
-
-  if (kind === "disabled") {
-    config.cache_system = false;
-    config.cache_tools = false;
-    config.cache_history = false;
-    config.cache_tool_results = false;
-    config.coverage_ratio = 0;
-    config.usage_ratio = 0;
-    config.read_ratio = 0;
-    config.creation_ratio = 0;
-    config.incremental_create_enabled = false;
-    config.usage.enabled = false;
-  }
-
-  return config;
+  return JSON.parse(JSON.stringify(sharedDefaults[`${protocol}/${kind}`])) as CacheStrategyConfig;
 }
 
 function highCacheConfig(): CacheStrategyConfig {
@@ -434,6 +335,8 @@ function kiroRsToolConfig(): CacheStrategyConfig {
 }
 
 export const cacheStrategyTemplates: CacheStrategyTemplate[] = [
+  {id:"usage_multiplier", nameKey:"admin.cacheStrategies.multiplier.title", descriptionKey:"admin.cacheStrategies.multiplier.hint",createConfig:()=>createDefaultCacheStrategyConfig("usage_multiplier")},
+  ...(["stable_segment_cache", "prefix_tool_plus", "bounded_high_cache"] as const).map((kind) => ({id: kind, nameKey: `admin.cacheStrategies.advanced.${kind}`, descriptionKey: `admin.cacheStrategies.advanced.${kind}Hint`, createConfig: () => createDefaultCacheStrategyConfig(kind)})),
   {
     id: "kiro_rs_tool",
     nameKey: "admin.cacheStrategies.templates.kiroRsTool.name",

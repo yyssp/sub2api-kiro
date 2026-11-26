@@ -143,6 +143,7 @@ func (s *GatewayService) ForwardAsResponses(
 	cachePlan := prepareCachePlanForContext(
 		ctx, c, account, group, body, mappedModel, "openai_responses",
 		estimateOpenAIResponsesInputTokensWithAlgorithm(ctx, s.kiroMeteringAlgorithm(ctx), body),
+		s,
 	)
 
 	// 6. Apply Claude Code mimicry for OAuth accounts (non-Claude-Code endpoints).
@@ -847,7 +848,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	state.CustomTools = clientToolMapping.CustomTools
 	state.PreserveThinkingSignatures = isClaude55SignedThinkingModel(mappedModel)
 	clientToolRestorer := apicompat.NewResponsesClientToolStreamRestorer(clientToolMapping)
-	var usage ClaudeUsage
+	var usage, rawUsage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
 	writerSizeBeforeStream := c.Writer.Size()
@@ -883,12 +884,13 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 		// Extract usage from message_delta
 		if event.Type == "message_delta" && event.Usage != nil {
-			mergeAnthropicUsage(&usage, *event.Usage)
+			mergeAnthropicUsage(&rawUsage, *event.Usage)
 		}
 		// Also capture usage from message_start
 		if event.Type == "message_start" && event.Message != nil {
-			mergeAnthropicUsage(&usage, event.Message.Usage)
+			mergeAnthropicUsage(&rawUsage, event.Message.Usage)
 		}
+		usage = rawUsage
 		if event.Type == "message_stop" ||
 			(event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason != "") {
 			// Populate the converter state before it emits response.completed so
@@ -1007,7 +1009,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			continue
 		}
 
-		mergeKiroSignalsFromAnthropicPayload(&usage, payload)
+		mergeKiroSignalsFromAnthropicPayload(&rawUsage, payload)
 		observer.ObserveAnthropic([]byte(payload))
 		stream.observe(&event, payload)
 		if stream.upstreamErrType != "" {

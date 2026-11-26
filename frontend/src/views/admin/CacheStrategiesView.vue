@@ -18,6 +18,7 @@
             />
           </div>
 
+          <Select v-model="filters.protocol" :options="protocolFilterOptions" class="w-full sm:w-48" />
           <Select
             v-model="filters.kind"
             :options="kindFilterOptions"
@@ -86,6 +87,10 @@
             </div>
           </template>
 
+          <template #cell-protocol="{ row }">
+            <span class="badge badge-primary">{{ protocolLabel(cacheStrategyProtocol(row.config)) }}</span>
+          </template>
+
           <template #cell-kind="{ row }">
             <span
               class="badge"
@@ -98,7 +103,10 @@
           </template>
 
           <template #cell-usage_summary="{ row }">
-            <div
+            <div v-if="row.config.kind === 'usage_multiplier'" class="max-w-xs text-xs leading-5">
+              {{ multiplierSummary(row.config) }}
+            </div>
+            <div v-else
               class="max-w-xs text-xs leading-5 text-gray-600 dark:text-gray-300"
             >
               <span class="font-medium">{{
@@ -123,7 +131,7 @@
                 t("admin.cacheStrategies.usageSummaryCreation")
               }}</span>
               ·
-              {{ usageModeLabel(row.config.usage?.cache_creation?.mode) }}
+              {{ cacheStrategyProtocol(row.config) === "gemini" ? t("admin.cacheStrategies.protocols.noCreationShort") : usageModeLabel(row.config.usage?.cache_creation?.mode) }}
             </div>
           </template>
 
@@ -232,9 +240,13 @@
           : t('admin.cacheStrategies.create')
       "
       width="extra-wide"
+      :close-on-escape="!saving"
+      :show-close-button="!saving"
       @close="closeEditor"
     >
-      <form id="cache-strategy-form" class="space-y-6" @submit.prevent="save">
+      <p v-if="error" role="alert" class="mb-4 text-sm text-red-600">{{ error }}</p>
+      <form id="cache-strategy-form" @submit.prevent="save">
+        <fieldset :disabled="saving || !bindingsReady" class="space-y-6">
         <section class="space-y-4">
           <div>
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
@@ -258,6 +270,12 @@
                 required
                 :placeholder="t('admin.cacheStrategies.name')"
               />
+            </div>
+
+            <div v-if="editing">
+              <label class="input-label">{{ t('admin.cacheStrategies.protocols.label') }}</label>
+              <Select v-model="editing.config.protocol" :options="protocolOptions" @update:model-value="handleProtocolChange" />
+              <p class="mt-1 text-xs text-gray-500">{{ t('admin.cacheStrategies.protocols.hint') }}</p>
             </div>
 
             <div v-if="editing && !editing.id">
@@ -346,6 +364,10 @@
           </div>
         </section>
 
+        <CacheUsageLimitsFields v-if="editing" v-model="editing.config" />
+        <UsageMultiplierFields v-if="editing?.config.kind === 'usage_multiplier'" v-model="editing.config" />
+        <GeminiCacheStrategyFields v-if="editing?.config.protocol === 'gemini' && editing.config.kind !== 'usage_multiplier'" v-model="editing.config" />
+        <template v-if="editing && cacheStrategyProtocol(editing.config) === 'anthropic' && editing.config.kind !== 'usage_multiplier'">
         <section
           v-if="editing"
           class="space-y-4 border-t border-gray-200 pt-5 dark:border-dark-700"
@@ -374,6 +396,8 @@
             </div>
           </div>
 
+          <CacheShapingFields v-model="editing.config" />
+
           <div v-if="editing.config.usage.enabled">
             <label class="flex items-center gap-2 text-sm">
               <input
@@ -394,10 +418,9 @@
             </p>
           </div>
 
-          <div
-            v-if="editing.config.usage.enabled"
-            class="grid gap-4 xl:grid-cols-2"
-          >
+          <details v-if="editing.config.usage.enabled" class="space-y-4">
+            <summary class="cursor-pointer text-sm font-semibold">{{ t('admin.cacheStrategies.form.usagePolicy') }} · {{ t('admin.cacheStrategies.advanced.title') }}</summary>
+          <div class="grid gap-4 xl:grid-cols-2">
             <div
               class="space-y-3 rounded-lg bg-gray-50/60 p-4 dark:bg-dark-800/40"
             >
@@ -928,6 +951,7 @@
               </p>
             </div>
           </div>
+          </details>
         </section>
 
         <section
@@ -1072,10 +1096,11 @@
           </div>
         </section>
 
-        <section
+        <details
           v-if="editing"
           class="space-y-4 border-t border-gray-200 pt-5 dark:border-dark-700"
         >
+          <summary class="cursor-pointer text-sm font-semibold">{{ t("admin.cacheStrategies.form.limits") }}</summary>
           <div>
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
               {{ t("admin.cacheStrategies.form.limits") }}
@@ -1316,7 +1341,7 @@
               </p>
             </div>
           </div>
-        </section>
+        </details>
 
         <section
           v-if="editing"
@@ -1441,10 +1466,11 @@
           </div>
         </section>
 
-        <section
+        <details
           v-if="editing"
           class="space-y-4 border-t border-gray-200 pt-5 dark:border-dark-700"
         >
+          <summary class="cursor-pointer text-sm font-semibold">{{ t("admin.cacheStrategies.form.creationControl") }}</summary>
           <div>
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
               {{ t("admin.cacheStrategies.form.creationControl") }}
@@ -1596,7 +1622,9 @@
               </p>
             </div>
           </div>
-        </section>
+        </details>
+
+        </template>
 
         <section
           v-if="editing"
@@ -1622,18 +1650,19 @@
             searchable="auto"
           />
         </section>
+        </fieldset>
       </form>
 
       <template #footer>
         <div class="flex justify-end gap-2">
-          <button type="button" class="btn btn-secondary" @click="closeEditor">
+          <button type="button" class="btn btn-secondary" :disabled="saving" @click="closeEditor">
             {{ t("common.cancel") }}
           </button>
           <button
             type="submit"
             form="cache-strategy-form"
             class="btn btn-primary"
-            :disabled="saving"
+            :disabled="saving || !bindingsReady"
           >
             {{ saving ? t("common.saving") : t("common.save") }}
           </button>
@@ -1678,6 +1707,12 @@ import api, {
   type CacheStrategy,
   type CacheStrategyConfig,
 } from "@/api/admin/cacheStrategies";
+import GeminiCacheStrategyFields from "@/components/admin/GeminiCacheStrategyFields.vue";
+import { createCacheStrategyDrafts, completeCacheStrategyConfig } from "./cacheStrategyEditor";
+import UsageMultiplierFields from "@/components/admin/UsageMultiplierFields.vue";
+import CacheUsageLimitsFields from "@/components/admin/CacheUsageLimitsFields.vue";
+import { cacheStrategyProtocols, cacheStrategyProtocol, configureCacheProtocol, geminiCacheKinds } from "./cacheStrategyProtocols";
+import CacheShapingFields from "@/components/admin/CacheShapingFields.vue";
 import groupsAPI from "@/api/admin/groups";
 import { useAppStore } from "@/stores/app";
 import type { AdminGroup } from "@/types";
@@ -1702,14 +1737,31 @@ const saving = ref(false);
 const error = ref("");
 const showDeleteConfirm = ref(false);
 const selectedTemplateId = ref<CacheStrategyTemplateId>("blank");
+const configDrafts = createCacheStrategyDrafts();
+const lastSelectedProtocol = ref<"anthropic" | "gemini">("anthropic");
+const bindingsReady = ref(false);
+const bindingLoadVersion = ref(0);
 const lastSelectedKind = ref<CacheStrategyConfig["kind"]>("prefix");
 
 const filters = reactive({
+  protocol: "",
   kind: "",
   status: "",
 });
 
+const protocolOptions = computed(() => cacheStrategyProtocols.map(p => ({ value: p.id, label: p.label })));
+const protocolFilterOptions = computed(() => [{ value: "", label: t("admin.cacheStrategies.protocols.all") }, ...protocolOptions.value]);
+const protocolLabel = (id: string) => cacheStrategyProtocols.find(p => p.id === id)?.label ?? id;
+function handleProtocolChange(value: string | number | boolean | null) {
+  if (!editing.value || (value !== "anthropic" && value !== "gemini")) return;
+  editing.value.config = configDrafts.switch(editing.value.config, lastSelectedProtocol.value, lastSelectedKind.value, value, lastSelectedKind.value);
+  lastSelectedProtocol.value = value;
+  selectedTemplateId.value = "blank";
+}
+
 const kindOptions = computed(() => [
+  {value:"usage_multiplier", label:t("admin.cacheStrategies.multiplier.title")},
+  ...(["stable_segment_cache", "prefix_tool_plus", "bounded_high_cache"] as const).map((value) => ({value, label: t(`admin.cacheStrategies.advanced.${value}`)})),
   {
     value: "prefix",
     label: t("admin.cacheStrategies.kinds.prefix"),
@@ -1837,6 +1889,7 @@ const columns = computed<Column[]>(() => [
     label: t("admin.cacheStrategies.name"),
     sortable: true,
   },
+  { key: "protocol", label: t("admin.cacheStrategies.protocols.label") },
   {
     key: "kind",
     label: t("admin.cacheStrategies.kind"),
@@ -1874,7 +1927,7 @@ const filteredItems = computed(() => {
       !filters.status ||
       (filters.status === "enabled" && item.enabled) ||
       (filters.status === "disabled" && !item.enabled);
-    return matchesKind && matchesStatus;
+    return matchesKind && matchesStatus && (!filters.protocol || cacheStrategyProtocol(item.config) === filters.protocol);
   });
 });
 
@@ -1897,8 +1950,8 @@ async function loadGroups() {
   }
 }
 
-function defaults(kind: CacheStrategyConfig["kind"] = "prefix") {
-  return createDefaultCacheStrategyConfig(kind);
+function defaults(kind: CacheStrategyConfig["kind"] = "prefix", protocol: NonNullable<CacheStrategyConfig["protocol"]> = "anthropic") {
+  return createDefaultCacheStrategyConfig(kind, protocol);
 }
 
 const templateOptions = computed(() => [
@@ -1907,21 +1960,29 @@ const templateOptions = computed(() => [
     label: t("admin.cacheStrategies.templates.blank.name"),
     description: t("admin.cacheStrategies.templates.blank.description"),
   },
-  ...cacheStrategyTemplates.map((template) => ({
+  ...(editing.value?.config.protocol === "gemini" ? geminiCacheKinds.map(kind => ({
+    value: kind === "tool_aware" ? "kiro_rs_tool" : kind === "prefix" ? "high_cache" : kind,
+    label: `Gemini · ${kindLabel(kind)}`,
+    description: t(`admin.cacheStrategies.protocols.${kind}Hint`),
+  })) : cacheStrategyTemplates.map((template) => ({
     value: template.id,
     label: t(template.nameKey),
     description: t(template.descriptionKey),
-  })),
+  }))),
 ]);
 
 const selectedTemplateDescription = computed(() => {
   const template = cacheStrategyTemplates.find(
     (candidate) => candidate.id === selectedTemplateId.value,
   );
+  if (editing.value?.config.protocol === "gemini") return t(`admin.cacheStrategies.protocols.${editing.value.config.kind}Hint`);
   return template ? t(template.descriptionKey) : "";
 });
 
 function kindDescription(kind: CacheStrategyConfig["kind"]) {
+  if (kind === "usage_multiplier") return t("admin.cacheStrategies.multiplier.hint");
+  if (editing.value?.config.protocol === "gemini" && kind !== "disabled") return t(`admin.cacheStrategies.protocols.${kind}Hint`);
+  if (["stable_segment_cache", "prefix_tool_plus", "bounded_high_cache"].includes(kind)) return t(`admin.cacheStrategies.advanced.${kind}Hint`);
   if (kind === "tool_aware") {
     return t("admin.cacheStrategies.kindDescriptions.toolAware");
   }
@@ -1932,6 +1993,8 @@ function kindDescription(kind: CacheStrategyConfig["kind"]) {
 }
 
 function kindLabel(kind: CacheStrategyConfig["kind"]) {
+  if (kind === "usage_multiplier") return t("admin.cacheStrategies.multiplier.title");
+  if (["stable_segment_cache", "prefix_tool_plus", "bounded_high_cache"].includes(kind)) return t(`admin.cacheStrategies.advanced.${kind}`);
   if (kind === "tool_aware") {
     return t("admin.cacheStrategies.kinds.toolAware");
   }
@@ -1939,6 +2002,11 @@ function kindLabel(kind: CacheStrategyConfig["kind"]) {
     return t("admin.cacheStrategies.kinds.disabled");
   }
   return t("admin.cacheStrategies.kinds.prefix");
+}
+
+function multiplierSummary(config: CacheStrategyConfig) {
+  const fields = config.protocol === "gemini" ? ["input", "output", "cache_read"] as const : ["input", "output", "cache_read", "cache_creation"] as const;
+  return fields.map(field => `${t(`admin.cacheStrategies.multiplier.${field}`)} > ${config.usage_multiplier?.[field].threshold_tokens ?? 0}: ×${config.usage_multiplier?.[field].multiplier ?? 1}`).join(" · ");
 }
 
 function usageModeLabel(mode?: string) {
@@ -1956,6 +2024,7 @@ function usageModeLabel(mode?: string) {
 }
 
 function validateFinalCapJitter(config: CacheStrategyConfig): string | null {
+  if (config.kind === "usage_multiplier") return null;
   const groups = [
     [
       config.usage.final_output_max_tokens,
@@ -1986,6 +2055,12 @@ function validateFinalCapJitter(config: CacheStrategyConfig): string | null {
 }
 
 function openCreate() {
+  if (saving.value) return;
+  configDrafts.clear();
+  bindingLoadVersion.value++;
+  bindingsReady.value = true;
+  lastSelectedProtocol.value = "anthropic";
+  error.value = "";
   selectedGroupIds.value = [];
   selectedTemplateId.value = "blank";
   lastSelectedKind.value = "prefix";
@@ -2031,28 +2106,35 @@ async function load() {
 }
 
 async function edit(item: CacheStrategy) {
+  if (saving.value) return;
+  configDrafts.clear();
+  bindingsReady.value = false;
+  selectedGroupIds.value = [];
+  error.value = "";
+  const loadVersion = ++bindingLoadVersion.value;
   selectedTemplateId.value = "blank";
   const cloned = JSON.parse(JSON.stringify(item)) as CacheStrategy;
-  // 存量策略的 config 里没有这两个 key，直接绑定会让下拉框落到 undefined、
-  // 复选框渲染成未勾选 —— 页面显示「不采信上游」而后端其实在采信，
-  // 管理员一旦保存就把这个误解写回了库里。这里按后端默认语义补齐。
-  cloned.config.forced_ttl_tier = cloned.config.forced_ttl_tier ?? "";
-  cloned.config.trust_upstream_ttl_tier =
-    cloned.config.trust_upstream_ttl_tier ?? true;
+  cloned.config = completeCacheStrategyConfig(cloned.config);
   editing.value = cloned;
   lastSelectedKind.value = cloned.config.kind;
-
+  lastSelectedProtocol.value = cacheStrategyProtocol(cloned.config);
   try {
-    selectedGroupIds.value = (await api.groups(item.id)).map(
-      (group) => group.id,
-    );
+    const bound = await api.groups(item.id);
+    if (bindingLoadVersion.value !== loadVersion) return;
+    selectedGroupIds.value = bound.map(group => group.id);
+    bindingsReady.value = true;
   } catch (e: any) {
-    selectedGroupIds.value = [];
-    appStore.showError(e?.message || t("admin.cacheStrategies.loadFailed"));
+    if (bindingLoadVersion.value !== loadVersion) return;
+    error.value = t("admin.cacheStrategies.audit.bindingsLoadFailed");
+    appStore.showError(error.value);
   }
 }
 
 function closeEditor() {
+  if (saving.value) return;
+  bindingLoadVersion.value++;
+  bindingsReady.value = false;
+  configDrafts.clear();
   editing.value = null;
   selectedGroupIds.value = [];
   selectedTemplateId.value = "blank";
@@ -2067,10 +2149,11 @@ function applyTemplate(value: string | number | boolean | null) {
   if (typeof value !== "string" && typeof value !== "number") {
     return;
   }
+  configDrafts.clear();
   const templateId = String(value) as CacheStrategyTemplateId;
   selectedTemplateId.value = templateId;
   if (templateId === "blank") {
-    editing.value.config = defaults();
+    editing.value.config = defaults("prefix", cacheStrategyProtocol(editing.value.config));
     editing.value.name = "";
     editing.value.description = "";
     lastSelectedKind.value = "prefix";
@@ -2084,9 +2167,10 @@ function applyTemplate(value: string | number | boolean | null) {
     return;
   }
 
-  editing.value.config = template.createConfig();
-  editing.value.name = t(template.nameKey);
-  editing.value.description = t(template.descriptionKey);
+  const protocol = cacheStrategyProtocol(editing.value.config);
+  editing.value.config = configureCacheProtocol(protocol === "gemini" ? defaults(template.createConfig().kind, protocol) : template.createConfig(), protocol);
+  editing.value.name = editing.value.config.protocol === "gemini" ? `Gemini · ${kindLabel(editing.value.config.kind)}` : t(template.nameKey);
+  editing.value.description = editing.value.config.protocol === "gemini" ? kindDescription(editing.value.config.kind) : t(template.descriptionKey);
   lastSelectedKind.value = editing.value.config.kind;
 }
 
@@ -2099,17 +2183,13 @@ function handleKindChange(value: string | number | boolean | null) {
     return;
   }
   const nextKind = String(value) as CacheStrategyConfig["kind"];
-  const previousKind = lastSelectedKind.value;
-  if (nextKind === "disabled" || previousKind === "disabled") {
-    editing.value.config = defaults(nextKind);
-  } else {
-    editing.value.config.kind = nextKind;
-  }
+  editing.value.config = configDrafts.switch(editing.value.config, lastSelectedProtocol.value, lastSelectedKind.value, lastSelectedProtocol.value, nextKind);
+  selectedTemplateId.value = "blank";
   lastSelectedKind.value = nextKind;
 }
 
 async function save() {
-  if (!editing.value) {
+  if (!editing.value || saving.value || !bindingsReady.value) {
     return;
   }
 
@@ -2122,9 +2202,11 @@ async function save() {
   }
 
   saving.value = true;
+  let strategySaved = false;
 
   try {
     const item = editing.value;
+    const desiredGroupIds = [...selectedGroupIds.value];
     const payload = {
       name: item.name,
       description: item.description,
@@ -2142,14 +2224,12 @@ async function save() {
       saved = await api.create(payload);
     }
 
-    if (saved.id) {
-      if (item.id) {
-        await api.replaceGroups(saved.id, selectedGroupIds.value);
-      } else {
-        await api.bindGroups(saved.id, selectedGroupIds.value);
-      }
-    }
+    // Persist the new identity/revision before the separately transactional binding request.
+    editing.value = saved;
+    strategySaved = true;
+    if (saved.id) await api.replaceGroups(saved.id, desiredGroupIds);
 
+    saving.value = false;
     closeEditor();
     appStore.showSuccess(t("admin.cacheStrategies.saveSuccess"));
     await Promise.all([load(), loadGroups()]);
@@ -2160,8 +2240,8 @@ async function save() {
       "admin.cacheStrategies",
       t("admin.cacheStrategies.saveFailed"),
     );
-    error.value = message;
-    appStore.showError(message);
+    error.value = strategySaved ? `${t("admin.cacheStrategies.audit.partialSave")} ${message}` : message;
+    appStore.showError(error.value);
   } finally {
     saving.value = false;
   }

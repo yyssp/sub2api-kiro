@@ -1,7 +1,17 @@
 import { apiClient } from "../client";
 
+export type CacheStrategyProtocol = Extract<import("@/types").KnownAccountPlatform, "anthropic" | "gemini">;
+
 export interface CacheStrategyConfig {
-  kind: "disabled" | "prefix" | "tool_aware";
+  protocol?: CacheStrategyProtocol;
+  limits?: { max_input_tokens: number; max_output_tokens: number };
+  kind: "usage_multiplier" | "disabled" | "prefix" | "tool_aware" | "stable_segment_cache" | "prefix_tool_plus" | "bounded_high_cache";
+  usage_multiplier?: Record<"input" | "output" | "cache_read" | "cache_creation", { threshold_tokens: number; multiplier: number }>;
+  hit_shaping?: CacheHitShapingPolicy;
+  cold_request_guard?: boolean;
+  state_ttl_seconds?: number;
+  stable_segment?: StableSegmentCachePolicy;
+  tool_plus?: CacheToolPlusPolicy;
   ratio_mode: "uniform" | "independent";
   coverage_ratio: number;
   usage_ratio: number;
@@ -51,6 +61,8 @@ export interface CacheStrategyConfig {
   preserve_upstream_cache_usage: boolean;
   usage: {
     enabled: boolean;
+    strict_cache_eligibility_stream?: boolean;
+    strict_cache_eligibility_non_stream?: boolean;
     preserve_upstream_cache_usage?: boolean;
     /** 非流式响应原样透传上游 usage，不套缓存整形；未配置时保持投影。 */
     skip_non_stream_usage_projection?: boolean;
@@ -180,3 +192,48 @@ const cacheStrategiesAPI = {
 };
 
 export default cacheStrategiesAPI;
+
+export interface CacheHitShapingPolicy {
+  enabled: boolean;
+  target_hit_ratio: number;
+  ratio_jitter: number;
+  min_cache_read_tokens: number;
+  min_cache_creation_tokens: number;
+  min_cost_ratio: number;
+  max_read_multiplier: number;
+  min_creation_ratio: number;
+  read_aware_cost_floor: boolean;
+  cost_floor_top_up_input: boolean;
+}
+export interface StableSegmentCachePolicy {
+  min_total_input_tokens: number;
+  min_segment_tokens: number;
+  reported_input_min_tokens: number;
+  reported_input_max_tokens: number;
+  history_message_limit: number;
+  honor_explicit_cache_control: boolean;
+  auto_cache_system: boolean;
+  auto_cache_tools: boolean;
+  auto_cache_history_message_ends: boolean;
+}
+export interface CacheFieldShaping {
+  multiplier: number;
+  jitter_ratio: number;
+  min_tokens: number;
+  max_tokens: number;
+  max_jitter_tokens: number;
+}
+export interface CacheShapingProfile {
+  input: CacheFieldShaping;
+  output: CacheFieldShaping;
+  cache_read: CacheFieldShaping;
+  cache_creation: CacheFieldShaping;
+  cap_overflow_to_input: boolean;
+  min_cost_ratio: number;
+}
+export interface CacheToolPlusPolicy {
+  shaping: CacheShapingProfile;
+  non_stream: {mode: "inherit" | "custom" | "raw"; profile: CacheShapingProfile};
+  small_request: {enabled: boolean; max_input_tokens: number; disable_cache: boolean; mode: "inherit" | "custom" | "raw"; profile: CacheShapingProfile};
+  suppressed_creation_target: "input" | "cache_read" | "drop";
+}

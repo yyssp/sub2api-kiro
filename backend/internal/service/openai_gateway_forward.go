@@ -46,6 +46,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		prepareCachePlanForContext(
 			ctx, c, account, cacheGroupFromContext(c, nil), body, model,
 			"openai_responses", estimateOpenAIResponsesInputTokensWithAlgorithm(ctx, s.kiroMeteringAlgorithm(ctx), body),
+			&GatewayService{billingService: s.billingService, channelService: s.channelService},
 		)
 	}
 	startTime := time.Now()

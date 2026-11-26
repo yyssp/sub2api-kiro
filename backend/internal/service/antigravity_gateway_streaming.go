@@ -274,9 +274,13 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 					payload = string(inner)
 				}
 
-				// 解析 usage
-				if u := extractGeminiUsage(inner); u != nil {
-					usage = u
+				observeGeminiCacheCompletion(c, inner)
+				shaped, shapedUsage := shapeGeminiResponse(c, inner)
+				if shapedUsage != nil {
+					usage = shapedUsage
+				}
+				if shaped != nil {
+					payload = string(shaped)
 				}
 				var parsed map[string]any
 				if json.Unmarshal(inner, &parsed) == nil {
@@ -473,6 +477,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 
 			last = parsed
 
+			observeGeminiCacheCompletion(c, inner)
 			// 提取 usage
 			if u := extractGeminiUsage(inner); u != nil {
 				usage = u
@@ -530,6 +535,10 @@ returnResponse:
 	respBody, err := json.Marshal(finalResponse)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal response: %w", err)
+	}
+	respBody, shapedUsage := shapeGeminiResponse(c, respBody)
+	if shapedUsage != nil {
+		usage = shapedUsage
 	}
 	c.Data(http.StatusOK, "application/json", respBody)
 

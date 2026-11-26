@@ -77,6 +77,8 @@ type cacheTracker struct {
 }
 
 type cacheControlState struct {
+	lastUsedAt              time.Time
+	retention               time.Duration
 	successfulRequests      int
 	successfulSinceCreation int
 	lastCreationAt          time.Time
@@ -86,6 +88,7 @@ type cacheControlState struct {
 	// creation suppressed by request spacing, the minimum delta, an event cap,
 	// or the window budget is carried forward instead of being discarded.
 	pendingCreationTokens int
+	costDeficit           float64
 }
 
 type cacheCreationControlDecision struct {
@@ -110,6 +113,10 @@ type cacheEmulationPlan struct {
 	// nonStream 取自请求体的 stream 字段（缺失按非流式算，与各网关的默认一致）。
 	// 只用来判断 skip_non_stream_usage_projection 是否命中：投影的调用点散落在
 	// 二十来处流式/非流式处理函数里，在计划上记一次比逐个透传参数可靠。
+	pricing                 *ModelPricing
+	costFloor               float64
+	costReported            float64
+	projectionIneligible    bool
 	nonStream               bool
 	usagePolicy             CacheUsagePolicy
 	creationControlDecision cacheCreationControlDecision
@@ -119,7 +126,7 @@ type cacheEmulationPlan struct {
 // skipProjection 表示这次响应应当原样透传上游 usage：非流式拿得到完整 usage，
 // 配了 skip_non_stream_usage_projection 的策略更希望不套缓存整形。
 func (p *cacheEmulationPlan) skipProjection() bool {
-	return p != nil && p.nonStream && p.usagePolicy.SkipNonStreamUsageProjection
+	return p != nil && (p.projectionIneligible || p.nonStream && p.usagePolicy.SkipNonStreamUsageProjection)
 }
 
 // policyConfig 安全读取计划所属的策略配置。profile 在部分路径上可能为 nil
@@ -152,13 +159,22 @@ func (p *cacheEmulationPlan) usageSeed() uint64 {
 }
 
 func (p *cacheEmulationPlan) commit() {
-	if p == nil || p.profile == nil || p.cacheKey == 0 {
+	if p == nil || p.profile == nil || p.cacheKey == 0 || p.skipProjection() {
 		return
 	}
 	if !p.committed.CompareAndSwap(false, true) {
 		return
 	}
 	globalCacheTracker.update(p.cacheKey, p.profile, p.remote)
+	if normalizeCacheProtocol(p.policyConfig().Protocol) == PlatformAnthropic && p.policyConfig().Kind == CacheStrategyKindBounded && p.policyConfig().HitShaping.CostFloorTopUpInput && p.creationAllowed() {
+		globalCacheTracker.mu.Lock()
+		state := globalCacheTracker.controls[p.cacheKey]
+		if p.costFloor > 0 {
+			state.costDeficit = math.Min(math.Max(0, state.costDeficit+p.costFloor-p.costReported), math.Max(state.costDeficit, p.costFloor*100))
+		}
+		globalCacheTracker.controls[p.cacheKey] = state
+		globalCacheTracker.mu.Unlock()
+	}
 	if p.creationControlDecision.enabled {
 		globalCacheTracker.recordSuccess(p.cacheKey, p.creationControlDecision.attempted,
 			p.creationControlDecision.allowed)
@@ -608,18 +624,10 @@ func SetCacheGroupContext(c *gin.Context, group *Group) {
 // historical method names remain only for source compatibility with existing
 // callers and tests.
 func cachePlanForProtocol(ctx context.Context, account *Account, group *Group, body []byte, model, protocol string, inputTokens int) *cacheEmulationPlan {
-	gs := &GatewayService{}
-	switch protocol {
-	case "openai_responses":
-		return gs.prepareResponsesCacheUsage(ctx, account, group, body, model, inputTokens)
-	case "openai_chat_completions":
-		return gs.prepareChatCompletionsCacheUsage(ctx, account, group, body, model, inputTokens)
-	default:
-		return gs.prepareCacheEmulationUsage(ctx, account, group, body, model, inputTokens)
-	}
+	return prepareProtocolCachePlan(&GatewayService{}, ctx, account, group, body, model, protocol, inputTokens)
 }
 
-func prepareCachePlanForContext(ctx context.Context, c *gin.Context, account *Account, group *Group, body []byte, model, protocol string, inputTokens int) (plan *cacheEmulationPlan) {
+func prepareCachePlanForContext(ctx context.Context, c *gin.Context, account *Account, group *Group, body []byte, model, protocol string, inputTokens int, services ...*GatewayService) (plan *cacheEmulationPlan) {
 	if existing := cachePlanFromContext(c); existing != nil {
 		return existing
 	}
@@ -633,7 +641,19 @@ func prepareCachePlanForContext(ctx context.Context, c *gin.Context, account *Ac
 			setCachePlanContext(c, nil)
 		}
 	}()
-	plan = cachePlanForProtocol(ctx, account, group, body, model, protocol, inputTokens)
+	if c != nil {
+		c.Set(cacheRequestProtocolKey, protocol)
+	}
+	svc := &GatewayService{}
+	if len(services) > 0 && services[0] != nil {
+		svc = services[0]
+	}
+	plan = prepareProtocolCachePlan(svc, ctx, account, group, body, model, protocol, inputTokens)
+	if plan == nil {
+		if cfg, enabled := effectiveCacheStrategyConfig(group); enabled && cacheProtocolMatches(cfg.Protocol, protocol) {
+			plan = &cacheEmulationPlan{profile: &cacheProfile{model: model, rawBody: append([]byte(nil), body...), policy: cfg, protocolFamily: protocol}, usagePolicy: cfg.Usage, nonStream: !requestBodyWantsStream(body)}
+		}
+	}
 	setCachePlanContext(c, plan)
 	return plan
 }
@@ -662,29 +682,17 @@ func mergeAndCommitCachePlan(c *gin.Context, usage *ClaudeUsage, success bool) {
 		return
 	}
 	if usage != nil && !plan.skipProjection() {
-		upstreamEvidence := claudeUsageHasCacheEvidence(usage)
-		// 必须在 projectClaudeUsage 之前抓取：投影会把两个 ephemeral 桶改写成本地
-		// 合成值，之后就再也读不到上游的真实档位了。
-		upstream5m, upstream1h := usage.CacheCreation5mTokens, usage.CacheCreation1hTokens
-		projectClaudeUsage(usage, plan.result(), plan.usagePolicy, plan.usageSeed())
-		if !upstreamEvidence {
-			if plan.result() == nil {
-				applyReportedInputWithoutCacheClaude(usage, plan)
-			} else {
-				constrainClaudeUsageTotal(usage, plan.profile.reportedInputTokens, uncachedInputFloor(plan.profile.policy).min)
-			}
-		}
-		// 放在所有会改动 cache_creation_input_tokens 的步骤之后：分桶必须按最终
-		// 总额重算，否则 5m+1h 与总额对不上，下游计费会算错。
-		applyTTLTierToClaudeUsage(usage, resolveReportedTTLTier(
-			plan.policyConfig(), plan.profile.clientTTLTier(), upstream5m, upstream1h))
+		plan.projectClaude(usage)
 	}
 	if success {
-		plan.commit()
+		commitCachePlan(c)
 	}
 }
 
 func commitCachePlan(c *gin.Context) {
+	if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
+		return
+	}
 	if plan := cachePlanFromContext(c); plan != nil {
 		plan.commit()
 	}
@@ -698,18 +706,10 @@ func mergeAndCommitOpenAICachePlan(c *gin.Context, usage *OpenAIUsage, success b
 		return
 	}
 	if usage != nil && !plan.skipProjection() {
-		upstreamEvidence := openAIUsageHasCacheEvidence(usage)
-		projectOpenAIUsage(usage, plan.result(), plan.usagePolicy, plan.usageSeed())
-		if !upstreamEvidence {
-			if plan.result() == nil {
-				applyReportedInputWithoutCacheOpenAI(usage, plan)
-			} else {
-				constrainOpenAIUsageTotal(usage, plan.profile.reportedInputTokens, uncachedInputFloor(plan.profile.policy).min)
-			}
-		}
+		plan.projectOpenAI(usage)
 	}
 	if success {
-		plan.commit()
+		commitCachePlan(c)
 	}
 }
 
@@ -724,7 +724,7 @@ func usagePolicyWithoutPlan(c *gin.Context) (CacheUsagePolicy, bool) {
 	}
 	group := cacheGroupFromContext(c, nil)
 	policy, enabled := effectiveCacheStrategyConfig(group)
-	if !enabled || !policy.Usage.Enabled {
+	if !enabled || !policy.Usage.Enabled || !cacheProtocolMatches(policy.Protocol, cacheRequestProtocol(c)) {
 		return CacheUsagePolicy{}, false
 	}
 	return policy.Usage, true
@@ -936,10 +936,16 @@ func effectiveMinCacheableTokens(group *Group, model string) int {
 	if policy.MinCacheableTokens < 0 {
 		return minimumCacheableTokens(model)
 	}
-	return policy.MinCacheableTokens
+	return cacheModelMinimum(policy, model)
 }
 
 func (s *GatewayService) prepareCacheEmulationUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *cacheEmulationPlan {
+	if cfg, enabled := effectiveCacheStrategyConfig(group); enabled && cfg.Kind == CacheStrategyKindUsageMultiplier && cacheProtocolMatches(cfg.Protocol, "anthropic_messages") {
+		return usageMultiplierPlan(cfg, body, model, "anthropic_messages")
+	}
+	if cfg, enabled := effectiveCacheStrategyConfig(group); enabled && normalizeCacheProtocol(cfg.Protocol) != PlatformAnthropic {
+		return nil
+	}
 	NormalizeGroupRuntimeFields(group)
 	if group == nil || account == nil || account.ID <= 0 || len(body) == 0 {
 		return nil
@@ -947,7 +953,7 @@ func (s *GatewayService) prepareCacheEmulationUsage(ctx context.Context, account
 	minCacheable := effectiveMinCacheableTokens(group, model)
 	profile, ok := buildCacheProfileWithMin(ctx, s.kiroMeteringAlgorithm(ctx), body, model, inputTokens, minCacheable)
 	if !ok {
-		return nil
+		return cacheIneligiblePlan(group, body)
 	}
 	profile.rawBody = append([]byte(nil), body...)
 	profile.protocolFamily = "anthropic_messages"
@@ -955,6 +961,12 @@ func (s *GatewayService) prepareCacheEmulationUsage(ctx context.Context, account
 }
 
 func (s *GatewayService) prepareResponsesCacheUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *cacheEmulationPlan {
+	if cfg, enabled := effectiveCacheStrategyConfig(group); enabled && cfg.Kind == CacheStrategyKindUsageMultiplier && cacheProtocolMatches(cfg.Protocol, "openai_responses") {
+		return usageMultiplierPlan(cfg, body, model, "openai_responses")
+	}
+	if cfg, enabled := effectiveCacheStrategyConfig(group); enabled && normalizeCacheProtocol(cfg.Protocol) != PlatformAnthropic {
+		return nil
+	}
 	NormalizeGroupRuntimeFields(group)
 	if group == nil || account == nil || account.ID <= 0 || len(body) == 0 {
 		return nil
@@ -962,7 +974,7 @@ func (s *GatewayService) prepareResponsesCacheUsage(ctx context.Context, account
 	minCacheable := effectiveMinCacheableTokens(group, model)
 	profile, ok := buildResponsesCacheProfileWithMin(ctx, body, model, inputTokens, minCacheable)
 	if !ok {
-		return nil
+		return cacheIneligiblePlan(group, body)
 	}
 	profile.rawBody = append([]byte(nil), body...)
 	profile.protocolFamily = "openai_responses"
@@ -970,6 +982,12 @@ func (s *GatewayService) prepareResponsesCacheUsage(ctx context.Context, account
 }
 
 func (s *GatewayService) prepareChatCompletionsCacheUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *cacheEmulationPlan {
+	if cfg, enabled := effectiveCacheStrategyConfig(group); enabled && cfg.Kind == CacheStrategyKindUsageMultiplier && cacheProtocolMatches(cfg.Protocol, "openai_chat_completions") {
+		return usageMultiplierPlan(cfg, body, model, "openai_chat_completions")
+	}
+	if cfg, enabled := effectiveCacheStrategyConfig(group); enabled && normalizeCacheProtocol(cfg.Protocol) != PlatformAnthropic {
+		return nil
+	}
 	NormalizeGroupRuntimeFields(group)
 	if group == nil || account == nil || account.ID <= 0 || len(body) == 0 {
 		return nil
@@ -977,7 +995,7 @@ func (s *GatewayService) prepareChatCompletionsCacheUsage(ctx context.Context, a
 	minCacheable := effectiveMinCacheableTokens(group, model)
 	profile, ok := buildChatCompletionsCacheProfileWithMin(ctx, body, model, inputTokens, minCacheable)
 	if !ok {
-		return nil
+		return cacheIneligiblePlan(group, body)
 	}
 	profile.rawBody = append([]byte(nil), body...)
 	effectiveInputTokens := inputTokens
@@ -993,15 +1011,21 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(ctx context.Contex
 		return nil
 	}
 	policy, enabled := effectiveCacheStrategyConfig(group)
-	if !enabled {
+	if !enabled || !cacheProtocolMatches(policy.Protocol, profile.protocolFamily) {
 		return nil
 	}
 	profile.policy = policy
+	stream := requestBodyWantsStream(profile.rawBody)
+	strict := policy.Usage.StrictCacheEligibilityNonStream
+	if stream {
+		strict = policy.Usage.StrictCacheEligibilityStream
+	}
+	if strict && !requestQualifiesForPromptCache(profile) {
+		return &cacheEmulationPlan{profile: profile, usagePolicy: policy.Usage, projectionIneligible: true, nonStream: !stream}
+	}
 	profile.policyEnabled = true
 	applyCacheStrategyToProfile(profile, policy, modelFromProfile(profile))
-	if policy.MinCacheableTokens > 0 {
-		profile.minCacheable = policy.MinCacheableTokens
-	}
+	profile.minCacheable = cacheModelMinimum(policy, profile.model)
 	var apiKeyID int64
 	if ctx != nil {
 		apiKeyID, _ = ctx.Value(ctxkey.APIKeyID).(int64)
@@ -1012,7 +1036,7 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(ctx context.Contex
 		return nil
 	}
 	var remote KiroCacheEmulationRemoteStore
-	if account.Platform == PlatformKiro {
+	if account.Platform == PlatformKiro && policy.Kind != CacheStrategyKindStableSegment {
 		remote = s.kiroCacheEmulationRemoteStore()
 	}
 	result := globalCacheTracker.compute(ctx, remote, cacheKey, profile)
@@ -1046,7 +1070,11 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(ctx context.Contex
 		CacheCreation5mInputTokens: result.CacheCreation5mInputTokens,
 		CacheCreation1hInputTokens: result.CacheCreation1hInputTokens,
 	}
-	creationControlDecision := applyCacheCreationControl(cacheKey, policy.CreationControl, controlUsage)
+	creationControl := policy.CreationControl
+	if policy.Kind == CacheStrategyKindToolPlus {
+		creationControl = CacheCreationControl{}
+	}
+	creationControlDecision := applyCacheCreationControl(cacheKey, creationControl, controlUsage)
 	rawCreationTokens = controlUsage.CacheCreationInputTokens
 	if rawCreationTokens <= 0 {
 		controlUsage.CacheCreation5mInputTokens = 0
@@ -1086,7 +1114,17 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(ctx context.Contex
 	if reportedTotal <= 0 {
 		reportedTotal = inputTokens
 	}
-	constrainReportedCacheUsage(result, reportedTotal, uncachedInputFloor(policy), profileJitterSeed(profile))
+	if policy.Kind == CacheStrategyKindStableSegment {
+		realInput := max(profile.runtimeInputTokens-result.CacheReadInputTokens-result.CacheCreationInputTokens, 0)
+		if profile.runtimeInputTokens >= policy.ScaleMinInputTokens && policy.TokenScale > 1 {
+			ratio := float64(reportedTotal) / float64(max(profile.runtimeInputTokens, 1))
+			result.CacheReadInputTokens = cacheRounded(float64(result.CacheReadInputTokens) * ratio)
+			result.CacheCreationInputTokens = cacheRounded(float64(result.CacheCreationInputTokens) * ratio)
+		}
+		result.InputTokens = realInput
+	} else {
+		constrainReportedCacheUsage(result, reportedTotal, uncachedInputFloor(policy), profileJitterSeed(profile))
+	}
 	if result.CacheReadInputTokens == 0 && result.CacheCreationInputTokens == 0 &&
 		!creationControlSuppressedReportableWrite(policy, committedCreationTokens) {
 		// Nothing is reportable and nothing was written. Do not commit a profile
@@ -1099,11 +1137,22 @@ func (s *GatewayService) prepareCacheEmulationPlanFromProfile(ctx context.Contex
 		// creation controller. There was no observable cache write to account for.
 		creationControlDecision = cacheCreationControlDecision{}
 	}
-	return &cacheEmulationPlan{
+	plan := &cacheEmulationPlan{
 		usage: result, cacheKey: cacheKey, profile: profile, remote: remote, usagePolicy: policy.Usage,
 		nonStream:               !requestBodyWantsStream(profile.rawBody),
 		creationControlDecision: creationControlDecision,
 	}
+	if s.billingService != nil {
+		resolver := NewModelPricingResolver(s.channelService, s.billingService)
+		resolved := resolver.Resolve(ctx, PricingInput{Model: profile.model, GroupID: &group.ID, Group: group})
+		if resolved != nil {
+			plan.pricing = resolver.GetIntervalPricing(resolved, profile.runtimeInputTokens)
+		}
+	}
+	if policy.Kind == CacheStrategyKindToolPlus {
+		plan.preparePlus()
+	}
+	return plan
 }
 
 // requestBodyWantsStream 读取请求体的 stream 字段。三种协议（Messages /
@@ -1230,6 +1279,24 @@ func limitCacheProfileWriteSet(profile *cacheProfile, readTokens, creationTokens
 		return 0
 	}
 	limit := max(readTokens, 0) + max(creationTokens, 0)
+	if profile.policy.Kind == CacheStrategyKindStableSegment {
+		filtered := make([]cacheBreakpoint, 0, len(profile.breakpoints))
+		actualTarget := 0
+		for _, breakpoint := range profile.breakpoints {
+			if breakpoint.blockIndex < 0 || breakpoint.blockIndex >= len(profile.blocks) {
+				continue
+			}
+			tokens := profile.cacheTokensForBreakpoint(profile.blocks[breakpoint.blockIndex].cumulativeTokens)
+			if tokens <= 0 || tokens > limit {
+				continue
+			}
+			filtered = append(filtered, breakpoint)
+			actualTarget = tokens
+		}
+		profile.breakpoints = filtered
+		profile.committedCacheTokens = actualTarget
+		return max(actualTarget-max(readTokens, 0), 0)
+	}
 	if limit <= 0 {
 		profile.breakpoints = nil
 		return 0
@@ -1267,8 +1334,13 @@ func applyCacheStrategyToProfile(profile *cacheProfile, policy CacheStrategyConf
 	if profile == nil {
 		return
 	}
-	profile.pendingBlocks = filterCacheStrategyBlocks(profile.pendingBlocks, policy)
-	if policy.BreakpointMode == CacheBreakpointAuto {
+	excludeDynamicCacheTail(profile, policy)
+	if policy.Kind == CacheStrategyKindStableSegment {
+		prepareStableSegmentProfile(profile, policy)
+	} else {
+		profile.pendingBlocks = filterCacheStrategyBlocks(profile.pendingBlocks, policy)
+	}
+	if policy.BreakpointMode == CacheBreakpointAuto && policy.Kind != CacheStrategyKindStableSegment {
 		applyDefaultCacheBreakpoints(profile.pendingBlocks, cacheDefaultTTL)
 		profile.defaultedBreakpoints = true
 	}
@@ -1463,7 +1535,7 @@ func filterCacheStrategyBlocks(blocks []pendingCacheBlock, policy CacheStrategyC
 		if kind == "system" && !policy.CacheSystem {
 			continue
 		}
-		if strings.Contains(kind, "tool") && kind != "tool" && !policy.CacheToolResults {
+		if !policy.CacheToolResults && (strings.Contains(kind, "tool") && kind != "tool" || cacheValueIsToolResult(block.value)) {
 			continue
 		}
 		if block.messageIndex != nil {
@@ -1536,7 +1608,7 @@ func rebuildCacheProfile(profile *cacheProfile) {
 				seenBreakpoints[index] = struct{}{}
 			}
 		}
-		if block.isMessageEnd && block.messageIndex != nil && activeTTL != nil {
+		if block.isMessageEnd && block.messageIndex != nil && activeTTL != nil && profile.policy.Kind != CacheStrategyKindStableSegment {
 			if _, ok := seenBreakpoints[index]; !ok {
 				profile.breakpoints = append(profile.breakpoints, cacheBreakpoint{blockIndex: index, ttl: *activeTTL})
 				seenBreakpoints[index] = struct{}{}
@@ -1598,6 +1670,7 @@ func scaleCacheTokens(tokens int, ratio float64) int {
 }
 
 type cacheProfile struct {
+	committedCacheTokens int
 	totalInputTokens     int
 	runtimeInputTokens   int
 	reportedInputTokens  int
@@ -2288,7 +2361,11 @@ func (p *cacheProfile) cacheableBreakpoints() []resolvedCacheBreakpoint {
 			continue
 		}
 		block := p.blocks[breakpoint.blockIndex]
-		if block.cumulativeTokens < p.minCacheable {
+		minTokens := p.minCacheable
+		if p.policy.Kind == CacheStrategyKindStableSegment {
+			minTokens = max(minTokens, p.policy.StableSegment.MinSegmentTokens)
+		}
+		if block.cumulativeTokens < minTokens {
 			continue
 		}
 		resolved = append(resolved, resolvedCacheBreakpoint{blockIndex: breakpoint.blockIndex, cumulativeTokens: block.cumulativeTokens, ttl: breakpoint.ttl})
@@ -2337,13 +2414,11 @@ func (t *cacheTracker) compute(ctx context.Context, remote KiroCacheEmulationRem
 				if !ok || !entry.expiresAt.After(now) {
 					continue
 				}
-				// 只续期命中的这一条即可：整条前缀链的续期由 commit() → update() 完成，
-				// 它会遍历当前 profile 的全部 cacheableBreakpoints 并推后 expiresAt，而命中点
-				// 之前的断点都属于当前 profile。此处再遍历一遍是冗余的。
-				entry.expiresAt = now.Add(entry.ttl)
-				entry.lastUsedAt = now
-				accountEntries[candidate.prefixFingerprint] = entry
+				// Successful commit refreshes TTL; speculative/failed reads must not keep entries alive.
 				matchedTokens = profile.cacheTokensForBreakpoint(breakpoint.cumulativeTokens)
+				if profile.policy.Kind == CacheStrategyKindStableSegment {
+					matchedTokens = min(matchedTokens, entry.tokens)
+				}
 				return true
 			}
 			return false
@@ -2414,7 +2489,14 @@ func (p *cacheProfile) cacheTokensForBreakpoint(cumulativeTokens int) int {
 		return 0
 	}
 	if !p.scaleBreakpointsToInputTokens {
-		return min(max(cumulativeTokens, 0), p.runtimeInputTokens)
+		tokens := min(max(cumulativeTokens, 0), p.runtimeInputTokens)
+		if p.policy.Kind == CacheStrategyKindStableSegment {
+			tokens = scaleCacheTokens(tokens, p.policy.CoverageRatio)
+			if p.policy.MaxCoverageTokens > 0 {
+				tokens = min(tokens, p.policy.MaxCoverageTokens)
+			}
+		}
+		return tokens
 	}
 	lastBreakpoint := p.lastCacheableBreakpoint()
 	if lastBreakpoint == nil || lastBreakpoint.cumulativeTokens <= 0 {
@@ -2552,11 +2634,21 @@ func (t *cacheTracker) update(cacheKey uint64, profile *cacheProfile, remote Kir
 	}
 	for _, breakpoint := range profile.cacheableBreakpoints() {
 		block := profile.blocks[breakpoint.blockIndex]
-		expiresAt := now.Add(breakpoint.ttl)
+		if profile.policy.Kind == CacheStrategyKindStableSegment {
+			if profile.committedCacheTokens <= 0 {
+				continue
+			}
+			block.cumulativeTokens = min(profile.cacheTokensForBreakpoint(block.cumulativeTokens), profile.committedCacheTokens)
+			if block.cumulativeTokens < profile.policy.StableSegment.MinSegmentTokens {
+				continue
+			}
+		}
+		stateTTL := cacheStateTTL(profile.policy, breakpoint.ttl)
+		expiresAt := now.Add(stateTTL)
 		entry, ok := accountEntries[block.prefixFingerprint]
 		if ok {
 			entry.tokens = max(entry.tokens, block.cumulativeTokens)
-			entry.ttl = maxDuration(entry.ttl, breakpoint.ttl)
+			entry.ttl = stateTTL
 			if expiresAt.After(entry.expiresAt) {
 				entry.expiresAt = expiresAt
 			}
@@ -2569,7 +2661,7 @@ func (t *cacheTracker) update(cacheKey uint64, profile *cacheProfile, remote Kir
 		}
 		accountEntries[block.prefixFingerprint] = cacheEntry{
 			tokens:             block.cumulativeTokens,
-			ttl:                breakpoint.ttl,
+			ttl:                stateTTL,
 			expiresAt:          expiresAt,
 			lastUsedAt:         now,
 			estimatedBytes:     64,
@@ -2589,7 +2681,7 @@ func (t *cacheTracker) update(cacheKey uint64, profile *cacheProfile, remote Kir
 		entries = append(entries, KiroCacheRemoteEntry{
 			Fingerprint: block.prefixFingerprint,
 			Tokens:      block.cumulativeTokens,
-			TTL:         breakpoint.ttl,
+			TTL:         cacheStateTTL(profile.policy, breakpoint.ttl),
 		})
 	}
 	remoteStore := remote
@@ -2600,7 +2692,7 @@ func (t *cacheTracker) update(cacheKey uint64, profile *cacheProfile, remote Kir
 	})
 }
 
-func (t *cacheTracker) controlState(cacheKey uint64) cacheControlState {
+func (t *cacheTracker) controlState(cacheKey uint64, retention ...time.Duration) cacheControlState {
 	if t == nil || cacheKey == 0 {
 		return cacheControlState{}
 	}
@@ -2610,10 +2702,14 @@ func (t *cacheTracker) controlState(cacheKey uint64) cacheControlState {
 		t.controls = make(map[uint64]cacheControlState)
 	}
 	state := t.controls[cacheKey]
+	state.lastUsedAt = time.Now()
+	if len(retention) > 0 {
+		state.retention = retention[0]
+	}
 	if state.windowStart.IsZero() {
 		state.windowStart = time.Now()
-		t.controls[cacheKey] = state
 	}
+	t.controls[cacheKey] = state
 	return state
 }
 
@@ -2628,6 +2724,7 @@ func (t *cacheTracker) recordSuccess(cacheKey uint64, attemptedCreationTokens, a
 		t.controls = make(map[uint64]cacheControlState)
 	}
 	state := t.controls[cacheKey]
+	state.lastUsedAt = now
 	state.successfulRequests++
 	attemptedCreationTokens = max(attemptedCreationTokens, 0)
 	allowedCreationTokens = min(max(allowedCreationTokens, 0), attemptedCreationTokens)
@@ -2664,7 +2761,7 @@ func applyCacheCreationControl(cacheKey uint64, control CacheCreationControl, us
 	if !control.Enabled || decision.attempted <= 0 {
 		return decision
 	}
-	state := globalCacheTracker.controlState(cacheKey)
+	state := globalCacheTracker.controlState(cacheKey, maxDuration(time.Hour, time.Duration(max(control.CreationBudgetWindowSeconds, control.MinCreationIntervalSeconds))*time.Second))
 	now := time.Now()
 	if control.MinSuccessfulRequestsBetween > 0 &&
 		!state.lastCreationAt.IsZero() &&
@@ -2805,14 +2902,16 @@ func (t *cacheTracker) pruneLocked(now time.Time) {
 			delete(t.entries, cacheKey)
 		}
 	}
-	if t.controls != nil {
-		for key, state := range t.controls {
-			if state.windowStart.IsZero() {
-				continue
-			}
-			if state.successfulRequests == 0 && state.lastCreationAt.IsZero() && now.Sub(state.windowStart) > time.Hour {
-				delete(t.controls, key)
-			}
+	for key, state := range t.controls {
+		last := state.lastUsedAt
+		if last.IsZero() {
+			last = state.windowStart
+		}
+		if last.IsZero() {
+			last = state.lastCreationAt
+		}
+		if !last.IsZero() && now.Sub(last) > maxDuration(state.retention, time.Hour) {
+			delete(t.controls, key)
 		}
 	}
 }

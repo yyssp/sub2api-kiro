@@ -19,7 +19,11 @@ import (
 const (
 	CacheStrategyKindDisabled         = "disabled"
 	CacheStrategyKindPrefix           = "prefix"
+	CacheStrategyKindUsageMultiplier  = "usage_multiplier"
 	CacheStrategyKindToolAware        = "tool_aware"
+	CacheStrategyKindStableSegment    = "stable_segment_cache"
+	CacheStrategyKindToolPlus         = "prefix_tool_plus"
+	CacheStrategyKindBounded          = "bounded_high_cache"
 	CacheRatioModeUniform             = "uniform"
 	CacheRatioModeIndependent         = "independent"
 	CacheBreakpointClientOnly         = "client_only"
@@ -88,11 +92,13 @@ type CacheUsagePolicy struct {
 	// SkipNonStreamUsageProjection 关掉非流式响应的用量投影：非流式拿得到完整的
 	// 上游 usage，有些场景更希望原样透传而不是套一遍缓存整形。
 	// 对齐 kiro.rs 的 skipNonStreamUsageProjection。
-	SkipNonStreamUsageProjection bool                  `json:"skip_non_stream_usage_projection"`
-	Input                        CacheUsageFieldPolicy `json:"input"`
-	Output                       CacheUsageFieldPolicy `json:"output"`
-	CacheRead                    CacheUsageFieldPolicy `json:"cache_read"`
-	CacheCreation                CacheUsageFieldPolicy `json:"cache_creation"`
+	StrictCacheEligibilityStream    bool                  `json:"strict_cache_eligibility_stream"`
+	StrictCacheEligibilityNonStream bool                  `json:"strict_cache_eligibility_non_stream"`
+	SkipNonStreamUsageProjection    bool                  `json:"skip_non_stream_usage_projection"`
+	Input                           CacheUsageFieldPolicy `json:"input"`
+	Output                          CacheUsageFieldPolicy `json:"output"`
+	CacheRead                       CacheUsageFieldPolicy `json:"cache_read"`
+	CacheCreation                   CacheUsageFieldPolicy `json:"cache_creation"`
 	// Final*MaxTokens 是上报值的最终硬上限。裸 min() 会让所有触顶记录落在同一个
 	// 数字上（一列整齐的 700000），因此每个上限都配一对抖动区间：触顶时在
 	// [jitter_min, jitter_max] 内按请求指纹回退一点，回退量最多为上限减一，
@@ -175,30 +181,43 @@ func DefaultCacheUsagePolicy() CacheUsagePolicy {
 	}
 }
 
+type CacheStrategyLimits struct {
+	MaxInputTokens  int `json:"max_input_tokens"`
+	MaxOutputTokens int `json:"max_output_tokens"`
+}
+
 type CacheStrategyConfig struct {
-	Kind                             string         `json:"kind"`
-	RatioMode                        string         `json:"ratio_mode"`
-	CoverageRatio                    float64        `json:"coverage_ratio"`
-	UsageRatio                       float64        `json:"usage_ratio"`
-	ReadRatio                        float64        `json:"read_ratio"`
-	CreationRatio                    float64        `json:"creation_ratio"`
-	CacheSystem                      bool           `json:"cache_system"`
-	CacheTools                       bool           `json:"cache_tools"`
-	CacheHistory                     bool           `json:"cache_history"`
-	CacheToolResults                 bool           `json:"cache_tool_results"`
-	CacheCurrentUserStablePrefix     bool           `json:"cache_current_user_stable_prefix"`
-	CurrentUserStablePrefixMaxTokens int            `json:"current_user_stable_prefix_max_tokens"`
-	BreakpointMode                   string         `json:"breakpoint_mode"`
-	AllowDerivedSession              bool           `json:"allow_derived_session"`
-	DynamicContentMode               string         `json:"dynamic_content_mode"`
-	ScopeMode                        string         `json:"scope_mode"`
-	MaxCoverageTokens                int            `json:"max_coverage_tokens"`
-	MaxNewCreationTokensPerRequest   int            `json:"max_new_creation_tokens_per_request"`
-	IncrementalCreateEnabled         bool           `json:"incremental_create_enabled"`
-	MinCacheableTokens               int            `json:"min_cacheable_tokens"`
-	ModelMinCacheableOverrides       map[string]int `json:"model_min_cacheable_overrides,omitempty"`
-	ReportedInputMinTokens           int            `json:"reported_input_min_tokens"`
-	ReportedInputMaxTokens           int            `json:"reported_input_max_tokens"`
+	UsageMultiplier                  CacheUsageMultiplierPolicy `json:"usage_multiplier"`
+	Limits                           CacheStrategyLimits        `json:"limits"`
+	Protocol                         string                     `json:"protocol"`
+	HitShaping                       CacheHitShapingPolicy      `json:"hit_shaping"`
+	ColdRequestGuard                 bool                       `json:"cold_request_guard"`
+	StateTTLSeconds                  int                        `json:"state_ttl_seconds"`
+	StableSegment                    StableSegmentCachePolicy   `json:"stable_segment"`
+	ToolPlus                         CacheToolPlusPolicy        `json:"tool_plus"`
+	Kind                             string                     `json:"kind"`
+	RatioMode                        string                     `json:"ratio_mode"`
+	CoverageRatio                    float64                    `json:"coverage_ratio"`
+	UsageRatio                       float64                    `json:"usage_ratio"`
+	ReadRatio                        float64                    `json:"read_ratio"`
+	CreationRatio                    float64                    `json:"creation_ratio"`
+	CacheSystem                      bool                       `json:"cache_system"`
+	CacheTools                       bool                       `json:"cache_tools"`
+	CacheHistory                     bool                       `json:"cache_history"`
+	CacheToolResults                 bool                       `json:"cache_tool_results"`
+	CacheCurrentUserStablePrefix     bool                       `json:"cache_current_user_stable_prefix"`
+	CurrentUserStablePrefixMaxTokens int                        `json:"current_user_stable_prefix_max_tokens"`
+	BreakpointMode                   string                     `json:"breakpoint_mode"`
+	AllowDerivedSession              bool                       `json:"allow_derived_session"`
+	DynamicContentMode               string                     `json:"dynamic_content_mode"`
+	ScopeMode                        string                     `json:"scope_mode"`
+	MaxCoverageTokens                int                        `json:"max_coverage_tokens"`
+	MaxNewCreationTokensPerRequest   int                        `json:"max_new_creation_tokens_per_request"`
+	IncrementalCreateEnabled         bool                       `json:"incremental_create_enabled"`
+	MinCacheableTokens               int                        `json:"min_cacheable_tokens"`
+	ModelMinCacheableOverrides       map[string]int             `json:"model_min_cacheable_overrides,omitempty"`
+	ReportedInputMinTokens           int                        `json:"reported_input_min_tokens"`
+	ReportedInputMaxTokens           int                        `json:"reported_input_max_tokens"`
 	// UncachedInput* 约束的是上报 usage 里那份「未命中缓存」的 input_tokens，
 	// 与 ReportedInput*（约束的是 input 总量）不是一回事。缓存把整个前缀吃光时
 	// input 会掉到 0，而真实 API 不存在 input=0 且 cache_read>0 的组合，
@@ -217,7 +236,7 @@ type CacheStrategyConfig struct {
 	// ""（或字段缺失）= 不强制，按后续级别解析；"5m" / "1h" = 一律按该档上报。
 	// 必须保留空串语义：存量 JSONB 记录没有这个 key，反序列化得到 ""，正好等于
 	// 「不强制」，存量策略行为零变化。
-	ForcedTTLTier string `json:"forced_ttl_tier,omitempty"`
+	ForcedTTLTier string `json:"forced_ttl_tier"`
 	// TrustUpstreamTTLTier 是否采信上游响应实际返回的档位（优先级链第 2 级）。
 	// 用指针是必须的：存量记录缺这个 key，裸 bool 会得到 false，等于把「跟随上游」
 	// 静默关掉，让三方按 1h 计费而我们按 5m 上报，直接造成亏损。
@@ -245,25 +264,27 @@ type CacheCreationControl struct {
 }
 
 func DefaultCacheStrategyConfig(kind string) CacheStrategyConfig {
+	kind = normalizeCacheKind(kind)
 	if kind == "" {
 		kind = CacheStrategyKindPrefix
 	}
 	c := CacheStrategyConfig{
-		Kind: kind, RatioMode: CacheRatioModeUniform, CoverageRatio: 0.85, UsageRatio: 1,
+		Protocol: PlatformAnthropic, Kind: kind, RatioMode: CacheRatioModeUniform, CoverageRatio: 0.85, UsageRatio: 1,
 		ReadRatio: 1, CreationRatio: 1, CacheSystem: true, CacheTools: true,
-		CacheHistory: true, CacheToolResults: true, BreakpointMode: CacheBreakpointHybrid,
+		CacheHistory: true, CacheToolResults: true, BreakpointMode: CacheBreakpointHybrid, AllowDerivedSession: true,
 		CacheCurrentUserStablePrefix: false, CurrentUserStablePrefixMaxTokens: 0,
 		// 作用域默认「分组 + 会话」：缓存按策略与会话隔离，同一会话换账号仍可命中。
 		// 带上账号会让每次账号切换都重新建缓存，前缀白白重写一遍。
 		DynamicContentMode: CacheDynamicContentExclude, ScopeMode: CacheScopeModeGroupSession,
 		PreserveUpstreamCacheUsage: true,
+		TrustUpstreamTTLTier:       boolPtr(true),
 		IncrementalCreateEnabled:   true, MinCacheableTokens: 1024, TokenScale: 2,
 		// 缓存容量与生命周期对齐 kiro.rs 的页面默认值
 		// （ui/src/lib/runtime-config-defaults.ts:516）：条目 TTL 86400 秒、
 		// 单作用域 200 条、全局 20000 条、估算字节上限 256MB。
 		// 原来的 300 秒 TTL 是「断点默认 TTL」的值，被误用成了条目存活时间：
 		// 5 分钟后整条缓存就被清掉，长会话每隔几分钟就要重建一次前缀。
-		ScaleMinInputTokens: 20000, DefaultTTLSeconds: 300, HourTTLSeconds: 3600, MaxEntriesPerScope: 200,
+		ScaleMinInputTokens: 20000, MaxSimulatedInputTokens: 300000, DefaultTTLSeconds: 300, HourTTLSeconds: 3600, MaxEntriesPerScope: 200,
 		MaxEntriesGlobal: 20000, EstimatedBytesLimit: 256 << 20, ExpireAfterIdleSeconds: 3600,
 		// 触顶抖动。留 0 的话所有触顶请求会上报同一个数值，一眼看去就是伪造的。
 		CapJitterMinTokens: 12000, CapJitterMaxTokens: 24000,
@@ -297,9 +318,27 @@ func DefaultCacheStrategyConfig(kind string) CacheStrategyConfig {
 			CreationBudgetWindowSeconds:  300,
 			MaxCreationTokensPerWindow:   600000,
 		},
-		Usage: DefaultCacheUsagePolicy(),
+		UsageMultiplier: defaultCacheUsageMultiplierPolicy(),
+		Usage:           DefaultCacheUsagePolicy(),
+		HitShaping:      DefaultCacheHitShapingPolicy(),
+		StableSegment:   DefaultStableSegmentCachePolicy(),
+		ToolPlus:        DefaultCacheToolPlusPolicy(),
 	}
-	if kind == CacheStrategyKindToolAware {
+	if kind == CacheStrategyKindStableSegment || kind == CacheStrategyKindToolPlus || kind == CacheStrategyKindBounded {
+		c.StateTTLSeconds = 300
+		c.ColdRequestGuard = true
+	}
+	if kind == CacheStrategyKindStableSegment {
+		c.CoverageRatio = .9
+		c.MaxCoverageTokens = 120000
+		c.MaxNewCreationTokensPerRequest = 30000
+		c.TokenScale = 1
+		c.UncachedInputMinTokens, c.UncachedInputMaxTokens = 0, 0
+		c.CapJitterMinTokens, c.CapJitterMaxTokens = 0, 0
+		c.CreationControl = CacheCreationControl{}
+		c.Usage.OutputUpliftEnabled = boolPtr(false)
+	}
+	if kind == CacheStrategyKindToolAware || kind == CacheStrategyKindToolPlus {
 		// tool_aware 对齐 kiro.rs 的 KiroRsTool 模板：那条路径把「本地模拟」整组关掉
 		// （token_scale / 触顶抖动 / 模拟上限全部归零）、创建控制也关掉，
 		// 只靠 KiroRsToolCachePolicy 的几个值工作 —— 全量覆盖 + 一个很小的未缓存 input 区间。
@@ -309,6 +348,17 @@ func DefaultCacheStrategyConfig(kind string) CacheStrategyConfig {
 		c.CapJitterMinTokens, c.CapJitterMaxTokens = 0, 0
 		c.UncachedInputMinTokens, c.UncachedInputMaxTokens = 32, 4096
 		c.CreationControl = CacheCreationControl{}
+	}
+	if kind == CacheStrategyKindToolPlus {
+		c.Usage.Input.Mode = CacheUsageFieldPreserve
+		c.Usage.OutputUpliftEnabled = boolPtr(false)
+	}
+	if kind == CacheStrategyKindUsageMultiplier {
+		c.TokenScale, c.MaxSimulatedInputTokens, c.ScaleMinInputTokens = 1, 0, 0
+		c.CapJitterMinTokens, c.CapJitterMaxTokens = 0, 0
+		c.UncachedInputMinTokens, c.UncachedInputMaxTokens = 0, 0
+		c.CreationControl = CacheCreationControl{}
+		c.Usage = CacheUsagePolicy{Enabled: true, Input: defaultCacheUsageFieldPolicy(CacheUsageFieldRaw), Output: defaultCacheUsageFieldPolicy(CacheUsageFieldRaw), CacheRead: defaultCacheUsageFieldPolicy(CacheUsageFieldRaw), CacheCreation: defaultCacheUsageFieldPolicy(CacheUsageFieldRaw), OutputUpliftEnabled: boolPtr(false), FinalOutputGuardEnabled: boolPtr(false)}
 	}
 	if kind == CacheStrategyKindDisabled {
 		c.CacheSystem, c.CacheTools, c.CacheHistory, c.CacheToolResults = false, false, false, false
@@ -325,21 +375,24 @@ func DefaultCacheStrategyConfig(kind string) CacheStrategyConfig {
 }
 
 func NormalizeCacheStrategyConfig(in CacheStrategyConfig) (CacheStrategyConfig, error) {
+	in.Protocol = normalizeCacheProtocol(in.Protocol)
+	if _, ok := cacheProtocolModules[in.Protocol]; !ok {
+		return in, fmt.Errorf("config.protocol must be anthropic or gemini")
+	}
+	if in.Limits.MaxInputTokens < 0 || in.Limits.MaxOutputTokens < 0 || in.Limits.MaxInputTokens > cacheAbsoluteMaxInputTokens || in.Limits.MaxOutputTokens > cacheAbsoluteMaxInputTokens {
+		return in, errors.New("config.limits must be between 0 and 4000000")
+	}
+	in.Kind = normalizeCacheKind(in.Kind)
 	if in.Kind == "" {
 		in.Kind = CacheStrategyKindPrefix
 	}
 	switch in.Kind {
-	case CacheStrategyKindDisabled, CacheStrategyKindPrefix, CacheStrategyKindToolAware:
+	case CacheStrategyKindUsageMultiplier, CacheStrategyKindDisabled, CacheStrategyKindPrefix, CacheStrategyKindToolAware, CacheStrategyKindStableSegment, CacheStrategyKindToolPlus, CacheStrategyKindBounded:
 	default:
-		return in, fmt.Errorf("config.kind must be disabled, prefix or tool_aware")
+		return in, fmt.Errorf("config.kind must be disabled, prefix, tool_aware, stable_segment_cache, prefix_tool_plus, bounded_high_cache or usage_multiplier")
 	}
-	// cache_history 与 cache_current_user_stable_prefix 同时关闭时，历史消息被过滤掉，
-	// 只剩当前用户消息，而它在没有显式 cache_control 时按设计不作为断点 —— 结果是
-	// 没有任何内容可缓存，策略静默失效（表现为缓存恒为 0）。这种组合只可能是误配。
-	if in.Kind != CacheStrategyKindDisabled && !in.CacheHistory && !in.CacheCurrentUserStablePrefix {
-		return in, fmt.Errorf(
-			"config.cache_history 与 config.cache_current_user_stable_prefix 不能同时为 false：" +
-				"两者都关闭后没有任何内容可缓存，策略会静默失效")
+	if in.Kind != CacheStrategyKindDisabled && in.Kind != CacheStrategyKindUsageMultiplier && !in.CacheHistory && !in.CacheCurrentUserStablePrefix && !in.CacheSystem && !in.CacheTools {
+		return in, errors.New("config cache_system/cache_tools/cache_history/cache_current_user_stable_prefix cannot all be false")
 	}
 	if in.RatioMode == "" {
 		in.RatioMode = CacheRatioModeUniform
@@ -427,6 +480,15 @@ func NormalizeCacheStrategyConfig(in CacheStrategyConfig) (CacheStrategyConfig, 
 			"config.creation_control.min_creation_delta_tokens 不能大于 max_creation_tokens_per_event：" +
 				"两者冲突会导致缓存几乎无法创建")
 	}
+	if err := validateCacheNumericBounds(in); err != nil {
+		return in, err
+	}
+	if err := validateCacheUsageMultiplier(in.UsageMultiplier); err != nil {
+		return in, err
+	}
+	if err := validateCacheExtensions(in); err != nil {
+		return in, err
+	}
 	in.Usage = normalizeCacheUsagePolicy(in.Usage)
 	in.Usage.PreserveUpstreamCacheUsage = in.PreserveUpstreamCacheUsage
 	if err := validateCacheUsagePolicy(in.Usage); err != nil {
@@ -436,7 +498,9 @@ func NormalizeCacheStrategyConfig(in CacheStrategyConfig) (CacheStrategyConfig, 
 		in.CurrentUserStablePrefixMaxTokens = 0
 	}
 	if in.Kind == CacheStrategyKindDisabled {
+		protocol := in.Protocol
 		in = DefaultCacheStrategyConfig(CacheStrategyKindDisabled)
+		in.Protocol = protocol
 	}
 	if in.RatioMode == CacheRatioModeUniform {
 		in.ReadRatio, in.CreationRatio = in.UsageRatio, in.UsageRatio
@@ -444,6 +508,7 @@ func NormalizeCacheStrategyConfig(in CacheStrategyConfig) (CacheStrategyConfig, 
 	if in.ModelMinCacheableOverrides == nil {
 		in.ModelMinCacheableOverrides = map[string]int{}
 	}
+	cacheProtocolModules[in.Protocol].normalize(&in)
 	return in, nil
 }
 
@@ -576,12 +641,25 @@ func CacheStrategyConfigMap(c CacheStrategyConfig) map[string]any {
 	return out
 }
 
+func DefaultCacheStrategyConfigForProtocol(kind, protocol string) CacheStrategyConfig {
+	c := DefaultCacheStrategyConfig(kind)
+	c.Protocol = normalizeCacheProtocol(protocol)
+	if c.Protocol == PlatformGemini {
+		c.AllowDerivedSession = true
+		c.BreakpointMode = CacheBreakpointAuto
+		cacheProtocolModules[PlatformGemini].normalize(&c)
+	}
+	return c
+}
+
 func ParseCacheStrategyConfig(raw map[string]any) (CacheStrategyConfig, error) {
 	b, err := json.Marshal(raw)
 	if err != nil {
 		return CacheStrategyConfig{}, err
 	}
-	c := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
+	kind, _ := raw["kind"].(string)
+	protocol, _ := raw["protocol"].(string)
+	c := DefaultCacheStrategyConfigForProtocol(normalizeCacheKind(kind), protocol)
 	if err := json.Unmarshal(b, &c); err != nil {
 		return CacheStrategyConfig{}, err
 	}

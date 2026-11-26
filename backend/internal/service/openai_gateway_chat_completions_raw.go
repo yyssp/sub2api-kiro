@@ -84,6 +84,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	prepareCachePlanForContext(
 		ctx, c, account, cacheGroupFromContext(c, nil), body, originalModel,
 		"openai_chat_completions", estimateOpenAIChatCompletionsInputTokensWithAlgorithm(ctx, s.kiroMeteringAlgorithm(ctx), body),
+		&GatewayService{billingService: s.billingService, channelService: s.channelService},
 	)
 
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)

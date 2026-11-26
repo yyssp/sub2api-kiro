@@ -332,8 +332,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 	}
 
 	inputTokens := estimateKiroInputTokens(ctx, s.kiroMeteringAlgorithm(ctx), body)
-	cachePlan := s.prepareCacheEmulationUsage(ctx, account, parsed.Group, body, mappedModel, inputTokens)
-	setCachePlanContext(c, cachePlan)
+	prepareCachePlanForContext(ctx, c, account, parsed.Group, body, mappedModel, "anthropic_messages", inputTokens, s)
 	resp, requestCtx, err := s.executeKiroUpstreamWithParsed(ctx, account, parsed, body, mappedModel, originalModel, token, c.Request.Header)
 	if err != nil {
 		if failoverErr := kiroFailoverFromOpenErr(c, account, err); failoverErr != nil {
