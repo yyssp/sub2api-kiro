@@ -158,3 +158,8 @@ func TestBuildKiroRelayModelsRequestUsesBaseURL(t *testing.T) {
 	require.Equal(t, "relay-key", req.Header.Get("x-api-key"))
 	require.Equal(t, "2023-06-01", req.Header.Get("anthropic-version"))
 }
+
+func kiroSyncPublicModelNames(ids []string) []string {
+	names, _ := kiroPublicCatalog(ids)
+	return names
+}

@@ -1012,10 +1012,6 @@ func isClaudeThinkingVariant(model string) bool {
 	return strings.Contains(key, "-thinking") || strings.HasSuffix(key, "-thinking")
 }
 
-func claudeModelMeta(model string) (ModelMeta, bool) {
-	return claudeModelMetaFromModels(claudeResolutionModels(), model)
-}
-
 func claudeModelMetaFromModels(models []ModelMeta, model string) (ModelMeta, bool) {
 	want := strings.ToLower(strings.TrimSpace(model))
 	for _, candidate := range resolutionModels(models) {

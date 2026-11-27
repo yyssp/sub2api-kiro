@@ -305,7 +305,7 @@ func (c *Client) UploadRefImage(ctx context.Context, token string, identity Iden
 	if err != nil {
 		return nil, wrapNetworkError("upload fish ref image", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, &RequestError{Message: fmt.Sprintf("upload fish ref image: status %d", resp.StatusCode), ErrorType: ErrorTypeStatus, StatusCode: resp.StatusCode}
@@ -365,7 +365,7 @@ func (c *Client) queryRaw(ctx context.Context, token string, identity Identity, 
 	if err != nil {
 		return nil, wrapNetworkError("fish request failed", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, wrapNetworkError("read fish response", err)

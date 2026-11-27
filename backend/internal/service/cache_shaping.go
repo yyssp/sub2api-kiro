@@ -168,9 +168,10 @@ func (p *cacheEmulationPlan) shapingCaps() (int, int, int) {
 	c := p.policyConfig()
 	seed := p.usageSeed()
 	input := 0
-	if c.Usage.Input.Mode == CacheUsageFieldSampleMax {
+	switch c.Usage.Input.Mode {
+	case CacheUsageFieldSampleMax:
 		input = c.Usage.Input.MaxTokens
-	} else if c.Usage.Input.Mode == CacheUsageFieldSampleTarget {
+	case CacheUsageFieldSampleTarget:
 		input = safeScaledTokenLimit(c.Usage.Input.TargetTokens, c.Usage.Input.NormalMaxMultiplier)
 	}
 	read, write := cachePositiveCap(c.Usage.FinalCacheReadMaxTokens), cachePositiveCap(c.Usage.FinalCacheCreationMaxTokens)

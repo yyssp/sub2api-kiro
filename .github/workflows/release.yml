@@ -327,7 +327,8 @@ jobs:
           TAG_NAME="$RELEASE_TAG"
           VERSION=${TAG_NAME#v}
           REPO="${{ github.repository }}"
-          GHCR_IMAGE="ghcr.io/${REPO,,}"  # ${,,} converts to lowercase
+          GHCR_IMAGE="ghcr.io/${REPO%%/*}/sub2api"
+          GHCR_IMAGE="${GHCR_IMAGE,,}"
 
           # 获取 tag message 内容并转义 Markdown 特殊字符
           TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed 's/\([_*`\[]\)/\\\1/g')

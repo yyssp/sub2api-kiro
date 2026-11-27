@@ -110,7 +110,7 @@ func cacheIneligiblePlan(group *Group, body []byte) *cacheEmulationPlan {
 	if stream {
 		strict = cfg.Usage.StrictCacheEligibilityStream
 	}
-	if !strict && !(cfg.Usage.SkipNonStreamUsageProjection && !stream) {
+	if !strict && (!cfg.Usage.SkipNonStreamUsageProjection || stream) {
 		return nil
 	}
 	return &cacheEmulationPlan{profile: &cacheProfile{policy: cfg, rawBody: body}, usagePolicy: cfg.Usage, projectionIneligible: true, nonStream: !stream}

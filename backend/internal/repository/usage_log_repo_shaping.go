@@ -45,7 +45,7 @@ func (r *usageLogRepository) GetShapingStats(ctx context.Context, q service.Usag
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := &service.UsageShapingStats{Breakdown: make([]service.UsageShapingStat, 0), Series: make([]service.UsageShapingPoint, 0)}
 	byID := make(map[sql.NullInt64]int)
 	for rows.Next() {
@@ -62,7 +62,7 @@ func (r *usageLogRepository) GetShapingStats(ctx context.Context, q service.Usag
 			byID[id] = idx
 			result.Breakdown = append(result.Breakdown, service.UsageShapingStat{ID: point.ID, Name: name})
 		}
-		result.Breakdown[idx].UsageShapingMetrics.Add(point.UsageShapingMetrics)
+		result.Breakdown[idx].Add(point.UsageShapingMetrics)
 		result.Summary.Add(point.UsageShapingMetrics)
 	}
 	return result, rows.Err()

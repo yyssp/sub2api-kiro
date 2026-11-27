@@ -35,7 +35,10 @@ func TestPricePayload(t *testing.T) {
 	if body["refImageCount"] != float64(1) {
 		t.Fatalf("refImageCount = %v", body["refImageCount"])
 	}
-	params := body["params"].(map[string]any)
+	params, ok := body["params"].(map[string]any)
+	if !ok {
+		t.Fatalf("params must be an object: %v", body["params"])
+	}
 	if params["image_size"] != "1024x1024" || params["quality"] != "medium" {
 		t.Fatalf("params = %v", params)
 	}
@@ -45,7 +48,11 @@ func TestPricePayloadOmitsQualityWhenEmpty(t *testing.T) {
 	var params map[string]any
 	client, _ := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body := decodeJSONBody(t, r)
-		params = body["params"].(map[string]any)
+		var ok bool
+		params, ok = body["params"].(map[string]any)
+		if !ok {
+			t.Fatalf("params must be an object: %v", body["params"])
+		}
 		_, _ = w.Write([]byte(`{"credits":450,"pricingVersion":"v"}`))
 	}))
 	_, err := client.Price(context.Background(), "tok", Identity{}, PriceParams{
@@ -84,7 +91,10 @@ func TestSubmitGenerationPayload(t *testing.T) {
 		t.Fatalf("TaskGroup = %+v", group)
 	}
 	// clientRequestId 为 uuid 形态且每次不同
-	requestID := body["clientRequestId"].(string)
+	requestID, ok := body["clientRequestId"].(string)
+	if !ok {
+		t.Fatalf("clientRequestId must be a string: %v", body["clientRequestId"])
+	}
 	if len(strings.Split(requestID, "-")) != 5 {
 		t.Fatalf("clientRequestId = %q", requestID)
 	}
@@ -94,7 +104,10 @@ func TestSubmitGenerationPayload(t *testing.T) {
 	if body["promptEnhance"] != false {
 		t.Fatalf("promptEnhance must be false")
 	}
-	params := body["params"].(map[string]any)
+	params, ok := body["params"].(map[string]any)
+	if !ok {
+		t.Fatalf("params must be an object: %v", body["params"])
+	}
 	if params["image_size"] != "608x1088" || params["prompt"] != "a cat" {
 		t.Fatalf("params = %v", params)
 	}
@@ -118,17 +131,32 @@ func TestSubmitGenerationEditEcho(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SubmitGeneration: %v", err)
 	}
-	params := body["params"].(map[string]any)
-	assets := params["reference_assets"].([]any)
+	params, ok := body["params"].(map[string]any)
+	if !ok {
+		t.Fatalf("params must be an object: %v", body["params"])
+	}
+	assets, ok := params["reference_assets"].([]any)
+	if !ok {
+		t.Fatalf("reference_assets must be an array: %v", params["reference_assets"])
+	}
 	if len(assets) != 1 {
 		t.Fatalf("reference_assets = %v", assets)
 	}
-	asset := assets[0].(map[string]any)
+	asset, ok := assets[0].(map[string]any)
+	if !ok {
+		t.Fatalf("reference asset must be an object: %v", assets[0])
+	}
 	if asset["objectKey"] != "media_gen_ref/x/image.png" || asset["type"] != "image" {
 		t.Fatalf("asset = %v", asset)
 	}
-	refImages := body["refImages"].([]any)
-	ref := refImages[0].(map[string]any)
+	refImages, ok := body["refImages"].([]any)
+	if !ok || len(refImages) != 1 {
+		t.Fatalf("refImages must contain one image: %v", body["refImages"])
+	}
+	ref, ok := refImages[0].(map[string]any)
+	if !ok {
+		t.Fatalf("ref image must be an object: %v", refImages[0])
+	}
 	if ref["role"] != "ref" || ref["status"] != "ready" || ref["objectKey"] != "media_gen_ref/x/image.png" {
 		t.Fatalf("refImages = %v", refImages)
 	}
@@ -200,7 +228,7 @@ func TestUploadRefImageThreeSteps(t *testing.T) {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"objectKey": "media_gen_ref/2026/x/image.png",
-				"kind": "image", "width": 512, "height": 512,
+				"kind":      "image", "width": 512, "height": 512,
 			})
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)

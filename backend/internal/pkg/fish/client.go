@@ -37,7 +37,7 @@ const (
 )
 
 // Identity 是一个 fish 账号的指纹身份。DeviceID/TeamID 随账号凭据持久化
-//（DeviceID 每账号一个 UUID，绝不跨账号复用）；SessionID 由客户端运行时
+// （DeviceID 每账号一个 UUID，绝不跨账号复用）；SessionID 由客户端运行时
 // 派生并按闲置窗口轮换。TeamID 为空时头不发送（上游已验证可省）。
 type Identity struct {
 	DeviceID  string
@@ -74,7 +74,10 @@ func NewClient(opts Options) *Client {
 	transport := http.DefaultTransport
 	if opts.ProxyURL != "" {
 		if parsed, err := url.Parse(opts.ProxyURL); err == nil {
-			proxyTransport := http.DefaultTransport.(*http.Transport).Clone()
+			proxyTransport := &http.Transport{}
+			if base, ok := http.DefaultTransport.(*http.Transport); ok {
+				proxyTransport = base.Clone()
+			}
 			proxyTransport.Proxy = http.ProxyURL(parsed)
 			transport = proxyTransport
 		}
@@ -111,7 +114,7 @@ func (c *Client) sessionIDFor(identity Identity) string {
 }
 
 // applyBrowserHeaders 写入完整浏览器指纹头集合。刻意不发送 Referer
-//（网页端 referrerPolicy 下本来就没有）、cookie 与 dnt。
+// （网页端 referrerPolicy 下本来就没有）、cookie 与 dnt。
 func (c *Client) applyBrowserHeaders(req *http.Request, token string, identity Identity) {
 	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(token))
 	req.Header.Set("Accept", "application/json")
@@ -135,7 +138,7 @@ func (c *Client) applyBrowserHeaders(req *http.Request, token string, identity I
 }
 
 // apiErrorEnvelope 是 fish 的统一错误信封。Code 是稳定机器码
-//（如 402 的 OUT_OF_CREDITS，2026-10-20 实测），部分错误没有。
+// （如 402 的 OUT_OF_CREDITS，2026-10-20 实测），部分错误没有。
 type apiErrorEnvelope struct {
 	Status  int    `json:"status"`
 	Code    string `json:"code"`
@@ -167,7 +170,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, token string, 
 	if err != nil {
 		return wrapNetworkError("fish request failed", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return wrapNetworkError("read fish response", err)
@@ -209,7 +212,7 @@ func (c *Client) DownloadImage(ctx context.Context, imageURL string) ([]byte, er
 	if err != nil {
 		return nil, wrapNetworkError("download fish image", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, &RequestError{Message: fmt.Sprintf("download fish image: status %d", resp.StatusCode), ErrorType: ErrorTypeStatus, StatusCode: resp.StatusCode}
 	}

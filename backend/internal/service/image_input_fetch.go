@@ -80,9 +80,9 @@ func inputImageDialControl(_, address string, _ syscall.RawConn) error {
 
 // isPublicUnicastIP 判定 IP 是否为可对外路由的单播地址。
 func isPublicUnicastIP(ip net.IP) bool {
-	return !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() ||
-		ip.IsInterfaceLocalMulticast())
+	return !ip.IsLoopback() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast() &&
+		!ip.IsLinkLocalMulticast() && !ip.IsMulticast() && !ip.IsUnspecified() &&
+		!ip.IsInterfaceLocalMulticast()
 }
 
 // validateInputImageURL 校验参考图 URL：只接受 https、域名主机（禁止
@@ -131,7 +131,7 @@ func isInputImageDomain(host string) bool {
 		}
 		for i := 0; i < len(label); i++ {
 			c := label[i]
-			if !(c >= 'a' && c <= 'z') && !(c >= '0' && c <= '9') && c != '-' {
+			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
 				return false
 			}
 		}

@@ -16,7 +16,7 @@ func TestUsageShapingStatsDimensionsAndNullableGroup(t *testing.T) {
 		t.Run(dimension, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			repo := &usageLogRepository{sql: db}
 			start := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
 			end := start.AddDate(0, 0, 2)

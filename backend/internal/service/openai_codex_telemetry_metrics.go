@@ -431,10 +431,10 @@ func codexMetricAttributeSignature(attributes map[string]string) string {
 	sort.Strings(keys)
 	var builder strings.Builder
 	for _, key := range keys {
-		builder.WriteString(key)
-		builder.WriteByte('=')
-		builder.WriteString(attributes[key])
-		builder.WriteByte('\x1f')
+		_, _ = builder.WriteString(key)
+		_ = builder.WriteByte('=')
+		_, _ = builder.WriteString(attributes[key])
+		_ = builder.WriteByte('\x1f')
 	}
 	return builder.String()
 }

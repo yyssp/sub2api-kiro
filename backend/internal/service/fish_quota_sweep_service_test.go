@@ -9,7 +9,7 @@ import (
 )
 
 // fishSweepRepoStub 只实现 ListByPlatform，其余方法经嵌入接口保持 panic
-//（不会被走到）。
+// （不会被走到）。
 type fishSweepRepoStub struct {
 	AccountRepository
 	accounts []Account

@@ -295,12 +295,12 @@ func parseOpsErrorStatusCodes(raw string) ([]int, error) {
 		}
 		code, err := strconv.Atoi(value)
 		if err != nil || code < 0 {
-			return nil, fmt.Errorf("Invalid status_codes")
+			return nil, fmt.Errorf("invalid status_codes")
 		}
 		codes = append(codes, code)
 	}
 	if len(codes) == 0 {
-		return nil, fmt.Errorf("Invalid status_codes")
+		return nil, fmt.Errorf("invalid status_codes")
 	}
 	return codes, nil
 }

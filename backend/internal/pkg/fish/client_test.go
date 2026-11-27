@@ -2,8 +2,8 @@ package fish
 
 import (
 	"context"
-	"errors"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -47,19 +47,19 @@ func TestBrowserHeaderSet(t *testing.T) {
 		t.Fatalf("Price: %v", err)
 	}
 	checks := map[string]string{
-		"Authorization":       "Bearer tok",
-		"Accept":              "application/json",
-		"Origin":              WebOrigin,
-		"User-Agent":          chromeUserAgent,
-		"Sec-Ch-Ua":           chromeSecCHUA,
-		"Sec-Ch-Ua-Mobile":    "?0",
-		"Sec-Ch-Ua-Platform":  chromeSecCHUAPlat,
-		"Sec-Fetch-Dest":      "empty",
-		"Sec-Fetch-Mode":      "cors",
-		"Sec-Fetch-Site":      "same-site",
+		"Authorization":        "Bearer tok",
+		"Accept":               "application/json",
+		"Origin":               WebOrigin,
+		"User-Agent":           chromeUserAgent,
+		"Sec-Ch-Ua":            chromeSecCHUA,
+		"Sec-Ch-Ua-Mobile":     "?0",
+		"Sec-Ch-Ua-Platform":   chromeSecCHUAPlat,
+		"Sec-Fetch-Dest":       "empty",
+		"Sec-Fetch-Mode":       "cors",
+		"Sec-Fetch-Site":       "same-site",
 		"X-Fish-Amp-Device-Id": "dev-1",
-		"X-Team-Id":           "team-1",
-		"X-Workspace-Id":      "team-1",
+		"X-Team-Id":            "team-1",
+		"X-Workspace-Id":       "team-1",
 	}
 	for header, want := range checks {
 		if got := got.Get(header); got != want {

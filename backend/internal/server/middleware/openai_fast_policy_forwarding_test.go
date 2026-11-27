@@ -172,8 +172,23 @@ type openAIFastPolicyForwardingSettingRepo struct {
 	value string
 }
 
-func (r *openAIFastPolicyForwardingSettingRepo) GetValue(context.Context, string) (string, error) {
-	return r.value, nil
+func (r *openAIFastPolicyForwardingSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+	if key == service.SettingKeyOpenAIFastPolicySettings {
+		return r.value, nil
+	}
+	return "", nil
+}
+
+func (r *openAIFastPolicyForwardingSettingRepo) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	values := make(map[string]string, len(keys))
+	for _, key := range keys {
+		value, err := r.GetValue(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		values[key] = value
+	}
+	return values, nil
 }
 
 type openAIFastPolicyForwardingHTTPUpstream struct {

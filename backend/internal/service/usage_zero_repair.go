@@ -26,7 +26,7 @@ func (e *usageOutputEvidence) append(text string) {
 		e.content = true
 	}
 	if remaining := usageOutputEvidenceMaxBytes - e.text.Len(); remaining > 0 {
-		e.text.WriteString(text[:min(len(text), remaining)])
+		_, _ = e.text.WriteString(text[:min(len(text), remaining)])
 	}
 }
 
@@ -78,15 +78,15 @@ func (e *usageOutputEvidence) observeAnthropic(body []byte) {
 				switch block.Get("type").String() {
 				case "tool_use", "server_tool_use":
 					e.tool = true
-					text.WriteString(block.Get("name").String())
-					text.WriteString(block.Get("input").Raw)
+					_, _ = text.WriteString(block.Get("name").String())
+					_, _ = text.WriteString(block.Get("input").Raw)
 				case "redacted_thinking":
 					if block.Get("data").String() != "" {
 						e.tool = true
 					}
 				default:
-					text.WriteString(block.Get("text").String())
-					text.WriteString(block.Get("thinking").String())
+					_, _ = text.WriteString(block.Get("text").String())
+					_, _ = text.WriteString(block.Get("thinking").String())
 				}
 			}
 			e.snapshot = text.String()[:min(text.Len(), usageOutputEvidenceMaxBytes)]
@@ -153,13 +153,13 @@ func (e *usageOutputEvidence) observeOpenAI(body []byte, event string) {
 		for _, item := range r.Get("output").Array() {
 			if item.Get("type").String() == "function_call" {
 				e.tool = true
-				text.WriteString(item.Get("arguments").String())
+				_, _ = text.WriteString(item.Get("arguments").String())
 			}
 			for _, block := range item.Get("content").Array() {
-				text.WriteString(block.Get("text").String())
+				_, _ = text.WriteString(block.Get("text").String())
 			}
 			for _, block := range item.Get("summary").Array() {
-				text.WriteString(block.Get("text").String())
+				_, _ = text.WriteString(block.Get("text").String())
 			}
 		}
 		e.snapshot = text.String()[:min(text.Len(), usageOutputEvidenceMaxBytes)]

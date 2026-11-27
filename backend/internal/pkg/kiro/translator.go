@@ -370,10 +370,6 @@ type eventStreamMessage struct {
 	Payload       []byte
 }
 
-func (m *eventStreamMessage) isException() bool {
-	return m != nil && (m.MessageType == "exception" || m.MessageType == "error")
-}
-
 // kiroContentLengthExceededException 是上游输出达到长度上限时下发的异常帧，
 // 已产出内容时语义等同于 max_tokens 截断，而不是失败。
 const kiroContentLengthExceededException = "ContentLengthExceededException"
@@ -390,21 +386,6 @@ func (e *KiroStreamException) Error() string {
 		return "kiro upstream stream exception: " + e.ExceptionType
 	}
 	return "kiro upstream stream exception: " + e.ExceptionType + ": " + e.Message
-}
-
-func newKiroStreamException(msg *eventStreamMessage) *KiroStreamException {
-	exceptionType := msg.ExceptionType
-	if exceptionType == "" {
-		exceptionType = "UnknownException"
-	}
-	message := ""
-	if len(msg.Payload) > 0 {
-		message = strings.TrimSpace(gjson.GetBytes(msg.Payload, "message").String())
-		if message == "" {
-			message = strings.TrimSpace(gjson.GetBytes(msg.Payload, "Message").String())
-		}
-	}
-	return &KiroStreamException{ExceptionType: exceptionType, Message: message}
 }
 
 type kiroSemanticEventType string

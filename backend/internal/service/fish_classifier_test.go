@@ -586,7 +586,7 @@ func TestFishFailoverKeepsTheTighterBelowHint(t *testing.T) {
 				Fish: config.GatewayFishConfig{CreditAwareSchedulingEnabled: true},
 			}}}
 
-			svc.FishFailover(context.Background(), 7, "tok", &fishCreditsShortError{need: 800, balance: -1, cause: outOfCredits})
+			_ = svc.FishFailover(context.Background(), 7, "tok", &fishCreditsShortError{need: 800, balance: -1, cause: outOfCredits})
 			if got := repo.extra[FishWalletBelowExtraKey]; got != tc.wantBelow {
 				t.Fatalf("written below hint = %v, want %v", got, tc.wantBelow)
 			}
