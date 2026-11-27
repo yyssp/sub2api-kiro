@@ -71,8 +71,14 @@ func (geminiCacheProtocol) prepare(_ *GatewayService, ctx context.Context, accou
 
 // Gemini has three generation buckets: uncached prompt, cached prompt, output.
 func projectGeminiCacheUsage(p *cacheEmulationPlan, raw ClaudeUsage) (result ClaudeUsage) {
+	if p == nil {
+		return raw
+	}
+	p.repairClaudeUsage(&raw)
+	defer func() { enforceNonzeroClaudeUsage(&result, raw) }()
 	defer func() { p.enforceUsageLimits(&result, raw) }()
-	if p == nil || p.skipProjection() || !p.usagePolicy.Enabled {
+	if p.guardOnly || p.skipProjection() || !p.usagePolicy.Enabled {
+		p.limitRepairedUsage(&raw)
 		return raw
 	}
 	if p.policyConfig().Kind == CacheStrategyKindUsageMultiplier {
@@ -146,6 +152,7 @@ func projectGeminiCacheUsage(p *cacheEmulationPlan, raw ClaudeUsage) (result Cla
 				raw.InputTokens = saturatingAddInt(raw.InputTokens, raw.CacheReadInputTokens)
 				raw.CacheReadInputTokens = 0
 			}
+			p.limitRepairedUsage(&raw)
 			return raw
 		}
 		beforeRead := u.CacheReadInputTokens

@@ -337,6 +337,76 @@ func (_c *UsageLogCreate) SetNillableCacheCreation12hTokens(v *int) *UsageLogCre
 	return _c
 }
 
+// SetRawInputTokens sets the "raw_input_tokens" field.
+func (_c *UsageLogCreate) SetRawInputTokens(v int) *UsageLogCreate {
+	_c.mutation.SetRawInputTokens(v)
+	return _c
+}
+
+// SetNillableRawInputTokens sets the "raw_input_tokens" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRawInputTokens(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetRawInputTokens(*v)
+	}
+	return _c
+}
+
+// SetRawOutputTokens sets the "raw_output_tokens" field.
+func (_c *UsageLogCreate) SetRawOutputTokens(v int) *UsageLogCreate {
+	_c.mutation.SetRawOutputTokens(v)
+	return _c
+}
+
+// SetNillableRawOutputTokens sets the "raw_output_tokens" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRawOutputTokens(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetRawOutputTokens(*v)
+	}
+	return _c
+}
+
+// SetRawCacheReadTokens sets the "raw_cache_read_tokens" field.
+func (_c *UsageLogCreate) SetRawCacheReadTokens(v int) *UsageLogCreate {
+	_c.mutation.SetRawCacheReadTokens(v)
+	return _c
+}
+
+// SetNillableRawCacheReadTokens sets the "raw_cache_read_tokens" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRawCacheReadTokens(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetRawCacheReadTokens(*v)
+	}
+	return _c
+}
+
+// SetRawCacheCreationTokens sets the "raw_cache_creation_tokens" field.
+func (_c *UsageLogCreate) SetRawCacheCreationTokens(v int) *UsageLogCreate {
+	_c.mutation.SetRawCacheCreationTokens(v)
+	return _c
+}
+
+// SetNillableRawCacheCreationTokens sets the "raw_cache_creation_tokens" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRawCacheCreationTokens(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetRawCacheCreationTokens(*v)
+	}
+	return _c
+}
+
+// SetRawTotalCost sets the "raw_total_cost" field.
+func (_c *UsageLogCreate) SetRawTotalCost(v float64) *UsageLogCreate {
+	_c.mutation.SetRawTotalCost(v)
+	return _c
+}
+
+// SetNillableRawTotalCost sets the "raw_total_cost" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRawTotalCost(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetRawTotalCost(*v)
+	}
+	return _c
+}
+
 // SetInputCost sets the "input_cost" field.
 func (_c *UsageLogCreate) SetInputCost(v float64) *UsageLogCreate {
 	_c.mutation.SetInputCost(v)
@@ -1122,6 +1192,26 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec.SetField(usagelog.FieldCacheCreation12hTokens, field.TypeInt, value)
 		_node.CacheCreation12hTokens = value
 	}
+	if value, ok := _c.mutation.RawInputTokens(); ok {
+		_spec.SetField(usagelog.FieldRawInputTokens, field.TypeInt, value)
+		_node.RawInputTokens = &value
+	}
+	if value, ok := _c.mutation.RawOutputTokens(); ok {
+		_spec.SetField(usagelog.FieldRawOutputTokens, field.TypeInt, value)
+		_node.RawOutputTokens = &value
+	}
+	if value, ok := _c.mutation.RawCacheReadTokens(); ok {
+		_spec.SetField(usagelog.FieldRawCacheReadTokens, field.TypeInt, value)
+		_node.RawCacheReadTokens = &value
+	}
+	if value, ok := _c.mutation.RawCacheCreationTokens(); ok {
+		_spec.SetField(usagelog.FieldRawCacheCreationTokens, field.TypeInt, value)
+		_node.RawCacheCreationTokens = &value
+	}
+	if value, ok := _c.mutation.RawTotalCost(); ok {
+		_spec.SetField(usagelog.FieldRawTotalCost, field.TypeFloat64, value)
+		_node.RawTotalCost = &value
+	}
 	if value, ok := _c.mutation.InputCost(); ok {
 		_spec.SetField(usagelog.FieldInputCost, field.TypeFloat64, value)
 		_node.InputCost = value
@@ -1792,6 +1882,126 @@ func (u *UsageLogUpsert) UpdateCacheCreation12hTokens() *UsageLogUpsert {
 // AddCacheCreation12hTokens adds v to the "cache_creation_12h_tokens" field.
 func (u *UsageLogUpsert) AddCacheCreation12hTokens(v int) *UsageLogUpsert {
 	u.Add(usagelog.FieldCacheCreation12hTokens, v)
+	return u
+}
+
+// SetRawInputTokens sets the "raw_input_tokens" field.
+func (u *UsageLogUpsert) SetRawInputTokens(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldRawInputTokens, v)
+	return u
+}
+
+// UpdateRawInputTokens sets the "raw_input_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRawInputTokens() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRawInputTokens)
+	return u
+}
+
+// AddRawInputTokens adds v to the "raw_input_tokens" field.
+func (u *UsageLogUpsert) AddRawInputTokens(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldRawInputTokens, v)
+	return u
+}
+
+// ClearRawInputTokens clears the value of the "raw_input_tokens" field.
+func (u *UsageLogUpsert) ClearRawInputTokens() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRawInputTokens)
+	return u
+}
+
+// SetRawOutputTokens sets the "raw_output_tokens" field.
+func (u *UsageLogUpsert) SetRawOutputTokens(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldRawOutputTokens, v)
+	return u
+}
+
+// UpdateRawOutputTokens sets the "raw_output_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRawOutputTokens() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRawOutputTokens)
+	return u
+}
+
+// AddRawOutputTokens adds v to the "raw_output_tokens" field.
+func (u *UsageLogUpsert) AddRawOutputTokens(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldRawOutputTokens, v)
+	return u
+}
+
+// ClearRawOutputTokens clears the value of the "raw_output_tokens" field.
+func (u *UsageLogUpsert) ClearRawOutputTokens() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRawOutputTokens)
+	return u
+}
+
+// SetRawCacheReadTokens sets the "raw_cache_read_tokens" field.
+func (u *UsageLogUpsert) SetRawCacheReadTokens(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldRawCacheReadTokens, v)
+	return u
+}
+
+// UpdateRawCacheReadTokens sets the "raw_cache_read_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRawCacheReadTokens() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRawCacheReadTokens)
+	return u
+}
+
+// AddRawCacheReadTokens adds v to the "raw_cache_read_tokens" field.
+func (u *UsageLogUpsert) AddRawCacheReadTokens(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldRawCacheReadTokens, v)
+	return u
+}
+
+// ClearRawCacheReadTokens clears the value of the "raw_cache_read_tokens" field.
+func (u *UsageLogUpsert) ClearRawCacheReadTokens() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRawCacheReadTokens)
+	return u
+}
+
+// SetRawCacheCreationTokens sets the "raw_cache_creation_tokens" field.
+func (u *UsageLogUpsert) SetRawCacheCreationTokens(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldRawCacheCreationTokens, v)
+	return u
+}
+
+// UpdateRawCacheCreationTokens sets the "raw_cache_creation_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRawCacheCreationTokens() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRawCacheCreationTokens)
+	return u
+}
+
+// AddRawCacheCreationTokens adds v to the "raw_cache_creation_tokens" field.
+func (u *UsageLogUpsert) AddRawCacheCreationTokens(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldRawCacheCreationTokens, v)
+	return u
+}
+
+// ClearRawCacheCreationTokens clears the value of the "raw_cache_creation_tokens" field.
+func (u *UsageLogUpsert) ClearRawCacheCreationTokens() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRawCacheCreationTokens)
+	return u
+}
+
+// SetRawTotalCost sets the "raw_total_cost" field.
+func (u *UsageLogUpsert) SetRawTotalCost(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldRawTotalCost, v)
+	return u
+}
+
+// UpdateRawTotalCost sets the "raw_total_cost" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRawTotalCost() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRawTotalCost)
+	return u
+}
+
+// AddRawTotalCost adds v to the "raw_total_cost" field.
+func (u *UsageLogUpsert) AddRawTotalCost(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldRawTotalCost, v)
+	return u
+}
+
+// ClearRawTotalCost clears the value of the "raw_total_cost" field.
+func (u *UsageLogUpsert) ClearRawTotalCost() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRawTotalCost)
 	return u
 }
 
@@ -2797,6 +3007,146 @@ func (u *UsageLogUpsertOne) AddCacheCreation12hTokens(v int) *UsageLogUpsertOne 
 func (u *UsageLogUpsertOne) UpdateCacheCreation12hTokens() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheCreation12hTokens()
+	})
+}
+
+// SetRawInputTokens sets the "raw_input_tokens" field.
+func (u *UsageLogUpsertOne) SetRawInputTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRawInputTokens(v)
+	})
+}
+
+// AddRawInputTokens adds v to the "raw_input_tokens" field.
+func (u *UsageLogUpsertOne) AddRawInputTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRawInputTokens(v)
+	})
+}
+
+// UpdateRawInputTokens sets the "raw_input_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRawInputTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRawInputTokens()
+	})
+}
+
+// ClearRawInputTokens clears the value of the "raw_input_tokens" field.
+func (u *UsageLogUpsertOne) ClearRawInputTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRawInputTokens()
+	})
+}
+
+// SetRawOutputTokens sets the "raw_output_tokens" field.
+func (u *UsageLogUpsertOne) SetRawOutputTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRawOutputTokens(v)
+	})
+}
+
+// AddRawOutputTokens adds v to the "raw_output_tokens" field.
+func (u *UsageLogUpsertOne) AddRawOutputTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRawOutputTokens(v)
+	})
+}
+
+// UpdateRawOutputTokens sets the "raw_output_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRawOutputTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRawOutputTokens()
+	})
+}
+
+// ClearRawOutputTokens clears the value of the "raw_output_tokens" field.
+func (u *UsageLogUpsertOne) ClearRawOutputTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRawOutputTokens()
+	})
+}
+
+// SetRawCacheReadTokens sets the "raw_cache_read_tokens" field.
+func (u *UsageLogUpsertOne) SetRawCacheReadTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRawCacheReadTokens(v)
+	})
+}
+
+// AddRawCacheReadTokens adds v to the "raw_cache_read_tokens" field.
+func (u *UsageLogUpsertOne) AddRawCacheReadTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRawCacheReadTokens(v)
+	})
+}
+
+// UpdateRawCacheReadTokens sets the "raw_cache_read_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRawCacheReadTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRawCacheReadTokens()
+	})
+}
+
+// ClearRawCacheReadTokens clears the value of the "raw_cache_read_tokens" field.
+func (u *UsageLogUpsertOne) ClearRawCacheReadTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRawCacheReadTokens()
+	})
+}
+
+// SetRawCacheCreationTokens sets the "raw_cache_creation_tokens" field.
+func (u *UsageLogUpsertOne) SetRawCacheCreationTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRawCacheCreationTokens(v)
+	})
+}
+
+// AddRawCacheCreationTokens adds v to the "raw_cache_creation_tokens" field.
+func (u *UsageLogUpsertOne) AddRawCacheCreationTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRawCacheCreationTokens(v)
+	})
+}
+
+// UpdateRawCacheCreationTokens sets the "raw_cache_creation_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRawCacheCreationTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRawCacheCreationTokens()
+	})
+}
+
+// ClearRawCacheCreationTokens clears the value of the "raw_cache_creation_tokens" field.
+func (u *UsageLogUpsertOne) ClearRawCacheCreationTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRawCacheCreationTokens()
+	})
+}
+
+// SetRawTotalCost sets the "raw_total_cost" field.
+func (u *UsageLogUpsertOne) SetRawTotalCost(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRawTotalCost(v)
+	})
+}
+
+// AddRawTotalCost adds v to the "raw_total_cost" field.
+func (u *UsageLogUpsertOne) AddRawTotalCost(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRawTotalCost(v)
+	})
+}
+
+// UpdateRawTotalCost sets the "raw_total_cost" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRawTotalCost() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRawTotalCost()
+	})
+}
+
+// ClearRawTotalCost clears the value of the "raw_total_cost" field.
+func (u *UsageLogUpsertOne) ClearRawTotalCost() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRawTotalCost()
 	})
 }
 
@@ -4044,6 +4394,146 @@ func (u *UsageLogUpsertBulk) AddCacheCreation12hTokens(v int) *UsageLogUpsertBul
 func (u *UsageLogUpsertBulk) UpdateCacheCreation12hTokens() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheCreation12hTokens()
+	})
+}
+
+// SetRawInputTokens sets the "raw_input_tokens" field.
+func (u *UsageLogUpsertBulk) SetRawInputTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRawInputTokens(v)
+	})
+}
+
+// AddRawInputTokens adds v to the "raw_input_tokens" field.
+func (u *UsageLogUpsertBulk) AddRawInputTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRawInputTokens(v)
+	})
+}
+
+// UpdateRawInputTokens sets the "raw_input_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRawInputTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRawInputTokens()
+	})
+}
+
+// ClearRawInputTokens clears the value of the "raw_input_tokens" field.
+func (u *UsageLogUpsertBulk) ClearRawInputTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRawInputTokens()
+	})
+}
+
+// SetRawOutputTokens sets the "raw_output_tokens" field.
+func (u *UsageLogUpsertBulk) SetRawOutputTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRawOutputTokens(v)
+	})
+}
+
+// AddRawOutputTokens adds v to the "raw_output_tokens" field.
+func (u *UsageLogUpsertBulk) AddRawOutputTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRawOutputTokens(v)
+	})
+}
+
+// UpdateRawOutputTokens sets the "raw_output_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRawOutputTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRawOutputTokens()
+	})
+}
+
+// ClearRawOutputTokens clears the value of the "raw_output_tokens" field.
+func (u *UsageLogUpsertBulk) ClearRawOutputTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRawOutputTokens()
+	})
+}
+
+// SetRawCacheReadTokens sets the "raw_cache_read_tokens" field.
+func (u *UsageLogUpsertBulk) SetRawCacheReadTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRawCacheReadTokens(v)
+	})
+}
+
+// AddRawCacheReadTokens adds v to the "raw_cache_read_tokens" field.
+func (u *UsageLogUpsertBulk) AddRawCacheReadTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRawCacheReadTokens(v)
+	})
+}
+
+// UpdateRawCacheReadTokens sets the "raw_cache_read_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRawCacheReadTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRawCacheReadTokens()
+	})
+}
+
+// ClearRawCacheReadTokens clears the value of the "raw_cache_read_tokens" field.
+func (u *UsageLogUpsertBulk) ClearRawCacheReadTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRawCacheReadTokens()
+	})
+}
+
+// SetRawCacheCreationTokens sets the "raw_cache_creation_tokens" field.
+func (u *UsageLogUpsertBulk) SetRawCacheCreationTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRawCacheCreationTokens(v)
+	})
+}
+
+// AddRawCacheCreationTokens adds v to the "raw_cache_creation_tokens" field.
+func (u *UsageLogUpsertBulk) AddRawCacheCreationTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRawCacheCreationTokens(v)
+	})
+}
+
+// UpdateRawCacheCreationTokens sets the "raw_cache_creation_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRawCacheCreationTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRawCacheCreationTokens()
+	})
+}
+
+// ClearRawCacheCreationTokens clears the value of the "raw_cache_creation_tokens" field.
+func (u *UsageLogUpsertBulk) ClearRawCacheCreationTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRawCacheCreationTokens()
+	})
+}
+
+// SetRawTotalCost sets the "raw_total_cost" field.
+func (u *UsageLogUpsertBulk) SetRawTotalCost(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRawTotalCost(v)
+	})
+}
+
+// AddRawTotalCost adds v to the "raw_total_cost" field.
+func (u *UsageLogUpsertBulk) AddRawTotalCost(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRawTotalCost(v)
+	})
+}
+
+// UpdateRawTotalCost sets the "raw_total_cost" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRawTotalCost() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRawTotalCost()
+	})
+}
+
+// ClearRawTotalCost clears the value of the "raw_total_cost" field.
+func (u *UsageLogUpsertBulk) ClearRawTotalCost() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRawTotalCost()
 	})
 }
 

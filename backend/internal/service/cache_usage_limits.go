@@ -35,6 +35,9 @@ func lookupCacheModelLimits(model string) cacheModelLimits {
 }
 
 func (p *cacheEmulationPlan) enforceUsageLimits(u *ClaudeUsage, raw ClaudeUsage) {
+	if p != nil && u != nil {
+		defer enforceNonzeroClaudeUsage(u, raw)
+	}
 	if p == nil || p.profile == nil || u == nil || p.skipProjection() || !p.usagePolicy.Enabled {
 		return
 	}

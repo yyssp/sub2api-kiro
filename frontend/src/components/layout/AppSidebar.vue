@@ -859,6 +859,7 @@ const adminNavItems = computed((): NavItem[] => {
       ],
     },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
+    { path: '/admin/usage/shaping', label: t('admin.usageShaping.title'), icon: ChartIcon },
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
 
@@ -918,6 +919,7 @@ function handleMenuItemClick(itemPath: string) {
 }
 
 function isActive(path: string): boolean {
+  if (path === '/admin/usage' && route.path.startsWith('/admin/usage/shaping')) return false
   return route.path === path || route.path.startsWith(path + '/')
 }
 

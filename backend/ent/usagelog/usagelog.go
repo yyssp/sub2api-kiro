@@ -64,6 +64,16 @@ const (
 	FieldCacheCreation30mTokens = "cache_creation_30m_tokens"
 	// FieldCacheCreation12hTokens holds the string denoting the cache_creation_12h_tokens field in the database.
 	FieldCacheCreation12hTokens = "cache_creation_12h_tokens"
+	// FieldRawInputTokens holds the string denoting the raw_input_tokens field in the database.
+	FieldRawInputTokens = "raw_input_tokens"
+	// FieldRawOutputTokens holds the string denoting the raw_output_tokens field in the database.
+	FieldRawOutputTokens = "raw_output_tokens"
+	// FieldRawCacheReadTokens holds the string denoting the raw_cache_read_tokens field in the database.
+	FieldRawCacheReadTokens = "raw_cache_read_tokens"
+	// FieldRawCacheCreationTokens holds the string denoting the raw_cache_creation_tokens field in the database.
+	FieldRawCacheCreationTokens = "raw_cache_creation_tokens"
+	// FieldRawTotalCost holds the string denoting the raw_total_cost field in the database.
+	FieldRawTotalCost = "raw_total_cost"
 	// FieldInputCost holds the string denoting the input_cost field in the database.
 	FieldInputCost = "input_cost"
 	// FieldOutputCost holds the string denoting the output_cost field in the database.
@@ -193,6 +203,11 @@ var Columns = []string{
 	FieldCacheCreation1hTokens,
 	FieldCacheCreation30mTokens,
 	FieldCacheCreation12hTokens,
+	FieldRawInputTokens,
+	FieldRawOutputTokens,
+	FieldRawCacheReadTokens,
+	FieldRawCacheCreationTokens,
+	FieldRawTotalCost,
 	FieldInputCost,
 	FieldOutputCost,
 	FieldCacheCreationCost,
@@ -441,6 +456,31 @@ func ByCacheCreation30mTokens(opts ...sql.OrderTermOption) OrderOption {
 // ByCacheCreation12hTokens orders the results by the cache_creation_12h_tokens field.
 func ByCacheCreation12hTokens(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCacheCreation12hTokens, opts...).ToFunc()
+}
+
+// ByRawInputTokens orders the results by the raw_input_tokens field.
+func ByRawInputTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRawInputTokens, opts...).ToFunc()
+}
+
+// ByRawOutputTokens orders the results by the raw_output_tokens field.
+func ByRawOutputTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRawOutputTokens, opts...).ToFunc()
+}
+
+// ByRawCacheReadTokens orders the results by the raw_cache_read_tokens field.
+func ByRawCacheReadTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRawCacheReadTokens, opts...).ToFunc()
+}
+
+// ByRawCacheCreationTokens orders the results by the raw_cache_creation_tokens field.
+func ByRawCacheCreationTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRawCacheCreationTokens, opts...).ToFunc()
+}
+
+// ByRawTotalCost orders the results by the raw_total_cost field.
+func ByRawTotalCost(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRawTotalCost, opts...).ToFunc()
 }
 
 // ByInputCost orders the results by the input_cost field.

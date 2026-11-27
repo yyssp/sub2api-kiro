@@ -224,3 +224,37 @@ export const adminUsageAPI = {
 }
 
 export default adminUsageAPI
+
+export interface UsageShapingMetrics {
+  requests: number
+  comparable_requests: number
+  before_tokens: number
+  after_tokens: number
+  before_cost: number
+  after_cost: number
+}
+export interface UsageShapingStat extends UsageShapingMetrics {
+  id: number | null
+  name: string
+}
+export interface UsageShapingPoint extends UsageShapingMetrics {
+  id: number | null
+  bucket: string
+}
+export interface UsageShapingStats {
+  summary: UsageShapingMetrics
+  breakdown: UsageShapingStat[]
+  series: UsageShapingPoint[]
+  buckets: string[]
+  granularity: 'day' | 'hour'
+}
+export async function getShapingStats(params: {
+  dimension: 'account' | 'group'
+  start_date: string
+  end_date: string
+  timezone: string
+  granularity?: 'day' | 'hour'
+}, signal?: AbortSignal): Promise<UsageShapingStats> {
+  const { data } = await apiClient.get<UsageShapingStats>('/admin/usage/shaping-stats', { params, signal })
+  return data
+}

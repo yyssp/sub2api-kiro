@@ -225,7 +225,7 @@ func TestCacheInteractionGeminiImageAndFailurePassthrough(t *testing.T) {
 		}
 		out, u := shapeGeminiResponse(c, body)
 		require.JSONEq(t, string(body), string(out))
-		require.Equal(t, extractGeminiUsage(body), u)
+		require.Equal(t, extractGeminiUsage(body).billingUsageTokens(), u.billingUsageTokens())
 	}
 }
 

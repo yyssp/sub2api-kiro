@@ -103,6 +103,13 @@ func (UsageLog) Fields() []ent.Field {
 		field.Int("cache_creation_12h_tokens").
 			Default(0),
 
+		field.Int("raw_input_tokens").Optional().Nillable(),
+		field.Int("raw_output_tokens").Optional().Nillable(),
+		field.Int("raw_cache_read_tokens").Optional().Nillable(),
+		field.Int("raw_cache_creation_tokens").Optional().Nillable(),
+
+		field.Float("raw_total_cost").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+
 		// 成本字段
 		field.Float("input_cost").
 			Default(0).

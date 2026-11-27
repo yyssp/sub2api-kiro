@@ -12,17 +12,16 @@ import (
 func shapeGeminiResponse(c *gin.Context, body []byte) ([]byte, *ClaudeUsage) {
 	p := cachePlanFromContext(c)
 	raw := extractGeminiUsage(body)
-	if raw == nil || p == nil || normalizeCacheProtocol(p.policyConfig().Protocol) != PlatformGemini || p.skipProjection() || !p.usagePolicy.Enabled {
+	if p == nil || normalizeCacheProtocol(p.policyConfig().Protocol) != PlatformGemini {
 		return body, raw
+	}
+	if raw == nil {
+		raw = &ClaudeUsage{}
 	}
 	if _, failed := detectGeminiResponseSignalInBody(body); failed || c != nil && c.GetBool(geminiCacheFailedKey) {
+		p.repairClaudeUsage(raw)
+		markEmptyUsageResponse(c, raw)
 		return body, raw
-	}
-	if p.policyConfig().Kind == CacheStrategyKindToolPlus {
-		_, rawMode, _ := p.selectedPlusProfile()
-		if rawMode {
-			return body, raw
-		}
 	}
 	// Streaming usage frames are cumulative but may omit unchanged prompt/detail fields.
 	// Keep only raw metadata so later frames never amplify an already projected value.
@@ -38,6 +37,8 @@ func shapeGeminiResponse(c *gin.Context, body []byte) ([]byte, *ClaudeUsage) {
 			for key, value := range incoming {
 				metadata[key] = value
 			}
+		}
+		if len(metadata) > 0 {
 			c.Set(geminiCacheRawMetadataKey, metadata)
 			if merged, err := sjson.SetBytes(body, "usageMetadata", metadata); err == nil {
 				body = merged
@@ -50,6 +51,7 @@ func shapeGeminiResponse(c *gin.Context, body []byte) ([]byte, *ClaudeUsage) {
 		return body, raw
 	}
 	u := projectGeminiCacheUsage(p, *raw)
+	markEmptyUsageResponse(c, &u)
 	metadata := gjson.GetBytes(body, "usageMetadata")
 	thoughts := int(metadata.Get("thoughtsTokenCount").Int())
 	if raw.OutputTokens > 0 {
@@ -70,7 +72,7 @@ func shapeGeminiResponse(c *gin.Context, body []byte) ([]byte, *ClaudeUsage) {
 		}
 	}
 	if u.InputTokens == raw.InputTokens && u.CacheReadInputTokens == raw.CacheReadInputTokens && u.OutputTokens == raw.OutputTokens {
-		return body, raw
+		return body, &u
 	}
 	// Modality breakdowns describe upstream totals and cannot describe synthetic buckets.
 	for _, field := range []string{"promptTokensDetails", "cacheTokensDetails", "candidatesTokensDetails"} {

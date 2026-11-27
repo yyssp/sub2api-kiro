@@ -153,7 +153,7 @@ func TestCacheProtocolGeminiExplicitCacheAndDisabledProjection(t *testing.T) {
 	raw := ClaudeUsage{InputTokens: 10, CacheReadInputTokens: 100, OutputTokens: 20}
 	require.Equal(t, 100, projectGeminiCacheUsage(p, raw).CacheReadInputTokens)
 	p.usagePolicy.Enabled = false
-	require.Equal(t, raw, projectGeminiCacheUsage(p, raw))
+	require.Equal(t, raw.billingUsageTokens(), projectGeminiCacheUsage(p, raw).billingUsageTokens())
 	// A Gemini strategy must not shape Claude usage even in the no-plan fallback.
 	c, _ := gin.CreateTestContext(nil)
 	SetCacheGroupContext(c, group)

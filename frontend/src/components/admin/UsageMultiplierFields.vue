@@ -8,7 +8,7 @@ const { t } = useI18n()
 const fields = computed(() => config.value.protocol === 'gemini'
   ? ['input', 'output', 'cache_read'] as const : ['input', 'output', 'cache_read', 'cache_creation'] as const)
 const label = (key: string) => t(`admin.cacheStrategies.multiplier.${key}`)
-const example = (threshold: number, multiplier: number) => 1200 > threshold ? Math.round(1200 * multiplier) : 1200
+const example = (field: string, threshold: number, multiplier: number) => Math.max(field === 'input' || field === 'output' ? 1 : 0, 1200 > threshold ? Math.round(1200 * multiplier) : 1200)
 </script>
 
 <template>
@@ -21,7 +21,7 @@ const example = (threshold: number, multiplier: number) => 1200 > threshold ? Ma
         <h4 class="font-medium">{{ label(field) }}</h4>
         <label class="block text-sm">{{ label('threshold') }}<input v-model.number="config.usage_multiplier[field].threshold_tokens" :data-field="`${field}-threshold`" type="number" required min="0" max="4000000" step="1" class="input mt-1" /></label>
         <label class="block text-sm">{{ label('factor') }}<input v-model.number="config.usage_multiplier[field].multiplier" :data-field="`${field}-multiplier`" type="number" required min="0" max="1000" step="0.01" class="input mt-1" /></label>
-        <p class="text-xs text-gray-500">{{ label('preview') }}：1,200 → {{ example(config.usage_multiplier[field].threshold_tokens, config.usage_multiplier[field].multiplier).toLocaleString() }}</p>
+        <p class="text-xs text-gray-500">{{ label('preview') }}：1,200 → {{ example(field, config.usage_multiplier[field].threshold_tokens, config.usage_multiplier[field].multiplier).toLocaleString() }}</p>
       </div>
     </div>
     <p class="text-xs leading-5 text-gray-500">{{ label('example') }}</p>

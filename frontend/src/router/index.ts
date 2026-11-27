@@ -682,6 +682,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/usage/shaping',
+    name: 'AdminUsageShaping',
+    component: () => import('@/views/admin/UsageShapingStatsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, titleKey: 'admin.usageShaping.title', descriptionKey: 'admin.usageShaping.description' }
+  },
+  {
     path: '/admin/usage',
     name: 'AdminUsage',
     component: () => import('@/views/admin/UsageView.vue'),

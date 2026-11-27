@@ -80,7 +80,7 @@ func TestCacheUsageExtremeMatrix(t *testing.T) {
 								require.LessOrEqual(t, total+u.OutputTokens, model.context)
 							}
 							if n == 0 {
-								require.Zero(t, total)
+								require.Positive(t, u.InputTokens)
 							}
 							if wire == "gemini" {
 								require.Zero(t, u.CacheCreationInputTokens)
@@ -148,6 +148,7 @@ func TestCacheUsageRawAndSkipRemainUntouched(t *testing.T) {
 				} else {
 					p.projectClaude(&u)
 				}
+				u.rawUsage = nil
 				require.Equal(t, raw, u)
 			})
 		}

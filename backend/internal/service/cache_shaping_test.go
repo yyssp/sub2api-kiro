@@ -167,7 +167,7 @@ func TestAdvancedCacheEligibilityDoesNotCommitOrRewrite(t *testing.T) {
 	raw := ClaudeUsage{InputTokens: 20, OutputTokens: 3}
 	got := raw
 	p.projectClaude(&got)
-	require.Equal(t, raw, got)
+	require.Equal(t, raw.billingUsageTokens(), got.billingUsageTokens())
 	p.commit()
 	require.False(t, p.committed.Load(), "ineligible request must not commit")
 }

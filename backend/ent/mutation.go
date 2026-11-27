@@ -47050,6 +47050,16 @@ type UsageLogMutation struct {
 	addcache_creation_30m_tokens *int
 	cache_creation_12h_tokens    *int
 	addcache_creation_12h_tokens *int
+	raw_input_tokens             *int
+	addraw_input_tokens          *int
+	raw_output_tokens            *int
+	addraw_output_tokens         *int
+	raw_cache_read_tokens        *int
+	addraw_cache_read_tokens     *int
+	raw_cache_creation_tokens    *int
+	addraw_cache_creation_tokens *int
+	raw_total_cost               *float64
+	addraw_total_cost            *float64
 	input_cost                   *float64
 	addinput_cost                *float64
 	output_cost                  *float64
@@ -48460,6 +48470,356 @@ func (m *UsageLogMutation) AddedCacheCreation12hTokens() (r int, exists bool) {
 func (m *UsageLogMutation) ResetCacheCreation12hTokens() {
 	m.cache_creation_12h_tokens = nil
 	m.addcache_creation_12h_tokens = nil
+}
+
+// SetRawInputTokens sets the "raw_input_tokens" field.
+func (m *UsageLogMutation) SetRawInputTokens(i int) {
+	m.raw_input_tokens = &i
+	m.addraw_input_tokens = nil
+}
+
+// RawInputTokens returns the value of the "raw_input_tokens" field in the mutation.
+func (m *UsageLogMutation) RawInputTokens() (r int, exists bool) {
+	v := m.raw_input_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRawInputTokens returns the old "raw_input_tokens" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRawInputTokens(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRawInputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRawInputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRawInputTokens: %w", err)
+	}
+	return oldValue.RawInputTokens, nil
+}
+
+// AddRawInputTokens adds i to the "raw_input_tokens" field.
+func (m *UsageLogMutation) AddRawInputTokens(i int) {
+	if m.addraw_input_tokens != nil {
+		*m.addraw_input_tokens += i
+	} else {
+		m.addraw_input_tokens = &i
+	}
+}
+
+// AddedRawInputTokens returns the value that was added to the "raw_input_tokens" field in this mutation.
+func (m *UsageLogMutation) AddedRawInputTokens() (r int, exists bool) {
+	v := m.addraw_input_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRawInputTokens clears the value of the "raw_input_tokens" field.
+func (m *UsageLogMutation) ClearRawInputTokens() {
+	m.raw_input_tokens = nil
+	m.addraw_input_tokens = nil
+	m.clearedFields[usagelog.FieldRawInputTokens] = struct{}{}
+}
+
+// RawInputTokensCleared returns if the "raw_input_tokens" field was cleared in this mutation.
+func (m *UsageLogMutation) RawInputTokensCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRawInputTokens]
+	return ok
+}
+
+// ResetRawInputTokens resets all changes to the "raw_input_tokens" field.
+func (m *UsageLogMutation) ResetRawInputTokens() {
+	m.raw_input_tokens = nil
+	m.addraw_input_tokens = nil
+	delete(m.clearedFields, usagelog.FieldRawInputTokens)
+}
+
+// SetRawOutputTokens sets the "raw_output_tokens" field.
+func (m *UsageLogMutation) SetRawOutputTokens(i int) {
+	m.raw_output_tokens = &i
+	m.addraw_output_tokens = nil
+}
+
+// RawOutputTokens returns the value of the "raw_output_tokens" field in the mutation.
+func (m *UsageLogMutation) RawOutputTokens() (r int, exists bool) {
+	v := m.raw_output_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRawOutputTokens returns the old "raw_output_tokens" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRawOutputTokens(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRawOutputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRawOutputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRawOutputTokens: %w", err)
+	}
+	return oldValue.RawOutputTokens, nil
+}
+
+// AddRawOutputTokens adds i to the "raw_output_tokens" field.
+func (m *UsageLogMutation) AddRawOutputTokens(i int) {
+	if m.addraw_output_tokens != nil {
+		*m.addraw_output_tokens += i
+	} else {
+		m.addraw_output_tokens = &i
+	}
+}
+
+// AddedRawOutputTokens returns the value that was added to the "raw_output_tokens" field in this mutation.
+func (m *UsageLogMutation) AddedRawOutputTokens() (r int, exists bool) {
+	v := m.addraw_output_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRawOutputTokens clears the value of the "raw_output_tokens" field.
+func (m *UsageLogMutation) ClearRawOutputTokens() {
+	m.raw_output_tokens = nil
+	m.addraw_output_tokens = nil
+	m.clearedFields[usagelog.FieldRawOutputTokens] = struct{}{}
+}
+
+// RawOutputTokensCleared returns if the "raw_output_tokens" field was cleared in this mutation.
+func (m *UsageLogMutation) RawOutputTokensCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRawOutputTokens]
+	return ok
+}
+
+// ResetRawOutputTokens resets all changes to the "raw_output_tokens" field.
+func (m *UsageLogMutation) ResetRawOutputTokens() {
+	m.raw_output_tokens = nil
+	m.addraw_output_tokens = nil
+	delete(m.clearedFields, usagelog.FieldRawOutputTokens)
+}
+
+// SetRawCacheReadTokens sets the "raw_cache_read_tokens" field.
+func (m *UsageLogMutation) SetRawCacheReadTokens(i int) {
+	m.raw_cache_read_tokens = &i
+	m.addraw_cache_read_tokens = nil
+}
+
+// RawCacheReadTokens returns the value of the "raw_cache_read_tokens" field in the mutation.
+func (m *UsageLogMutation) RawCacheReadTokens() (r int, exists bool) {
+	v := m.raw_cache_read_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRawCacheReadTokens returns the old "raw_cache_read_tokens" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRawCacheReadTokens(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRawCacheReadTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRawCacheReadTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRawCacheReadTokens: %w", err)
+	}
+	return oldValue.RawCacheReadTokens, nil
+}
+
+// AddRawCacheReadTokens adds i to the "raw_cache_read_tokens" field.
+func (m *UsageLogMutation) AddRawCacheReadTokens(i int) {
+	if m.addraw_cache_read_tokens != nil {
+		*m.addraw_cache_read_tokens += i
+	} else {
+		m.addraw_cache_read_tokens = &i
+	}
+}
+
+// AddedRawCacheReadTokens returns the value that was added to the "raw_cache_read_tokens" field in this mutation.
+func (m *UsageLogMutation) AddedRawCacheReadTokens() (r int, exists bool) {
+	v := m.addraw_cache_read_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRawCacheReadTokens clears the value of the "raw_cache_read_tokens" field.
+func (m *UsageLogMutation) ClearRawCacheReadTokens() {
+	m.raw_cache_read_tokens = nil
+	m.addraw_cache_read_tokens = nil
+	m.clearedFields[usagelog.FieldRawCacheReadTokens] = struct{}{}
+}
+
+// RawCacheReadTokensCleared returns if the "raw_cache_read_tokens" field was cleared in this mutation.
+func (m *UsageLogMutation) RawCacheReadTokensCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRawCacheReadTokens]
+	return ok
+}
+
+// ResetRawCacheReadTokens resets all changes to the "raw_cache_read_tokens" field.
+func (m *UsageLogMutation) ResetRawCacheReadTokens() {
+	m.raw_cache_read_tokens = nil
+	m.addraw_cache_read_tokens = nil
+	delete(m.clearedFields, usagelog.FieldRawCacheReadTokens)
+}
+
+// SetRawCacheCreationTokens sets the "raw_cache_creation_tokens" field.
+func (m *UsageLogMutation) SetRawCacheCreationTokens(i int) {
+	m.raw_cache_creation_tokens = &i
+	m.addraw_cache_creation_tokens = nil
+}
+
+// RawCacheCreationTokens returns the value of the "raw_cache_creation_tokens" field in the mutation.
+func (m *UsageLogMutation) RawCacheCreationTokens() (r int, exists bool) {
+	v := m.raw_cache_creation_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRawCacheCreationTokens returns the old "raw_cache_creation_tokens" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRawCacheCreationTokens(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRawCacheCreationTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRawCacheCreationTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRawCacheCreationTokens: %w", err)
+	}
+	return oldValue.RawCacheCreationTokens, nil
+}
+
+// AddRawCacheCreationTokens adds i to the "raw_cache_creation_tokens" field.
+func (m *UsageLogMutation) AddRawCacheCreationTokens(i int) {
+	if m.addraw_cache_creation_tokens != nil {
+		*m.addraw_cache_creation_tokens += i
+	} else {
+		m.addraw_cache_creation_tokens = &i
+	}
+}
+
+// AddedRawCacheCreationTokens returns the value that was added to the "raw_cache_creation_tokens" field in this mutation.
+func (m *UsageLogMutation) AddedRawCacheCreationTokens() (r int, exists bool) {
+	v := m.addraw_cache_creation_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRawCacheCreationTokens clears the value of the "raw_cache_creation_tokens" field.
+func (m *UsageLogMutation) ClearRawCacheCreationTokens() {
+	m.raw_cache_creation_tokens = nil
+	m.addraw_cache_creation_tokens = nil
+	m.clearedFields[usagelog.FieldRawCacheCreationTokens] = struct{}{}
+}
+
+// RawCacheCreationTokensCleared returns if the "raw_cache_creation_tokens" field was cleared in this mutation.
+func (m *UsageLogMutation) RawCacheCreationTokensCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRawCacheCreationTokens]
+	return ok
+}
+
+// ResetRawCacheCreationTokens resets all changes to the "raw_cache_creation_tokens" field.
+func (m *UsageLogMutation) ResetRawCacheCreationTokens() {
+	m.raw_cache_creation_tokens = nil
+	m.addraw_cache_creation_tokens = nil
+	delete(m.clearedFields, usagelog.FieldRawCacheCreationTokens)
+}
+
+// SetRawTotalCost sets the "raw_total_cost" field.
+func (m *UsageLogMutation) SetRawTotalCost(f float64) {
+	m.raw_total_cost = &f
+	m.addraw_total_cost = nil
+}
+
+// RawTotalCost returns the value of the "raw_total_cost" field in the mutation.
+func (m *UsageLogMutation) RawTotalCost() (r float64, exists bool) {
+	v := m.raw_total_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRawTotalCost returns the old "raw_total_cost" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRawTotalCost(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRawTotalCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRawTotalCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRawTotalCost: %w", err)
+	}
+	return oldValue.RawTotalCost, nil
+}
+
+// AddRawTotalCost adds f to the "raw_total_cost" field.
+func (m *UsageLogMutation) AddRawTotalCost(f float64) {
+	if m.addraw_total_cost != nil {
+		*m.addraw_total_cost += f
+	} else {
+		m.addraw_total_cost = &f
+	}
+}
+
+// AddedRawTotalCost returns the value that was added to the "raw_total_cost" field in this mutation.
+func (m *UsageLogMutation) AddedRawTotalCost() (r float64, exists bool) {
+	v := m.addraw_total_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRawTotalCost clears the value of the "raw_total_cost" field.
+func (m *UsageLogMutation) ClearRawTotalCost() {
+	m.raw_total_cost = nil
+	m.addraw_total_cost = nil
+	m.clearedFields[usagelog.FieldRawTotalCost] = struct{}{}
+}
+
+// RawTotalCostCleared returns if the "raw_total_cost" field was cleared in this mutation.
+func (m *UsageLogMutation) RawTotalCostCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRawTotalCost]
+	return ok
+}
+
+// ResetRawTotalCost resets all changes to the "raw_total_cost" field.
+func (m *UsageLogMutation) ResetRawTotalCost() {
+	m.raw_total_cost = nil
+	m.addraw_total_cost = nil
+	delete(m.clearedFields, usagelog.FieldRawTotalCost)
 }
 
 // SetInputCost sets the "input_cost" field.
@@ -50007,7 +50367,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 51)
+	fields := make([]string, 0, 56)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -50082,6 +50442,21 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.cache_creation_12h_tokens != nil {
 		fields = append(fields, usagelog.FieldCacheCreation12hTokens)
+	}
+	if m.raw_input_tokens != nil {
+		fields = append(fields, usagelog.FieldRawInputTokens)
+	}
+	if m.raw_output_tokens != nil {
+		fields = append(fields, usagelog.FieldRawOutputTokens)
+	}
+	if m.raw_cache_read_tokens != nil {
+		fields = append(fields, usagelog.FieldRawCacheReadTokens)
+	}
+	if m.raw_cache_creation_tokens != nil {
+		fields = append(fields, usagelog.FieldRawCacheCreationTokens)
+	}
+	if m.raw_total_cost != nil {
+		fields = append(fields, usagelog.FieldRawTotalCost)
 	}
 	if m.input_cost != nil {
 		fields = append(fields, usagelog.FieldInputCost)
@@ -50219,6 +50594,16 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.CacheCreation30mTokens()
 	case usagelog.FieldCacheCreation12hTokens:
 		return m.CacheCreation12hTokens()
+	case usagelog.FieldRawInputTokens:
+		return m.RawInputTokens()
+	case usagelog.FieldRawOutputTokens:
+		return m.RawOutputTokens()
+	case usagelog.FieldRawCacheReadTokens:
+		return m.RawCacheReadTokens()
+	case usagelog.FieldRawCacheCreationTokens:
+		return m.RawCacheCreationTokens()
+	case usagelog.FieldRawTotalCost:
+		return m.RawTotalCost()
 	case usagelog.FieldInputCost:
 		return m.InputCost()
 	case usagelog.FieldOutputCost:
@@ -50330,6 +50715,16 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldCacheCreation30mTokens(ctx)
 	case usagelog.FieldCacheCreation12hTokens:
 		return m.OldCacheCreation12hTokens(ctx)
+	case usagelog.FieldRawInputTokens:
+		return m.OldRawInputTokens(ctx)
+	case usagelog.FieldRawOutputTokens:
+		return m.OldRawOutputTokens(ctx)
+	case usagelog.FieldRawCacheReadTokens:
+		return m.OldRawCacheReadTokens(ctx)
+	case usagelog.FieldRawCacheCreationTokens:
+		return m.OldRawCacheCreationTokens(ctx)
+	case usagelog.FieldRawTotalCost:
+		return m.OldRawTotalCost(ctx)
 	case usagelog.FieldInputCost:
 		return m.OldInputCost(ctx)
 	case usagelog.FieldOutputCost:
@@ -50566,6 +50961,41 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCacheCreation12hTokens(v)
 		return nil
+	case usagelog.FieldRawInputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRawInputTokens(v)
+		return nil
+	case usagelog.FieldRawOutputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRawOutputTokens(v)
+		return nil
+	case usagelog.FieldRawCacheReadTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRawCacheReadTokens(v)
+		return nil
+	case usagelog.FieldRawCacheCreationTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRawCacheCreationTokens(v)
+		return nil
+	case usagelog.FieldRawTotalCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRawTotalCost(v)
+		return nil
 	case usagelog.FieldInputCost:
 		v, ok := value.(float64)
 		if !ok {
@@ -50786,6 +51216,21 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addcache_creation_12h_tokens != nil {
 		fields = append(fields, usagelog.FieldCacheCreation12hTokens)
 	}
+	if m.addraw_input_tokens != nil {
+		fields = append(fields, usagelog.FieldRawInputTokens)
+	}
+	if m.addraw_output_tokens != nil {
+		fields = append(fields, usagelog.FieldRawOutputTokens)
+	}
+	if m.addraw_cache_read_tokens != nil {
+		fields = append(fields, usagelog.FieldRawCacheReadTokens)
+	}
+	if m.addraw_cache_creation_tokens != nil {
+		fields = append(fields, usagelog.FieldRawCacheCreationTokens)
+	}
+	if m.addraw_total_cost != nil {
+		fields = append(fields, usagelog.FieldRawTotalCost)
+	}
 	if m.addinput_cost != nil {
 		fields = append(fields, usagelog.FieldInputCost)
 	}
@@ -50856,6 +51301,16 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedCacheCreation30mTokens()
 	case usagelog.FieldCacheCreation12hTokens:
 		return m.AddedCacheCreation12hTokens()
+	case usagelog.FieldRawInputTokens:
+		return m.AddedRawInputTokens()
+	case usagelog.FieldRawOutputTokens:
+		return m.AddedRawOutputTokens()
+	case usagelog.FieldRawCacheReadTokens:
+		return m.AddedRawCacheReadTokens()
+	case usagelog.FieldRawCacheCreationTokens:
+		return m.AddedRawCacheCreationTokens()
+	case usagelog.FieldRawTotalCost:
+		return m.AddedRawTotalCost()
 	case usagelog.FieldInputCost:
 		return m.AddedInputCost()
 	case usagelog.FieldOutputCost:
@@ -50962,6 +51417,41 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddCacheCreation12hTokens(v)
+		return nil
+	case usagelog.FieldRawInputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRawInputTokens(v)
+		return nil
+	case usagelog.FieldRawOutputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRawOutputTokens(v)
+		return nil
+	case usagelog.FieldRawCacheReadTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRawCacheReadTokens(v)
+		return nil
+	case usagelog.FieldRawCacheCreationTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRawCacheCreationTokens(v)
+		return nil
+	case usagelog.FieldRawTotalCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRawTotalCost(v)
 		return nil
 	case usagelog.FieldInputCost:
 		v, ok := value.(float64)
@@ -51105,6 +51595,21 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldSubscriptionID) {
 		fields = append(fields, usagelog.FieldSubscriptionID)
 	}
+	if m.FieldCleared(usagelog.FieldRawInputTokens) {
+		fields = append(fields, usagelog.FieldRawInputTokens)
+	}
+	if m.FieldCleared(usagelog.FieldRawOutputTokens) {
+		fields = append(fields, usagelog.FieldRawOutputTokens)
+	}
+	if m.FieldCleared(usagelog.FieldRawCacheReadTokens) {
+		fields = append(fields, usagelog.FieldRawCacheReadTokens)
+	}
+	if m.FieldCleared(usagelog.FieldRawCacheCreationTokens) {
+		fields = append(fields, usagelog.FieldRawCacheCreationTokens)
+	}
+	if m.FieldCleared(usagelog.FieldRawTotalCost) {
+		fields = append(fields, usagelog.FieldRawTotalCost)
+	}
 	if m.FieldCleared(usagelog.FieldAccountRateMultiplier) {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
 	}
@@ -51190,6 +51695,21 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldSubscriptionID:
 		m.ClearSubscriptionID()
+		return nil
+	case usagelog.FieldRawInputTokens:
+		m.ClearRawInputTokens()
+		return nil
+	case usagelog.FieldRawOutputTokens:
+		m.ClearRawOutputTokens()
+		return nil
+	case usagelog.FieldRawCacheReadTokens:
+		m.ClearRawCacheReadTokens()
+		return nil
+	case usagelog.FieldRawCacheCreationTokens:
+		m.ClearRawCacheCreationTokens()
+		return nil
+	case usagelog.FieldRawTotalCost:
+		m.ClearRawTotalCost()
 		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		m.ClearAccountRateMultiplier()
@@ -51309,6 +51829,21 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldCacheCreation12hTokens:
 		m.ResetCacheCreation12hTokens()
+		return nil
+	case usagelog.FieldRawInputTokens:
+		m.ResetRawInputTokens()
+		return nil
+	case usagelog.FieldRawOutputTokens:
+		m.ResetRawOutputTokens()
+		return nil
+	case usagelog.FieldRawCacheReadTokens:
+		m.ResetRawCacheReadTokens()
+		return nil
+	case usagelog.FieldRawCacheCreationTokens:
+		m.ResetRawCacheCreationTokens()
+		return nil
+	case usagelog.FieldRawTotalCost:
+		m.ResetRawTotalCost()
 		return nil
 	case usagelog.FieldInputCost:
 		m.ResetInputCost()

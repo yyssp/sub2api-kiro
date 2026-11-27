@@ -4,7 +4,13 @@ import "math"
 
 // Advanced projection uses split input buckets internally; OpenAI totals are converted at the boundary.
 func (p *cacheEmulationPlan) projectClaude(dst *ClaudeUsage) {
-	if p == nil || dst == nil || p.skipProjection() || !p.usagePolicy.Enabled || normalizeCacheProtocol(p.policyConfig().Protocol) != PlatformAnthropic {
+	if p == nil || dst == nil || normalizeCacheProtocol(p.policyConfig().Protocol) != PlatformAnthropic {
+		return
+	}
+	p.repairClaudeUsage(dst)
+	defer func(raw ClaudeUsage) { enforceNonzeroClaudeUsage(dst, raw) }(*dst)
+	if p.guardOnly || p.skipProjection() || !p.usagePolicy.Enabled {
+		p.limitRepairedUsage(dst)
 		return
 	}
 	if p.policyConfig().Kind == CacheStrategyKindUsageMultiplier {
@@ -19,6 +25,7 @@ func (p *cacheEmulationPlan) projectClaude(dst *ClaudeUsage) {
 				dst.InputTokens = saturatingAddInt(dst.InputTokens, saturatingAddInt(dst.CacheReadInputTokens, dst.CacheCreationInputTokens))
 				dst.CacheReadInputTokens, dst.CacheCreationInputTokens, dst.CacheCreation5mTokens, dst.CacheCreation1hTokens = 0, 0, 0, 0
 			}
+			p.limitRepairedUsage(dst)
 			return
 		}
 	}
@@ -72,7 +79,21 @@ func (p *cacheEmulationPlan) projectClaude(dst *ClaudeUsage) {
 }
 
 func (p *cacheEmulationPlan) projectOpenAI(dst *OpenAIUsage) {
-	if p == nil || dst == nil || p.skipProjection() || !p.usagePolicy.Enabled || normalizeCacheProtocol(p.policyConfig().Protocol) != PlatformAnthropic {
+	if p == nil || dst == nil || normalizeCacheProtocol(p.policyConfig().Protocol) != PlatformAnthropic {
+		return
+	}
+	p.repairOpenAIUsage(dst)
+	defer func(raw OpenAIUsage) {
+		u := ClaudeUsage{InputTokens: max(dst.InputTokens-dst.CacheReadInputTokens-dst.CacheCreationInputTokens, 0), OutputTokens: dst.OutputTokens, CacheReadInputTokens: dst.CacheReadInputTokens, CacheCreationInputTokens: dst.CacheCreationInputTokens}
+		enforceNonzeroClaudeUsage(&u, ClaudeUsage{OutputTokens: raw.OutputTokens})
+		dst.InputTokens = saturatingAddInt(u.InputTokens, saturatingAddInt(u.CacheReadInputTokens, u.CacheCreationInputTokens))
+		dst.OutputTokens, dst.CacheReadInputTokens, dst.CacheCreationInputTokens = u.OutputTokens, u.CacheReadInputTokens, u.CacheCreationInputTokens
+	}(*dst)
+	if p.guardOnly || p.skipProjection() || !p.usagePolicy.Enabled {
+		u := ClaudeUsage{InputTokens: max(dst.InputTokens-dst.CacheReadInputTokens-dst.CacheCreationInputTokens, 0), OutputTokens: dst.OutputTokens, CacheReadInputTokens: dst.CacheReadInputTokens, CacheCreationInputTokens: dst.CacheCreationInputTokens, rawUsage: dst.rawUsage}
+		p.limitRepairedUsage(&u)
+		dst.InputTokens = saturatingAddInt(u.InputTokens, saturatingAddInt(u.CacheReadInputTokens, u.CacheCreationInputTokens))
+		dst.OutputTokens = u.OutputTokens
 		return
 	}
 	if p.policyConfig().Kind == CacheStrategyKindUsageMultiplier {
@@ -103,7 +124,7 @@ func (p *cacheEmulationPlan) projectOpenAI(dst *OpenAIUsage) {
 		return
 	}
 	// OpenAI input_tokens includes read and creation; Claude input_tokens excludes both.
-	u := ClaudeUsage{InputTokens: max(dst.InputTokens-dst.CacheReadInputTokens-dst.CacheCreationInputTokens, 0), OutputTokens: dst.OutputTokens, CacheReadInputTokens: dst.CacheReadInputTokens, CacheCreationInputTokens: dst.CacheCreationInputTokens, UpstreamBillingScale: dst.UpstreamBillingScale}
+	u := ClaudeUsage{InputTokens: max(dst.InputTokens-dst.CacheReadInputTokens-dst.CacheCreationInputTokens, 0), OutputTokens: dst.OutputTokens, CacheReadInputTokens: dst.CacheReadInputTokens, CacheCreationInputTokens: dst.CacheCreationInputTokens, UpstreamBillingScale: dst.UpstreamBillingScale, rawUsage: dst.rawUsage}
 	p.projectClaude(&u)
 	dst.InputTokens = saturatingAddInt(u.InputTokens, saturatingAddInt(u.CacheReadInputTokens, u.CacheCreationInputTokens))
 	dst.OutputTokens = u.OutputTokens

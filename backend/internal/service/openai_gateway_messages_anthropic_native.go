@@ -279,6 +279,9 @@ func (s *OpenAIGatewayService) handleNativeAnthropicBufferedResponse(
 		_, rewriteUsage = usagePolicyWithoutPlan(c)
 	}
 	mergeAndCommitCachePlan(c, usage, true)
+	if plan != nil && usage.rawUsage != nil && usage.billingUsageTokens() != usage.rawUsage.UpstreamTokens {
+		rewriteUsage = true
+	}
 	if rewriteUsage {
 		body = rewriteClaudeUsageJSON(body, usage)
 	}
@@ -364,6 +367,7 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 	}
 
 	usage := &ClaudeUsage{}
+	defer func() { finishUnreportedUsage(c, usage) }()
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawTerminalEvent := false
@@ -509,6 +513,11 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 					firstTokenMs = &ms
 				}
 				parseSSEUsagePassthrough(data, usage)
+				if plan := cachePlanFromContext(c); plan != nil {
+					if rewritten := rewriteAnthropicPassthroughUsageEvent(data, usage, plan); rewritten != data {
+						line = line[:len(line)-len(data)] + rewritten
+					}
+				}
 			} else {
 				trimmed := strings.TrimSpace(line)
 				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
@@ -593,6 +602,7 @@ func (s *OpenAIGatewayService) nativeAnthropicStreamResult(
 	if usage == nil {
 		usage = &ClaudeUsage{}
 	}
+	finishUnreportedUsage(c, usage)
 	return &OpenAIForwardResult{
 		RequestID:                     resp.Header.Get("x-request-id"),
 		UpstreamHeaders:               resp.Header,
@@ -628,5 +638,6 @@ func claudeUsageToOpenAIUsage(u *ClaudeUsage) OpenAIUsage {
 		CacheCreation1hTokens:           u.CacheCreation1hTokens,
 		CacheReadInputTokens:            u.CacheReadInputTokens,
 		cacheCreationInputTokensPresent: u.cacheCreationInputTokensPresent,
+		rawUsage:                        u.rawUsage,
 	}
 }

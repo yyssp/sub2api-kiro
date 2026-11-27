@@ -800,6 +800,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		opts = &recordUsageOpts{}
 	}
 	result := input.Result
+	result.Usage.captureRawUsage()
 	apiKey := input.APIKey
 	user := input.User
 	account := input.Account
@@ -840,6 +841,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	opts.IsKiroAccount = accountOpts.IsKiroAccount
 	opts.IsCursorAccount = accountOpts.IsCursorAccount
 	opts.ImageBillingPlatform = imageBillingPlatform(account)
+	comparisonModel := billingModel
 	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, pricingAt, opts)
 	// response_model：按上游成功响应自报的模型计费（渠道显式开启才生效）。
 	// 采纳条件见 responseModelBillingDeclaration + hasIdentifiedResponseModelPricing
@@ -859,11 +861,25 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 				// 因此这里不改写它，改由日志记录实际生效的计费基准。
 				logResponseModelBillingApplied("service.gateway", account, result.RequestID, billingModel, responseModel, cost, responseCost)
 				cost = responseCost
+				comparisonModel = responseModel
 			}
 		}
 	}
 
 	// 判断计费方式：订阅模式 vs 余额模式
+	upstreamTokens := result.Usage.rawUsage.UpstreamTokens
+	upstreamTotalCost := cost.TotalCost - cacheStorageCost
+	textUsage := result.ImageCount == 0 && result.AudioUsage == nil && result.SearchCount == 0 && result.CacheStorageTokenHours == 0
+	if textUsage && result.Usage.rawUsage != nil {
+		upstreamResult := *result
+		upstreamResult.Usage = result.Usage.rawUsage.upstreamClaudeUsage()
+		if upstreamCost := s.calculateRecordUsageCost(ctx, &upstreamResult, apiKey, comparisonModel, multiplier, imageMultiplier, pricingAt, opts); upstreamCost != nil {
+			upstreamTotalCost = upstreamCost.TotalCost
+		}
+		if result.Usage.rawUsage.isEmptyResponse() {
+			cost = &CostBreakdown{BillingMode: cost.BillingMode}
+		}
+	}
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 	billingType := BillingTypeBalance
 	if isSubscriptionBilling {
@@ -875,6 +891,16 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
 		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
 
+	if cost != nil && cost.BillingMode == string(BillingModeToken) && result.ImageCount == 0 && result.AudioUsage == nil && result.SearchCount == 0 && result.CacheStorageTokenHours == 0 {
+		rawResult := *result
+		rawResult.Usage = result.Usage.rawUsage.claudeUsage()
+		// Apply the same account TTL rule, without changing the preserved upstream snapshot.
+		if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account); ok {
+			applyCacheTTLOverride(&rawResult.Usage, overrideTarget)
+		}
+		usageLog.RawTotalCost = shapingCostValue(s.calculateRecordUsageCost(ctx, &rawResult, apiKey, comparisonModel, multiplier, imageMultiplier, pricingAt, opts))
+	}
+
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）。纯存储费不是一次模型请求，
 	// 账号统计成本回落 total_cost（官方存储价）。
 	if apiKey.GroupID != nil && !isCacheStorageOnlyResult(result) {
@@ -882,11 +908,14 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
 			// Anthropic's input_tokens excludes cache_read and cache_creation (billed separately);
 			// OpenAI gateway uses actualInputTokens which also excludes cache_read for the same reason.
-			result.Usage.billingUsageTokens(),
-			cost.TotalCost-cacheStorageCost, pricingAt,
+			upstreamTokens,
+			upstreamTotalCost, pricingAt,
 			accountStatsLongContextPricingEnabled(nil), result.upstreamPriceFactor(),
 		)
 		addCacheStorageToAccountStatsCost(usageLog, cacheStorageCost)
+	}
+	if textUsage && usageLog.AccountStatsCost == nil {
+		usageLog.AccountStatsCost = &upstreamTotalCost
 	}
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
@@ -1545,6 +1574,7 @@ func (s *GatewayService) buildRecordUsageLog(
 	cost *CostBreakdown,
 	opts *recordUsageOpts,
 ) *UsageLog {
+	result.Usage.captureRawUsage()
 	durationMs := int(result.Duration.Milliseconds())
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
 	sentModel := upstreamSentModel(result.Model, result.UpstreamModel)
@@ -1559,6 +1589,10 @@ func (s *GatewayService) buildRecordUsageLog(
 		)
 	}
 	usageLog := &UsageLog{
+		RawInputTokens:           &result.Usage.rawUsage.InputTokens,
+		RawOutputTokens:          &result.Usage.rawUsage.OutputTokens,
+		RawCacheReadTokens:       &result.Usage.rawUsage.CacheReadTokens,
+		RawCacheCreationTokens:   &result.Usage.rawUsage.CacheCreationTokens,
 		UserID:                   user.ID,
 		APIKeyID:                 apiKey.ID,
 		AccountID:                account.ID,

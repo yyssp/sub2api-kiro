@@ -9,6 +9,7 @@ import promptAudit from './promptAudit'
 import promptRules from './promptRules'
 import plugins from './plugins'
 import cacheStrategies from './cacheStrategies'
+import usageShaping from './usageShaping'
 
 export default {
   ...overview,
@@ -22,4 +23,5 @@ export default {
   ...promptRules,
   ...plugins,
   ...cacheStrategies,
+  ...usageShaping,
 }

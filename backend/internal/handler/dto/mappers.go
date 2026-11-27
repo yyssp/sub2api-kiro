@@ -785,6 +785,11 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	usageLog := usageLogFromServiceUser(l)
 	usageLog.UpstreamEndpoint = l.UpstreamEndpoint
 	return &AdminUsageLog{
+		RawTotalCost:            l.RawTotalCost,
+		RawInputTokens:          l.RawInputTokens,
+		RawOutputTokens:         l.RawOutputTokens,
+		RawCacheReadTokens:      l.RawCacheReadTokens,
+		RawCacheCreationTokens:  l.RawCacheCreationTokens,
 		UsageLog:                usageLog,
 		UpstreamModel:           l.UpstreamModel,
 		UpstreamReasoningEffort: adminUpstreamReasoningEffort(l),

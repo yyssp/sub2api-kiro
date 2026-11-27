@@ -158,8 +158,8 @@ func TestCacheUsageMultiplierZeroAndIdentity(t *testing.T) {
 		p.profile.policy.UsageMultiplier = CacheUsageMultiplierPolicy{}
 		u = raw
 		p.projectUsageMultiplier(&u)
-		require.Zero(t, u.InputTokens)
-		require.Zero(t, u.OutputTokens)
+		require.Equal(t, 1, u.InputTokens)
+		require.Equal(t, 1, u.OutputTokens)
 		require.Zero(t, u.CacheReadInputTokens)
 		require.Zero(t, u.CacheCreationInputTokens)
 		require.Zero(t, u.CacheCreation5mTokens)

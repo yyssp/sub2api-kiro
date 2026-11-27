@@ -309,9 +309,7 @@ func TestKiroRsToolTemplateRealDispatch(t *testing.T) {
 		}
 	}
 
-	// —— 断言 5：token_scale=1 不放大上报总量 ——
-	// 这是 kiro-rs-tool 与 prefix 档最直观的分野，所以拿同一份负载在 prefix 档
-	// （token_scale=2）下的实测值做对照，而不是一个拍脑袋的常数。
+	// Compare scaling before the prefix strategy reaches its independent input cap.
 	prefixCfg, err := service.NormalizeCacheStrategyConfig(service.DefaultCacheStrategyConfig(service.CacheStrategyKindPrefix))
 	require.NoError(t, err)
 	prefixRecords := runKiroRsTemplateSession(t, 99801, "prefix baseline for contrast", prefixCfg, turns)
@@ -321,9 +319,18 @@ func TestKiroRsToolTemplateRealDispatch(t *testing.T) {
 	prefixLast := prefixRecords[turns-1]
 	prefixTotal := prefixLast.Input + prefixLast.Read + prefixLast.Creation
 	require.Greater(t, lastTotal, 0)
-	require.Less(t, lastTotal, prefixTotal,
-		"kiro-rs-tool（token_scale=1）末轮上报总量 %d 必须低于 prefix 档（token_scale=2）的 %d",
-		lastTotal, prefixTotal)
+	compared := 0
+	for i := 1; i < turns; i++ {
+		toolTotal := records[i].Input + records[i].Read + records[i].Creation
+		prefixTurnTotal := prefixRecords[i].Input + prefixRecords[i].Read + prefixRecords[i].Creation
+		if prefixTurnTotal >= prefixCfg.MaxSimulatedInputTokens-prefixCfg.CapJitterMaxTokens {
+			continue
+		}
+		require.Less(t, toolTotal, prefixTurnTotal, "turn %d before the input cap", i+1)
+		compared++
+	}
+	require.Positive(t, compared, "must exercise scaling before the input cap")
+	require.LessOrEqual(t, prefixTotal, prefixCfg.MaxSimulatedInputTokens, "long sessions must obey the configured input cap")
 
 	// —— 输出 60 条缓存记录，供人工核对 ——
 	t.Logf("=== kiro-rs-tool 对齐模版：%d 轮真实调度产出的缓存记录 ===", turns)

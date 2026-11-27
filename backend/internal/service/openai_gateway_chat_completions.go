@@ -789,7 +789,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		logOpenAISuccessMissingUsage(c.Request.Context(), c, account, resp, &usage, "response.completed", false)
 	}
 	mergeAndCommitOpenAICachePlan(c, &usage, true)
-	if finalResponse.Usage == nil || usage.CacheReadInputTokens > 0 || usage.CacheCreationInputTokens > 0 {
+	if finalResponse.Usage == nil || usage.rawUsage != nil || usage.CacheReadInputTokens > 0 || usage.CacheCreationInputTokens > 0 {
 		finalResponse.Usage = responsesUsageFromOpenAIUsage(&usage)
 	}
 

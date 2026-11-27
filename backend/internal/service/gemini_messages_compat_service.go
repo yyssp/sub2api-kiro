@@ -2919,6 +2919,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 
 	reader := newBoundedSSELineReader(resp.Body, s.cfg)
 	usage := &ClaudeUsage{}
+	defer func() { finishUnreportedUsage(c, usage) }()
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -2962,6 +2963,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 					if sig, ok := detectGeminiResponseSignal(rawBytes); ok && sig.Kind > best.Kind {
 						best = sig
 					}
+					observer.ObserveGemini(rawBytes)
 					observeGeminiCacheCompletion(c, rawBytes)
 					shaped, u := shapeGeminiResponse(c, rawBytes)
 					if u != nil {
@@ -2971,7 +2973,6 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 						rawToWrite = string(shaped)
 						line = "data: " + rawToWrite + "\n"
 					}
-					observer.ObserveGemini(rawBytes)
 					observeGeminiImageOutputs(c, rawBytes)
 
 					if gjson.GetBytes(rawBytes, "candidates.0.finishReason").String() != "" {

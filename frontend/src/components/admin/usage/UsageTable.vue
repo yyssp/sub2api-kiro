@@ -157,6 +157,32 @@
           </span>
         </template>
 
+        <template #cell-raw_tokens="{ row }">
+          <div v-if="hasRawTokens(row)" class="space-y-1 text-sm" data-testid="raw-usage-tokens">
+            <div class="flex items-center gap-2">
+              <div class="inline-flex items-center gap-1" :title="t('admin.usage.inputTokens')">
+                <Icon name="arrowDown" size="sm" class="h-3.5 w-3.5 text-emerald-500" />
+                <span class="font-medium text-gray-900 dark:text-white">{{ row.raw_input_tokens?.toLocaleString() ?? '—' }}</span>
+              </div>
+              <div class="inline-flex items-center gap-1" :title="t('admin.usage.outputTokens')">
+                <Icon name="arrowUp" size="sm" class="h-3.5 w-3.5 text-violet-500" />
+                <span class="font-medium text-gray-900 dark:text-white">{{ row.raw_output_tokens?.toLocaleString() ?? '—' }}</span>
+              </div>
+            </div>
+            <div v-if="(row.raw_cache_read_tokens ?? 0) > 0 || (row.raw_cache_creation_tokens ?? 0) > 0" class="flex items-center gap-2">
+              <div v-if="(row.raw_cache_read_tokens ?? 0) > 0" class="inline-flex items-center gap-1" :title="t('admin.usage.cacheReadTokens')">
+                <svg class="h-3.5 w-3.5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+                <span class="font-medium text-sky-600 dark:text-sky-400">{{ formatCacheTokens(row.raw_cache_read_tokens ?? 0) }}</span>
+              </div>
+              <div v-if="(row.raw_cache_creation_tokens ?? 0) > 0" class="inline-flex items-center gap-1" :title="t('admin.usage.cacheCreationTokens')">
+                <svg class="h-3.5 w-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                <span class="font-medium text-amber-600 dark:text-amber-400">{{ formatCacheTokens(row.raw_cache_creation_tokens ?? 0) }}</span>
+              </div>
+            </div>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">—</span>
+        </template>
+
         <template #cell-tokens="{ row }">
           <!-- 图片生成请求（仅按次计费时显示图片格式） -->
           <div v-if="isImageUsage(row)" class="space-y-1 text-sm">
@@ -229,6 +255,15 @@
               </div>
             </div>
           </div>
+        </template>
+
+        <template #cell-raw_cost="{ row }">
+          <div v-if="row.raw_total_cost != null" class="text-sm" data-testid="raw-usage-cost" :title="t('admin.usage.rawCostHint')">
+            <div class="flex items-center gap-1.5">
+              <span class="font-medium text-green-600 dark:text-green-400">${{ row.raw_total_cost.toFixed(6) }}</span>
+            </div>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">—</span>
         </template>
 
         <template #cell-cost="{ row }">
@@ -663,6 +698,7 @@ const emit = defineEmits<{
   ipGeoBatchFailed: []
 }>()
 const { t } = useI18n()
+const hasRawTokens = (row: AdminUsageLog) => [row.raw_input_tokens, row.raw_output_tokens, row.raw_cache_read_tokens, row.raw_cache_creation_tokens].some(value => value != null)
 const appStore = useAppStore()
 const copiedRequestId = ref<string | null>(null)
 const showAccountBilling = props.showAccountBilling

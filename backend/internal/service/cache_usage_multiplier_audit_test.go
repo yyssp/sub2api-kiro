@@ -30,9 +30,10 @@ func TestCacheMultiplierAuditWriteBreakdownPreservesRatioAtLimit(t *testing.T) {
 	p.profile.policy.Limits.MaxInputTokens = 600
 	u := ClaudeUsage{InputTokens: 0, CacheCreationInputTokens: 1000, CacheCreation5mTokens: 600, CacheCreation1hTokens: 400}
 	p.projectClaude(&u)
-	require.Equal(t, 600, u.CacheCreationInputTokens)
+	require.Equal(t, 1, u.InputTokens)
+	require.Equal(t, 599, u.CacheCreationInputTokens)
 	require.Equal(t, 360, u.CacheCreation5mTokens)
-	require.Equal(t, 240, u.CacheCreation1hTokens)
+	require.Equal(t, 239, u.CacheCreation1hTokens)
 }
 
 func TestCacheMultiplierAuditOpenAIWriteDetailsAndCost(t *testing.T) {

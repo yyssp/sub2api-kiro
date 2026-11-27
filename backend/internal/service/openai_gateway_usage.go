@@ -185,6 +185,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
 	}
 
+	result.Usage.captureRawUsage()
 	apiKey := input.APIKey
 	user := input.User
 	account := input.Account
@@ -263,6 +264,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		pricingAt,
 		imagePlatform,
 	)
+	pricingAvailable := err == nil
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
 			return err
@@ -310,6 +312,28 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		}
 	}
 
+	var rawTotalCost *float64
+	upstreamTotalCost := cost.TotalCost
+	upstreamTokens := result.Usage.rawUsage.UpstreamTokens
+	textUsage := result.ImageCount == 0 && result.VideoCount == 0 && result.AudioUsage == nil && result.WebSearchCalls == 0 && result.SearchCount == 0
+	if pricingAvailable && cost != nil && (cost.BillingMode == "" || cost.BillingMode == string(BillingModeToken)) && result.ImageCount == 0 && result.VideoCount == 0 && result.AudioUsage == nil && result.WebSearchCalls == 0 && result.SearchCount == 0 {
+		rawCost, rawErr := s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, billingModels,
+			multiplier, imageMultiplier, videoMultiplier, baseMultiplier, result.Usage.rawUsage.Tokens,
+			serviceTier, longContextBillingGate, modelLongContextExempt, pricingAt, imagePlatform)
+		if rawErr == nil {
+			if rawCost != nil && rawCost.BillingMode == "" {
+				rawCost.BillingMode = string(BillingModeToken)
+			}
+			rawTotalCost = shapingCostValue(rawCost)
+		}
+		upstreamCost, upstreamErr := s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, billingModels,
+			multiplier, imageMultiplier, videoMultiplier, baseMultiplier, upstreamTokens,
+			serviceTier, longContextBillingGate, modelLongContextExempt, pricingAt, imagePlatform)
+		if upstreamErr == nil && upstreamCost != nil {
+			upstreamTotalCost = upstreamCost.TotalCost
+		}
+	}
+
 	// Free Fast changes only the customer charge. Keep priority TotalCost and
 	// service_tier for upstream accounting, but evaluate ActualCost once more at
 	// the Standard tier using the same channel, peak, and long-context policy.
@@ -341,6 +365,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	// Determine billing type
+	if textUsage && result.Usage.rawUsage.isEmptyResponse() {
+		cost = &CostBreakdown{BillingMode: cost.BillingMode}
+	}
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 	billingType := BillingTypeBalance
 	if isSubscriptionBilling {
@@ -395,6 +422,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		imageSizeBreakdown["image_cache_read_tokens"] = result.Usage.ImageCacheReadTokens
 	}
 	usageLog := &UsageLog{
+		RawTotalCost:             rawTotalCost,
+		RawInputTokens:           &result.Usage.rawUsage.InputTokens,
+		RawOutputTokens:          &result.Usage.rawUsage.OutputTokens,
+		RawCacheReadTokens:       &result.Usage.rawUsage.CacheReadTokens,
+		RawCacheCreationTokens:   &result.Usage.rawUsage.CacheCreationTokens,
 		UserID:                   user.ID,
 		APIKeyID:                 apiKey.ID,
 		AccountID:                account.ID,
@@ -514,9 +546,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if apiKey.GroupID != nil {
 		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
-			tokens, cost.TotalCost, pricingAt,
+			upstreamTokens, upstreamTotalCost, pricingAt,
 			accountStatsLongContextPricingEnabled(longContextBillingGate) && !modelLongContextExempt, 1,
 		)
+	}
+	if textUsage && usageLog.AccountStatsCost == nil {
+		usageLog.AccountStatsCost = &upstreamTotalCost
 	}
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)

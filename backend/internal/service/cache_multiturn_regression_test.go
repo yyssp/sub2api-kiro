@@ -1040,12 +1040,8 @@ func TestUsageTotalFloorTakesRoomFromReadNotCreation(t *testing.T) {
 	require.Equal(t, 1924, thin.InputTokens)
 }
 
-// 走真实上报链路（prepareCachePlanForContext → mergeAndCommitCachePlan）复现根因 ④：
-// 策略把 usage.input 压到 sample_max=20，投影后 input≈19 远低于 1024 的 uncached 下限，
-// 补差额时若先砍 creation，每轮那 500 多 token 的真实新增会被整个抹掉。
-//
-// 对齐线上策略 755 的形态（用户原话：「我压制了最大值为20」）。
-func TestReportedUsageKeepsCreationWhenInputFloorKicksIn(t *testing.T) {
+// An explicit input cap wins over the uncached floor without erasing new cache writes.
+func TestReportedUsageKeepsCreationWhenInputCapOverridesFloor(t *testing.T) {
 	resetCacheTracker()
 	strategyID := int64(900321)
 	cfg := DefaultCacheStrategyConfig(CacheStrategyKindPrefix)
@@ -1081,8 +1077,9 @@ func TestReportedUsageKeepsCreationWhenInputFloorKicksIn(t *testing.T) {
 		mergeAndCommitCachePlan(ctx, usage, true)
 		creations = append(creations, usage.CacheCreationInputTokens)
 		reads = append(reads, usage.CacheReadInputTokens)
-		require.GreaterOrEqual(t, usage.InputTokens, floor.min,
-			"第 %d 轮 input=%d 低于下限，这条用例没测到目标分支", turn, usage.InputTokens)
+		require.Positive(t, usage.InputTokens)
+		require.LessOrEqual(t, usage.InputTokens, cfg.Usage.Input.MaxTokens,
+			"turn %d: explicit input cap takes precedence over the uncached floor", turn)
 	}
 
 	checked := 0

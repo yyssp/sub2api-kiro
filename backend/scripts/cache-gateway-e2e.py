@@ -33,10 +33,13 @@ class Mock(BaseHTTPRequestHandler):
   if status!=200:self.wfile.write(b'{"error":{"type":"invalid_request_error","message":"mock failure"}}');return
   if gemini:
    usage={'promptTokenCount':raw['input']+raw['read'],'cachedContentTokenCount':raw['read'],'candidatesTokenCount':raw['output']*5//6,'thoughtsTokenCount':raw['output']-raw['output']*5//6,'totalTokenCount':raw['input']+raw['read']+raw['output']}
-   candidate={'index':0,'content':{'role':'model','parts':[{'text':'mock response'}]}}
+   parts=[{'text':cfg.get('response_text','mock response')}]
+   if cfg.get('tool_output'):parts=[{'functionCall':{'name':'lookup','args':{'query':'test'}}}]
+   candidate={'index':0,'content':{'role':'model','parts':parts}}
    if mode!='incomplete':candidate['finishReason']='STOP'
    if mode=='blocked':candidate['finishReason']='SAFETY'
    result={'modelVersion':'gemini-2.5-pro','candidates':[candidate],'usageMetadata':usage}
+   if mode=='missing_usage':result.pop('usageMetadata',None)
    if stream:
     if mode=='multiframe':
      for n in [999,1000,1001]:
@@ -44,15 +47,27 @@ class Mock(BaseHTTPRequestHandler):
       if n==999:item['usageMetadata']['promptTokenCount']=raw['input']+raw['read'];item['usageMetadata']['cachedContentTokenCount']=raw['read']
       if n!=1001:item['candidates'][0].pop('finishReason',None)
       self.wfile.write(('data: '+json.dumps(item)+'\n\n').encode());self.wfile.flush()
+    elif mode=='terminal_no_usage':
+     initial=copy.deepcopy(result);initial['candidates'][0].pop('finishReason',None);initial['candidates'][0]['content']['parts']=[]
+     self.wfile.write(('data: '+json.dumps(initial)+'\n\n').encode());self.wfile.flush()
+     result.pop('usageMetadata',None)
+     self.wfile.write(('data: '+json.dumps(result)+'\n\n').encode())
     else:self.wfile.write(('data: '+json.dumps(result)+'\n\n').encode())
    else:self.wfile.write(json.dumps(result).encode())
   else:
    usage={'input_tokens':raw['input'],'output_tokens':raw['output'],'cache_read_input_tokens':raw['read'],'cache_creation_input_tokens':raw['write'],'cache_creation':{'ephemeral_5m_input_tokens':raw['write']*3//5,'ephemeral_1h_input_tokens':raw['write']-raw['write']*3//5}}
-   result={'id':'msg_mock_'+secrets.token_hex(6),'type':'message','role':'assistant','model':body.get('model','claude-sonnet-4-5'),'content':[{'type':'text','text':'mock response'}],'stop_reason':'end_turn','stop_sequence':None,'usage':usage}
+   result={'id':'msg_mock_'+secrets.token_hex(6),'type':'message','role':'assistant','model':body.get('model','claude-sonnet-4-5'),'content':([{'type':'tool_use','id':'tool_mock','name':'lookup','input':{'query':'test'}}] if cfg.get('tool_output') else [{'type':'text','text':cfg.get('response_text','mock response')}]),'stop_reason':('tool_use' if cfg.get('tool_output') else 'end_turn'),'stop_sequence':None,'usage':usage}
+   if mode=='missing_usage':result.pop('usage',None)
    if stream:
-    start=copy.deepcopy(result);start['content']=[];start['stop_reason']=None;start['usage']['output_tokens']=0
-    events=[('message_start',{'type':'message_start','message':start}),('content_block_start',{'type':'content_block_start','index':0,'content_block':{'type':'text','text':''}}),('content_block_delta',{'type':'content_block_delta','index':0,'delta':{'type':'text_delta','text':'mock response'}}),('content_block_stop',{'type':'content_block_stop','index':0})]
-    if mode!='incomplete':events.extend([('message_delta',{'type':'message_delta','delta':{'stop_reason':'end_turn'},'usage':usage}),('message_stop',{'type':'message_stop'})])
+    start=copy.deepcopy(result);start['content']=[];start['stop_reason']=None
+    if 'usage' in start:start['usage']['output_tokens']=0
+    block=({'type':'tool_use','id':'tool_mock','name':'lookup','input':{}} if cfg.get('tool_output') else {'type':'text','text':''})
+    delta=({'type':'input_json_delta','partial_json':json.dumps({'query':'test'})} if cfg.get('tool_output') else {'type':'text_delta','text':cfg.get('response_text','mock response')})
+    events=[('message_start',{'type':'message_start','message':start}),('content_block_start',{'type':'content_block_start','index':0,'content_block':block}),('content_block_delta',{'type':'content_block_delta','index':0,'delta':delta}),('content_block_stop',{'type':'content_block_stop','index':0})]
+    if mode!='incomplete':
+     final={'type':'message_delta','delta':{'stop_reason':result['stop_reason']}}
+     if mode not in ['missing_usage','terminal_no_usage']:final['usage']=usage
+     events.extend([('message_delta',final),('message_stop',{'type':'message_stop'})])
     for event,data in events:self.wfile.write(('event: '+event+'\ndata: '+json.dumps(data)+'\n\n').encode());self.wfile.flush()
    else:self.wfile.write(json.dumps(result).encode())
 
@@ -168,6 +183,8 @@ class Runner:
   for rec,fallback in zip(records,rows):
    row=by_request.get('client:'+rec['request_id'],by_request.get(rec['request_id'],fallback))
    normalized={'input':row['input_tokens'],'output':row['output_tokens'],'read':row['cache_read_tokens'],'write':row['cache_creation_tokens']}
+   raw_recorded={'input':row.get('raw_input_tokens'),'output':row.get('raw_output_tokens'),'read':row.get('raw_cache_read_tokens'),'write':row.get('raw_cache_creation_tokens')}
+   assert raw_recorded==case['raw'],(case['id'],'pre-shaping usage mismatch',case['raw'],raw_recorded)
    assert normalized=={k:rec['wire'][k] for k in normalized},(case['id'],'wire/db mismatch',rec['wire'],normalized)
    assert row['account_id']==rec['account_id'] and row['group_id']==case['group']['id'],(case['id'],'wrong routing')
    assert row.get('cache_strategy_id')==case['strategy']['id'],(case['id'],'strategy snapshot')
@@ -181,9 +198,14 @@ class Runner:
    prices=({'input':3e-6,'output':15e-6,'read':.3e-6,'write5':3.75e-6,'write1':6e-6} if case['protocol']=='anthropic' else {'input':1.25e-6,'output':10e-6,'read':.125e-6,'write5':1.25e-6,'write1':1.25e-6})
    expected={'input_cost':normalized['input']*prices['input'],'output_cost':normalized['output']*prices['output'],'cache_read_cost':normalized['read']*prices['read'],'cache_creation_cost':(normalized['write']-row['cache_creation_1h_tokens'])*prices['write5']+row['cache_creation_1h_tokens']*prices['write1']}
    for field,value in expected.items():require(abs(value-row[field])<1e-7,(case['id'],'bucket price mismatch',field,value,row[field]))
+   raw=case['raw']
+   raw_long=(raw['write']-raw['write']*3//5) if case['protocol']=='anthropic' else 0
+   raw_cost=raw['input']*prices['input']+raw['output']*prices['output']+raw['read']*prices['read']+(raw['write']-raw_long)*prices['write5']+raw_long*prices['write1']
+   assert row.get('raw_total_cost') is not None,(case['id'],'missing raw cost')
+   assert abs(row['raw_total_cost']-raw_cost)<1e-7,(case['id'],'raw cost mismatch',row['raw_total_cost'],raw_cost)
    expected_cost=sum(expected.values())
    assert abs(expected_cost-row['total_cost'])<1e-7,(case['id'],'price mismatch',expected_cost,row['total_cost'])
-   rec['db']={k:row[k] for k in ['id','input_tokens','output_tokens','cache_read_tokens','cache_creation_tokens','cache_creation_5m_tokens','cache_creation_1h_tokens','total_cost','actual_cost','rate_multiplier','cache_strategy_id']}
+   rec['db']={k:row[k] for k in ['id','input_tokens','output_tokens','cache_read_tokens','cache_creation_tokens','cache_creation_5m_tokens','cache_creation_1h_tokens','total_cost','actual_cost','rate_multiplier','cache_strategy_id','raw_total_cost','raw_input_tokens','raw_output_tokens','raw_cache_read_tokens','raw_cache_creation_tokens']}
   return rows
  def cleanup(self):
   failures=[]

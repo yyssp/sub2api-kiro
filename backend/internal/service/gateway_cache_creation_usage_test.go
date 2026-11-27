@@ -254,6 +254,10 @@ func assertAnthropicCacheCreationResultCosts(t *testing.T, result *ForwardResult
 func assertAnthropicCacheCreationOverrideCosts(t *testing.T, result *ForwardResult, wantCacheCost float64, account *Account, settings *SettingService, wantOverridden bool) {
 	t.Helper()
 	for _, customStats := range []bool{false, true} {
+		upstream := result.Usage.billingUsageTokens()
+		if result.Usage.rawUsage != nil {
+			upstream = result.Usage.rawUsage.UpstreamTokens
+		}
 		usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 		billingRepo := &openAIRecordUsageBillingRepoStub{}
 		svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
@@ -299,7 +303,9 @@ func assertAnthropicCacheCreationOverrideCosts(t *testing.T, result *ForwardResu
 		require.Equal(t, 1, billingRepo.calls)
 		require.InDelta(t, wantTotalCost*0.5, billingRepo.lastCmd.BalanceCost, 1e-12)
 		require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
-		require.InDelta(t, wantTotalCost*statsMultiplier, *usageRepo.lastLog.AccountStatsCost, 1e-12)
+		upstreamCost := float64(upstream.InputTokens)*0.001 + float64(upstream.OutputTokens)*0.002
+		upstreamCost += svc.billingService.computeCacheCreationCost(&ModelPricing{CacheCreationPricePerToken: .002, SupportsCacheBreakdown: true, CacheCreation5mPrice: .002, CacheCreation1hPrice: .004}, upstream, .002, 1)
+		require.InDelta(t, upstreamCost*statsMultiplier, *usageRepo.lastLog.AccountStatsCost, 1e-12)
 	}
 }
 

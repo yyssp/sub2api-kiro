@@ -1,0 +1,1 @@
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS raw_total_cost DECIMAL(20,10);

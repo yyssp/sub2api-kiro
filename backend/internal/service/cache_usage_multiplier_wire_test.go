@@ -69,7 +69,7 @@ func TestCacheMultiplierAuditGeminiThresholdCrossingFrames(t *testing.T) {
 			SetCacheGroupContext(c, group)
 			r, e := newGeminiSignalService("text/event-stream", "data: "+strings.Join(frames, "\n\ndata: ")+"\n\n").ForwardNative(context.Background(), c, account, "gemini-2.5-pro", "streamGenerateContent", true, []byte(`{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`))
 			require.NoError(t, e)
-			expected := int(math.Round(1001 * factor))
+			expected := max(1, int(math.Round(1001*factor)))
 			require.Equal(t, expected, r.Usage.OutputTokens)
 			require.Equal(t, 4000, r.Usage.InputTokens)
 			var actual []int

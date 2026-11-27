@@ -158,6 +158,12 @@ type UsageLog struct {
 	CacheStrategyName *string
 	SubscriptionID    *int64
 
+	RawTotalCost           *float64
+	RawInputTokens         *int
+	RawOutputTokens        *int
+	RawCacheReadTokens     *int
+	RawCacheCreationTokens *int
+
 	InputTokens         int
 	OutputTokens        int
 	CacheCreationTokens int

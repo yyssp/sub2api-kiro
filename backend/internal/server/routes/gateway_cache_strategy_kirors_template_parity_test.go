@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -90,7 +91,12 @@ const kiroRsToolFrontendJSON = `{
 // 上面的 JSON 必须与 frontend/src/views/admin/cacheStrategyTemplates.ts 的
 // kiroRsToolConfig() 保持同步；前端侧的取值由 cacheStrategyTemplates.spec.ts 钉死。
 func TestKiroRsToolFrontendTemplateMatchesBackend(t *testing.T) {
-	var fromJSON service.CacheStrategyConfig
+	defaultsJSON, err := os.ReadFile("../../../../frontend/src/views/admin/cacheStrategyDefaults.json")
+	require.NoError(t, err)
+	var defaults map[string]service.CacheStrategyConfig
+	require.NoError(t, json.Unmarshal(defaultsJSON, &defaults))
+	fromJSON, exists := defaults["anthropic/tool_aware"]
+	require.True(t, exists)
 	require.NoError(t, json.Unmarshal([]byte(kiroRsToolFrontendJSON), &fromJSON))
 	normalizedJSON, err := service.NormalizeCacheStrategyConfig(fromJSON)
 	require.NoError(t, err)

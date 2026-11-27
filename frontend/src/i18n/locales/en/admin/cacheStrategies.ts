@@ -5,7 +5,7 @@ export default {
       "hint": "Multiply raw upstream usage fields above their own thresholds, with no session, cache-hit or cold/hot checks. Apply the multiplier to the whole field only when its raw value strictly exceeds the threshold, then round. Model, request and final usage limits still apply.",
       "threshold": "Threshold (tokens, strictly above)",
       "factor": "Multiplier",
-      "help": "1 = unchanged; 1.5 = increase 50%; 0.5 = decrease 50%; 0 = clear. A zero threshold applies to every positive value. Zero usage stays zero.",
+      "help": "1 = unchanged; 1.5 = increase 50%; 0.5 = decrease 50%. Input and meaningful output have a final minimum of 1, even with multiplier 0. Cache reads and writes may be cleared. Zero upstream output is estimated from content; truly empty replies are not billed.",
       "example": "Example: output threshold 1,000 and multiplier 1.5 leaves 1,000 unchanged and turns 1,200 into 1,800.",
       "enabled": "Enable usage multipliers",
       "input": "Uncached input",
@@ -20,7 +20,7 @@ export default {
       partialSave: "Strategy settings were saved, but group bindings failed. Retry to update the same strategy.",
       bindingsLoadFailed: "Could not load group bindings. Saving is paused to preserve existing bindings. Close and reopen the editor.",
     "limits": "Final usage limits",
-    "limitsHint": "0 reads the model catalog; unknown models fall back to 200k context and 64k output. Uncached input, reads and writes share the input budget. The smallest model, request and policy limits take precedence over multipliers, sampling and cost floors. Disabled projection, skipped responses and Plus raw mode pass usage through.",
+    "limitsHint": "0 reads the model catalog; unknown models fall back to 200k context and 64k output. Uncached input, reads and writes share the input budget. The smallest model, request and policy limits take precedence over multipliers, sampling and cost floors. Zero-usage repair and the minimum of 1 for input and meaningful output also apply to disabled, skipped and Plus raw projection.",
     "inputLimit": "Total input limit (0 = automatic)",
     "outputLimit": "Output limit (0 = automatic)",
     "defaultsHint": "Complete defaults are filled in even without a template. Advanced options are optional. The top-level preserve-upstream switch is authoritative."

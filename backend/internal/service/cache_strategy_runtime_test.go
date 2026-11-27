@@ -744,7 +744,7 @@ func TestCreationCapBelowCompleteBreakpointDoesNotFabricateUsageOrState(t *testi
 	setCachePlanContext(ctx, plan)
 	usage := &ClaudeUsage{InputTokens: 310, OutputTokens: 18}
 	mergeAndCommitCachePlan(ctx, usage, true)
-	require.Equal(t, 310, usage.InputTokens, "without cache evidence input must remain uncached")
+	require.Equal(t, 96, usage.InputTokens, "uncached usage still obeys the configured input cap")
 	require.Zero(t, usage.CacheReadInputTokens)
 	require.Zero(t, usage.CacheCreationInputTokens)
 

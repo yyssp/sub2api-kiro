@@ -106,10 +106,13 @@ var globalCacheTracker = &cacheTracker{
 // 得到估算结果，commit() 才会把本次前缀写入 tracker。调用方应在确认上游请求成功后
 // 再 commit()，避免请求失败/未发出时就把内容错误标记为已缓存，污染下一次请求的估算。
 type cacheEmulationPlan struct {
-	usage    *cacheEmulationUsage
-	cacheKey uint64
-	profile  *cacheProfile
-	remote   KiroCacheEmulationRemoteStore
+	outputEvidence *usageOutputEvidence
+	guardOnly      bool
+	emptyResponse  bool
+	usage          *cacheEmulationUsage
+	cacheKey       uint64
+	profile        *cacheProfile
+	remote         KiroCacheEmulationRemoteStore
 	// nonStream 取自请求体的 stream 字段（缺失按非流式算，与各网关的默认一致）。
 	// 只用来判断 skip_non_stream_usage_projection 是否命中：投影的调用点散落在
 	// 二十来处流式/非流式处理函数里，在计划上记一次比逐个透传参数可靠。
@@ -159,7 +162,7 @@ func (p *cacheEmulationPlan) usageSeed() uint64 {
 }
 
 func (p *cacheEmulationPlan) commit() {
-	if p == nil || p.profile == nil || p.cacheKey == 0 || p.skipProjection() {
+	if p == nil || p.profile == nil || p.cacheKey == 0 || p.skipProjection() || p.emptyResponse {
 		return
 	}
 	if !p.committed.CompareAndSwap(false, true) {
@@ -601,6 +604,9 @@ func setCachePlanContext(c *gin.Context, plan *cacheEmulationPlan) {
 		return
 	}
 	c.Set(cachePlanContextKey, plan)
+	if observer := upstreamResponseModelObserverFromContext(c); observer != nil {
+		plan.outputEvidence = &observer.outputEvidence
+	}
 }
 
 const cachePlanContextKey = "sub2api.cache_plan"
@@ -654,6 +660,13 @@ func prepareCachePlanForContext(ctx context.Context, c *gin.Context, account *Ac
 			plan = &cacheEmulationPlan{profile: &cacheProfile{model: model, rawBody: append([]byte(nil), body...), policy: cfg, protocolFamily: protocol}, usagePolicy: cfg.Usage, nonStream: !requestBodyWantsStream(body)}
 		}
 	}
+	if plan == nil && group != nil && group.CacheStrategyID != nil {
+		if strategy := GlobalCacheStrategyRegistry().Get(*group.CacheStrategyID); strategy != nil {
+			if cfg := strategy.Config; cacheProtocolMatches(cfg.Protocol, protocol) {
+				plan = &cacheEmulationPlan{profile: &cacheProfile{model: model, rawBody: append([]byte(nil), body...), policy: cfg, protocolFamily: protocol}, guardOnly: true, nonStream: !requestBodyWantsStream(body)}
+			}
+		}
+	}
 	setCachePlanContext(c, plan)
 	return plan
 }
@@ -681,9 +694,10 @@ func mergeAndCommitCachePlan(c *gin.Context, usage *ClaudeUsage, success bool) {
 		applyUsagePolicyWithoutPlanClaude(c, usage)
 		return
 	}
-	if usage != nil && !plan.skipProjection() {
+	if usage != nil {
 		plan.projectClaude(usage)
 	}
+	markEmptyUsageResponse(c, usage)
 	if success {
 		commitCachePlan(c)
 	}
@@ -705,8 +719,11 @@ func mergeAndCommitOpenAICachePlan(c *gin.Context, usage *OpenAIUsage, success b
 		applyUsagePolicyWithoutPlanOpenAI(c, usage)
 		return
 	}
-	if usage != nil && !plan.skipProjection() {
+	if usage != nil {
 		plan.projectOpenAI(usage)
+	}
+	if usage != nil && usage.rawUsage.isEmptyResponse() {
+		markEmptyUsageResponse(c, &ClaudeUsage{rawUsage: usage.rawUsage})
 	}
 	if success {
 		commitCachePlan(c)
@@ -753,6 +770,7 @@ func applyUsagePolicyWithoutPlanClaude(c *gin.Context, usage *ClaudeUsage) {
 	if !ok {
 		return
 	}
+	usage.captureRawUsage()
 	seed := usageSeedWithoutPlan(c)
 	applyUsageProjectionClaude(usage, usage.InputTokens, usage.OutputTokens, policy, seed,
 		claudeUsageHasCacheEvidence(usage))
@@ -772,6 +790,7 @@ func applyUsagePolicyWithoutPlanOpenAI(c *gin.Context, usage *OpenAIUsage) {
 	if !ok {
 		return
 	}
+	usage.captureRawUsage()
 	seed := usageSeedWithoutPlan(c)
 	applyUsageProjectionOpenAI(usage, usage.InputTokens, usage.OutputTokens, policy, seed,
 		openAIUsageHasCacheEvidence(usage))

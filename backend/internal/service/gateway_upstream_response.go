@@ -780,6 +780,12 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	}
 
 	usage := &ClaudeUsage{}
+	upstreamUsage := &ClaudeUsage{}
+	defer func() {
+		finishUnreportedUsage(c, usage)
+		usage.captureRawUsage()
+		usage.rawUsage.UpstreamTokens = upstreamUsage.billingUsageTokens()
+	}()
 	var firstTokenMs *int
 	scanner := bufio.NewScanner(resp.Body)
 	// 设置更大的buffer以处理长行
@@ -949,9 +955,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		if !sseEventNeedsJSONParse(eventName, dataLineBytes, useNoopDeltaKeepalive, needModelReplace) {
 			// Fast path: the event is forwarded verbatim. Skip the map decode and
 			// only do the cheap observations that still need the raw payload.
-			if bytes.Contains(dataLineBytes, sseModelFieldBytes) {
-				observer.ObserveAnthropic(dataLineBytes)
-			}
+			observer.ObserveAnthropic(dataLineBytes)
 			if strings.EqualFold(eventName, "message_stop") || bytes.Contains(dataLineBytes, sseMessageStopValueBytes) {
 				if anthropicStreamEventIsTerminal(eventName, dataLine) {
 					sawTerminalEvent = true
@@ -1032,6 +1036,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			}
 		}
 
+		if patch := s.extractSSEUsagePatch(event); patch != nil {
+			mergeSSEUsagePatch(upstreamUsage, patch)
+		}
 		// Cache TTL Override: 重写 SSE 事件中的 cache_creation 分类。
 		// 账号级设置优先；全局 1h 请求注入开启时，默认把 usage 计费归回 5m。
 		if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account); ok {
@@ -1067,6 +1074,12 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		}
 
 		usagePatch := s.extractSSEUsagePatch(event)
+		if usagePatch == nil && eventType == "message_delta" && cachePlanFromContext(c) != nil {
+			usagePatch = &sseUsagePatch{}
+			if _, ok := event["usage"].(map[string]any); !ok {
+				event["usage"] = map[string]any{}
+			}
+		}
 		if eventType == "message_delta" {
 			if usageObj, ok := event["usage"].(map[string]any); ok {
 				if raw, exists := usageObj["_sub2api_kiro_credits"]; exists {
@@ -1680,6 +1693,11 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		}
 	}
 
+	upstreamTokens := response.Usage.billingUsageTokens()
+	defer func() {
+		response.Usage.captureRawUsage()
+		response.Usage.rawUsage.UpstreamTokens = upstreamTokens
+	}()
 	// Cache TTL Override: 重写 non-streaming 响应中的 cache_creation 分类。
 	// 账号级设置优先；全局 1h 请求注入开启时，默认把 usage 计费归回 5m。
 	if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account); ok {
@@ -1696,8 +1714,9 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	// Fill synthetic group-policy cache usage only when the upstream response did
 	// not report authoritative cache buckets. Keep the JSON response and the
 	// returned usage object in sync for non-streaming Messages requests.
-	if plan := cachePlanFromContext(c); plan != nil && !plan.skipProjection() {
+	if plan := cachePlanFromContext(c); plan != nil {
 		plan.projectClaude(&response.Usage)
+		markEmptyUsageResponse(c, &response.Usage)
 		if next, setErr := sjson.SetBytes(body, "usage.input_tokens", response.Usage.InputTokens); setErr == nil {
 			body = next
 		}

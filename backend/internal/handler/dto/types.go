@@ -695,6 +695,12 @@ type UsageLog struct {
 
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。
 type AdminUsageLog struct {
+	RawTotalCost           *float64 `json:"raw_total_cost"`
+	RawInputTokens         *int     `json:"raw_input_tokens"`
+	RawOutputTokens        *int     `json:"raw_output_tokens"`
+	RawCacheReadTokens     *int     `json:"raw_cache_read_tokens"`
+	RawCacheCreationTokens *int     `json:"raw_cache_creation_tokens"`
+
 	UsageLog
 
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.

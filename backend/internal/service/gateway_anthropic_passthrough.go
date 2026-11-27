@@ -414,6 +414,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	}
 
 	usage := &ClaudeUsage{}
+	defer func() { finishUnreportedUsage(c, usage) }()
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawTerminalEvent := false
@@ -655,6 +656,9 @@ func rewriteAnthropicPassthroughUsageEvent(data string, accumulated *ClaudeUsage
 	}
 	projected := *accumulated
 	plan.projectClaude(&projected)
+	if plan.guardOnly && projected.billingUsageTokens() == accumulated.billingUsageTokens() {
+		return data
+	}
 	updated := []byte(data)
 	for path, value := range map[string]int{
 		prefix + ".input_tokens":                             projected.InputTokens,
@@ -926,7 +930,9 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	_, cacheStrategyEnabled := effectiveCacheStrategyConfig(cacheGroupFromContext(c, account))
 	if cachePlanFromContext(c) != nil || cacheStrategyEnabled {
 		mergeAndCommitCachePlan(c, usage, true)
-		body = rewriteClaudeUsageJSON(body, usage)
+		if plan := cachePlanFromContext(c); plan == nil || !plan.guardOnly || usage.billingUsageTokens() != usage.rawUsage.UpstreamTokens {
+			body = rewriteClaudeUsageJSON(body, usage)
+		}
 	}
 
 	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)

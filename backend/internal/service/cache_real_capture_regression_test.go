@@ -168,12 +168,22 @@ func TestCapturedSessionPreservesUpstreamUsageWhenEnabled(t *testing.T) {
 			continue
 		}
 		checked++
-		require.Equal(t, up.CacheReadInputTokens, u.CacheReadInputTokens,
+		wantRead, wantCreation := up.CacheReadInputTokens, up.CacheCreationInputTokens
+		if up.InputTokens <= 0 {
+			if wantRead > 0 {
+				wantRead--
+			} else {
+				wantCreation--
+			}
+			require.Positive(t, u.InputTokens)
+		}
+		require.Equal(t, wantRead, u.CacheReadInputTokens,
 			"第 %d 轮（seq=%d）上游 cache_read=%d 被合成值覆盖成 %d",
 			i+1, turns[i].Seq, up.CacheReadInputTokens, u.CacheReadInputTokens)
-		require.Equal(t, up.CacheCreationInputTokens, u.CacheCreationInputTokens,
+		require.Equal(t, wantCreation, u.CacheCreationInputTokens,
 			"第 %d 轮（seq=%d）上游 cache_creation=%d 被合成值覆盖成 %d",
 			i+1, turns[i].Seq, up.CacheCreationInputTokens, u.CacheCreationInputTokens)
+		require.Equal(t, UsageTokens{InputTokens: up.InputTokens, OutputTokens: up.OutputTokens, CacheReadTokens: up.CacheReadInputTokens, CacheCreationTokens: up.CacheCreationInputTokens}, u.rawUsage.UpstreamTokens)
 	}
 	require.Greater(t, checked, 5, "抓包里带 cache 字段的轮次太少，这条用例没测到目标路径")
 }
