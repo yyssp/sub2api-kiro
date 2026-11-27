@@ -725,7 +725,6 @@ func partialStreamUsageResult(c *gin.Context, resp *http.Response, streamResult 
 var (
 	sseUsageFieldBytes       = []byte(`"usage"`)
 	sseMessageFieldBytes     = []byte(`"message"`)
-	sseModelFieldBytes       = []byte(`"model"`)
 	sseMessageStopValueBytes = []byte(`"message_stop"`)
 )
 
