@@ -187,10 +187,18 @@ func TestCenterCropSymmetricSplit(t *testing.T) {
 		t.Fatalf("bounds = %v, want 宽7高1", b)
 	}
 	// SubImage 共享像素：x=1..7 可见，左侧保留的是原 x=1（R=1），右侧到原 x=7（R=7）。
-	if got := cropped.At(b.Min.X, b.Min.Y).(color.RGBA).R; got != 1 {
+	left, ok := cropped.At(b.Min.X, b.Min.Y).(color.RGBA)
+	if !ok {
+		t.Fatal("left pixel must be RGBA")
+	}
+	if got := left.R; got != 1 {
 		t.Fatalf("左缘像素 R=%d, want 1（裁左1）", got)
 	}
-	if got := cropped.At(b.Max.X-1, b.Min.Y).(color.RGBA).R; got != 7 {
+	right, ok := cropped.At(b.Max.X-1, b.Min.Y).(color.RGBA)
+	if !ok {
+		t.Fatal("right pixel must be RGBA")
+	}
+	if got := right.R; got != 7 {
 		t.Fatalf("右缘像素 R=%d, want 7（裁右2）", got)
 	}
 }

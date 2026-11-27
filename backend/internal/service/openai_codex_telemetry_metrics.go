@@ -543,8 +543,11 @@ func codexStartupMetricValue(profile codexTelemetryProfile, descriptor codexMetr
 	if descriptor.name == "codex.turn.unified_exec.running_processes" || descriptor.name == "codex.turn.tool.call" {
 		return 0
 	}
-	if descriptor.name == "codex.windows_mxc.available" && !strings.EqualFold(codexRuntime(profile)["runtime_os"].(string), "windows") {
-		return 0
+	if descriptor.name == "codex.windows_mxc.available" {
+		runtimeOS, _ := codexRuntime(profile)["runtime_os"].(string)
+		if !strings.EqualFold(runtimeOS, "windows") {
+			return 0
+		}
 	}
 	if descriptor.kind == "sum" {
 		return 1
