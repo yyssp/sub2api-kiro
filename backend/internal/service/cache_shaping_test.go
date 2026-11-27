@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func advancedCachePlan(kind string) *cacheEmulationPlan {
@@ -121,8 +122,8 @@ func TestAdvancedCacheTTLStateSeparateFromDisplay(t *testing.T) {
 	require.Contains(t, string(got), `"ttl":"5m"`)
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal(got, &parsed))
-	require.Equal(t, "1h", parsed["metadata"].(map[string]any)["cache_control"].(map[string]any)["ttl"])
-	require.Equal(t, "1h", parsed["tools"].([]any)[0].(map[string]any)["input_schema"].(map[string]any)["cache_control"].(map[string]any)["ttl"])
+	require.Equal(t, "1h", gjson.GetBytes(got, "metadata.cache_control.ttl").String())
+	require.Equal(t, "1h", gjson.GetBytes(got, "tools.0.input_schema.cache_control.ttl").String())
 	require.Contains(t, string(body), `"ttl":"1h"`)
 }
 

@@ -28,7 +28,8 @@ func shapeGeminiResponse(c *gin.Context, body []byte) ([]byte, *ClaudeUsage) {
 	if c != nil && !p.nonStream {
 		metadata := map[string]json.RawMessage{}
 		if previous, ok := c.Get(geminiCacheRawMetadataKey); ok {
-			for key, value := range previous.(map[string]json.RawMessage) {
+			previousMetadata, _ := previous.(map[string]json.RawMessage)
+			for key, value := range previousMetadata {
 				metadata[key] = value
 			}
 		}
