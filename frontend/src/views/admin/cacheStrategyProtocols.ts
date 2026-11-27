@@ -7,6 +7,11 @@ export const cacheStrategyProtocols = [
   { id: 'gemini', label: 'Gemini · GenerateContent', supportsCacheCreation: false },
 ] as const satisfies readonly { id: CacheStrategyProtocol; label: string; supportsCacheCreation: boolean }[]
 
+export function filterCacheStrategyPlatforms<T extends { value: string }>(platforms: readonly T[]): T[] {
+  const supported = new Set<string>(cacheStrategyProtocols.map(({ id }) => id))
+  return platforms.filter(({ value }) => supported.has(value))
+}
+
 export function cacheStrategyProtocol(config: Pick<CacheStrategyConfig, 'protocol'>): CacheStrategyProtocol {
   return config.protocol ?? 'anthropic'
 }

@@ -43,9 +43,9 @@ export default {
       outputGuard: "启用输出最终上限",
       outputUpliftEnabled: "启用输出放大",
 
-      "label": "适用协议",
-      "all": "全部协议",
-      "hint": "按客户端请求协议执行，与上游账号平台独立。旧策略默认 Anthropic；跨协议请求不套用此策略。",
+      "label": "平台",
+      "all": "全部平台",
+      "hint": "按分组使用的平台匹配策略；仅列出当前支持缓存整形的平台。旧策略默认 Anthropic。",
       "noCreationShort": "生成用量无写入桶",
       "geminiHint": "Gemini：输入为未缓存部分，读取为 cachedContentTokenCount，输出含回答与思考。promptTokenCount = 输入 + 读取。生成响应没有缓存写入 token；显式缓存的存储按现有 token-hours 单独计费，保留真实缓存读取。",
       "usage": "Gemini 用量控制",
@@ -156,7 +156,7 @@ export default {
 },
     title: "缓存策略",
     description:
-      "按 Anthropic、Gemini 等客户端协议创建可复用的缓存整形策略，并绑定到分组。",
+      "按 Anthropic、Gemini 等平台创建可复用的缓存整形策略，并绑定到分组。",
     create: "新建策略",
     edit: "编辑策略",
     duplicate: "复制策略",

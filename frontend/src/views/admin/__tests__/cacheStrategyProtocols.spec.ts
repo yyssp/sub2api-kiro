@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultCacheStrategyConfig, cacheStrategyTemplates } from '../cacheStrategyTemplates'
-import { cacheStrategyProtocol, configureCacheProtocol, cacheStrategyProtocols } from '../cacheStrategyProtocols'
+import { cacheStrategyProtocol, configureCacheProtocol, cacheStrategyProtocols, filterCacheStrategyPlatforms } from '../cacheStrategyProtocols'
 
 describe('cache strategy protocol modules', () => {
   it('keeps legacy policies on Anthropic', () => {
@@ -9,6 +9,15 @@ describe('cache strategy protocol modules', () => {
   })
   it('uses the existing platform identifiers and declares write support', () => {
     expect(cacheStrategyProtocols.map(p => [p.id, p.supportsCacheCreation])).toEqual([['anthropic', true], ['gemini', false]])
+  })
+  it('filters the shared platform catalog to platforms with cache shaping support', () => {
+    const platforms = [
+      { value: 'anthropic', label: 'Anthropic' },
+      { value: 'openai', label: 'OpenAI' },
+      { value: 'gemini', label: 'Gemini' },
+      { value: 'cursor', label: 'Cursor' },
+    ]
+    expect(filterCacheStrategyPlatforms(platforms)).toEqual([platforms[0], platforms[2]])
   })
   it('preserves Gemini selection across every template and serialization', () => {
     for (const template of cacheStrategyTemplates) {

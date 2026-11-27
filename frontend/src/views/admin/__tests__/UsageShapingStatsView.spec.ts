@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, ref } from 'vue'
+import Select from '@/components/common/Select.vue'
 
 const mocks = vi.hoisted(() => ({ getShapingStats: vi.fn() }))
 vi.mock('@/api/admin/usage', () => mocks)
@@ -21,6 +22,28 @@ beforeEach(() => {
   mocks.getShapingStats.mockResolvedValue({summary:{},breakdown:[a,b],series:[{...a,bucket:'2026-11-27T00:00:00Z'},{...b,bucket:'2026-11-27T00:00:00Z'}],buckets:['2026-11-27T00:00:00Z'],granularity:'day'})
 })
 describe('Usage shaping aggregate page', () => {
+  it('uses the shared Select controls and reloads when trend granularity changes', async () => {
+    const wrapper = mount(UsageShapingStatsView)
+    await flushPromises()
+    expect(wrapper.findAllComponents(Select)).toHaveLength(4)
+
+    const granularitySelect = wrapper.findAllComponents(Select)
+      .find(select => select.props('ariaLabel') === 'admin.usageShaping.trend')
+    expect(granularitySelect).toBeDefined()
+    mocks.getShapingStats.mockClear()
+    await granularitySelect!.get('button').trigger('click')
+    await flushPromises()
+
+    const hourOption = document.body.querySelectorAll<HTMLElement>('.select-option')
+    const option = [...hourOption].find(item => item.textContent?.includes('admin.usageShaping.hour'))
+    expect(option).toBeDefined()
+    await option!.click()
+    await flushPromises()
+
+    expect(mocks.getShapingStats.mock.lastCall?.[0].granularity).toBe('hour')
+    wrapper.unmount()
+  })
+
   it('keeps account, group, chart and text filters in sync', async () => {
     const wrapper=mount(UsageShapingStatsView)
     await flushPromises()

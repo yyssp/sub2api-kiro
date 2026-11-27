@@ -43,9 +43,9 @@ export default {
       outputGuard: "Enable final output guard",
       outputUpliftEnabled: "Enable output uplift",
 
-      "label": "Protocol",
-      "all": "All protocols",
-      "hint": "Applied by client request protocol, independently of the upstream account platform. Existing policies default to Anthropic. Other protocols bypass this policy.",
+      "label": "Platform",
+      "all": "All platforms",
+      "hint": "Policies match the platform assigned to a group. Only platforms with cache shaping support are listed. Existing policies default to Anthropic.",
       "noCreationShort": "No generation write bucket",
       "geminiHint": "Gemini: input excludes cached tokens; cache reads use cachedContentTokenCount; output includes candidates and thoughts. promptTokenCount = input + reads. Generation usage has no cache-write tokens. Explicit cache storage retains existing token-hour billing and authoritative reads.",
       "usage": "Gemini usage controls",
@@ -156,7 +156,7 @@ export default {
 },
     title: "Cache Strategies",
     description:
-      "Create reusable cache shaping policies by client protocol, including Anthropic and Gemini, and bind them to groups.",
+      "Create reusable cache shaping policies for platforms such as Anthropic and Gemini, then bind them to groups.",
     create: "Create strategy",
     edit: "Edit strategy",
     duplicate: "Duplicate strategy",

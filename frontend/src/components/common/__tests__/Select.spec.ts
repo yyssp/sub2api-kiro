@@ -1,6 +1,6 @@
 import { DOMWrapper, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { h, nextTick } from 'vue'
 
 import Select from '../Select.vue'
 
@@ -66,6 +66,55 @@ afterEach(() => {
 })
 
 describe('Select dropdown viewport constraints', () => {
+  it('closes the menu when clicking outside the trigger and teleported options', async () => {
+    const wrapper = mount(Select, {
+      props: {
+        modelValue: null,
+        options: [{ value: 'example', label: 'Example' }],
+      },
+    })
+    unmountWrapper = () => wrapper.unmount()
+    await wrapper.get('button').trigger('click')
+    await nextTick()
+    expect(wrapper.get('button').attributes('aria-expanded')).toBe('true')
+
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    outside.click()
+    await nextTick()
+
+    expect(wrapper.get('button').attributes('aria-expanded')).toBe('false')
+  })
+
+  it('keeps description menus at the trigger width instead of expanding to long text', async () => {
+    setViewportWidth(1024)
+    mockTriggerRect(20, 360)
+    const wrapper = mount(Select, {
+      props: {
+        modelValue: null,
+        matchTriggerWidth: true,
+        options: [{ value: 'long', label: 'Strategy', description: 'A long description '.repeat(80) }],
+      },
+      slots: {
+        option: ({ option }: { option: { label: string; description?: string } }) => [
+          h('div', { class: 'min-w-0 max-w-full flex-1' }, [
+            h('div', option.label),
+            h('p', { class: 'whitespace-normal break-words [overflow-wrap:anywhere]' }, option.description),
+          ]),
+        ],
+      },
+    })
+    unmountWrapper = () => wrapper.unmount()
+
+    await wrapper.get('button').trigger('click')
+    await nextTick()
+    const dropdown = document.body.querySelector<HTMLElement>('.select-dropdown-portal')
+
+    expect(dropdown?.style.width).toBe('360px')
+    expect(dropdown?.style.minWidth).toBe('360px')
+    expect(dropdown?.style.maxWidth).toBe('996px')
+  })
+
   it('preserves the existing 200px minimum width when space is available', async () => {
     setViewportWidth(1024)
     mockTriggerRect(20, 80)

@@ -6,10 +6,7 @@
           <button v-for="value in dimensions" :key="value" type="button" class="rounded-md px-4 py-2 text-sm" :aria-pressed="dimension === value" :class="dimension === value ? 'bg-white font-medium shadow-sm dark:bg-dark-600' : 'text-gray-500'" @click="dimension = value">{{ t(`admin.usageShaping.${value}`) }}</button>
         </div>
         <DateRangePicker v-model:start-date="startDate" v-model:end-date="endDate" @change="load" />
-        <select v-model="selected" class="input w-full sm:w-52" :aria-label="t(`admin.usageShaping.${dimension}`)">
-          <option value="">{{ t('admin.usageShaping.all') }}</option>
-          <option v-for="row in data?.breakdown ?? []" :key="entityKey(row.id)" :value="entityKey(row.id)">{{ entityName(row) }}</option>
-        </select>
+        <Select v-model="selected" :options="entityOptions" class="w-full sm:w-52" :aria-label="t(`admin.usageShaping.${dimension}`)" />
         <button v-if="selected" type="button" class="btn btn-ghost" @click="selected = ''">{{ t('admin.usageShaping.clear') }}</button>
         <input v-model="search" type="search" class="input w-full sm:ml-auto sm:w-60" :placeholder="t('admin.usageShaping.search')" />
         <button type="button" class="btn btn-secondary" :disabled="loading" @click="load">{{ t('admin.usageShaping.refresh') }}</button>
@@ -44,9 +41,7 @@
             <div class="flex gap-1">
               <button v-for="value in metrics" :key="value" type="button" class="rounded-md px-3 py-1.5 text-xs" :aria-pressed="metric === value" :class="metric === value ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/20' : 'text-gray-500'" @click="metric = value">{{ t(`admin.usageShaping.${value}`) }}</button>
             </div>
-            <select v-model="granularity" class="input w-28 text-xs" :aria-label="t('admin.usageShaping.trend')" @change="load">
-              <option value="auto">{{ t('admin.usageShaping.auto') }}</option><option value="day">{{ t('admin.usageShaping.day') }}</option><option value="hour">{{ t('admin.usageShaping.hour') }}</option>
-            </select>
+            <Select v-model="granularity" :options="granularityOptions" class="w-28" size="sm" :aria-label="t('admin.usageShaping.trend')" @change="load" />
           </div>
           <div v-if="loading" class="flex h-72 items-center justify-center"><LoadingSpinner /></div>
           <div v-else-if="totals.requests" class="h-72"><Bar v-if="metric === 'requests'" :data="trendRequestData" :options="requestOptions" /><Line v-else :data="trendData" :options="trendOptions" /></div>
@@ -54,7 +49,7 @@
         </section>
         <section class="card p-4 xl:col-span-2">
           <div class="mb-2 flex flex-wrap items-center justify-between gap-3"><h2 class="text-sm font-semibold">{{ t(`admin.usageShaping.${dimension}`) }} · Top 8</h2>
-            <select v-model="rankMetric" class="input w-40 text-xs" :aria-label="t('admin.usageShaping.ranking')"><option value="delta">{{ t('admin.usageShaping.costDelta') }}</option><option value="cost">{{ t('admin.usageShaping.compareCost') }}</option><option value="tokens">{{ t('admin.usageShaping.compareTokens') }}</option><option value="requests">{{ t('admin.usageShaping.requests') }}</option></select>
+            <Select v-model="rankMetric" :options="rankMetricOptions" class="w-40" size="sm" :aria-label="t('admin.usageShaping.ranking')" />
           </div>
           <p class="mb-3 text-xs text-gray-500">{{ t('admin.usageShaping.topHint') }}</p>
           <div v-if="loading" class="flex h-72 items-center justify-center"><LoadingSpinner /></div>
@@ -63,7 +58,7 @@
         </section>
       </div>
       <section class="card overflow-hidden">
-        <div class="flex flex-wrap items-center justify-between gap-3 p-4"><h2 class="text-sm font-semibold">{{ t(`admin.usageShaping.${dimension}`) }} · {{ t('admin.usageShaping.breakdown') }}</h2><div class="flex gap-2"><select v-model="sort" class="input w-44 text-xs" :aria-label="t('admin.usageShaping.sort')"><option value="after">{{ t('admin.usageShaping.sortAfter') }}</option><option value="delta">{{ t('admin.usageShaping.sortDelta') }}</option><option value="tokens">{{ t('admin.usageShaping.sortTokens') }}</option><option value="requests">{{ t('admin.usageShaping.requests') }}</option></select><button type="button" class="btn btn-secondary" :disabled="!filteredRows.length" @click="exportAggregates">{{ t('admin.usageShaping.export') }}</button></div></div>
+        <div class="flex flex-wrap items-center justify-between gap-3 p-4"><h2 class="text-sm font-semibold">{{ t(`admin.usageShaping.${dimension}`) }} · {{ t('admin.usageShaping.breakdown') }}</h2><div class="flex gap-2"><Select v-model="sort" :options="sortOptions" class="w-44" size="sm" :aria-label="t('admin.usageShaping.sort')" /><button type="button" class="btn btn-secondary" :disabled="!filteredRows.length" @click="exportAggregates">{{ t('admin.usageShaping.export') }}</button></div></div>
         <div class="overflow-x-auto"><table class="w-full whitespace-nowrap text-right text-sm tabular-nums"><thead class="bg-gray-50 text-xs text-gray-500 dark:bg-dark-800"><tr><th class="px-4 py-3 text-left">{{ t(`admin.usageShaping.${dimension}`) }}</th><th class="px-4 py-3">{{ t('admin.usageShaping.requests') }}</th><th class="px-4 py-3">{{ t('admin.usageShaping.comparable') }}</th><th class="px-4 py-3">{{ t('admin.usageShaping.tokenComparison') }}</th><th class="px-4 py-3">{{ t('admin.usageShaping.beforeCost') }}</th><th class="px-4 py-3">{{ t('admin.usageShaping.afterCost') }}</th><th class="px-4 py-3">{{ t('admin.usageShaping.costDelta') }}</th><th class="px-4 py-3">{{ t('admin.usageShaping.percent') }}</th></tr></thead>
           <tbody class="divide-y divide-gray-100 dark:divide-dark-700"><tr v-for="row in paginatedRows" :key="entityKey(row.id)"><td class="max-w-72 truncate px-4 py-4 text-left" :title="entityName(row)">{{ entityName(row) }} <span v-if="row.id != null" class="text-xs text-gray-400">#{{ row.id }}</span></td><td class="px-4 py-4">{{ row.requests.toLocaleString() }}</td><td class="px-4 py-4">{{ row.comparable_requests.toLocaleString() }}</td><td class="px-4 py-4"><template v-if="row.comparable_requests"><div>{{ compact(row.before_tokens) }} → {{ compact(row.after_tokens) }}</div><div class="mt-1 text-xs" :class="tone(row.after_tokens - row.before_tokens)">{{ signedTokens(row.after_tokens - row.before_tokens) }} · {{ percent(row.before_tokens, row.after_tokens) }}</div></template><span v-else>—</span></td><td class="px-4 py-4" :title="row.before_cost.toFixed(8)">{{ row.comparable_requests ? money(row.before_cost) : '—' }}</td><td class="px-4 py-4" :title="row.after_cost.toFixed(8)">{{ row.comparable_requests ? money(row.after_cost) : '—' }}</td><td class="px-4 py-4" :class="tone(row.after_cost - row.before_cost)">{{ row.comparable_requests ? signedMoney(row.after_cost - row.before_cost) : '—' }}</td><td class="px-4 py-4 font-medium" :class="tone(row.comparable_requests ? changePercent(row.before_cost, row.after_cost) : null)">{{ row.comparable_requests ? percent(row.before_cost, row.after_cost) : '—' }}</td></tr><tr v-if="!paginatedRows.length"><td colspan="8" class="p-10 text-center text-gray-400">{{ loading ? t('common.loading') : t('admin.usageShaping.empty') }}</td></tr></tbody>
           <tfoot v-if="filteredRows.length" class="border-t border-gray-200 bg-gray-50 font-medium dark:border-dark-700 dark:bg-dark-800"><tr><td class="px-4 py-4 text-left">{{ t('admin.usageShaping.summary') }}</td><td class="px-4 py-4">{{ totals.requests.toLocaleString() }}</td><td class="px-4 py-4">{{ totals.comparable_requests.toLocaleString() }}</td><td class="px-4 py-4">{{ hasComparable ? `${compact(totals.before_tokens)} → ${compact(totals.after_tokens)}` : '—' }}<div v-if="hasComparable" class="mt-1 text-xs" :class="tone(totals.after_tokens - totals.before_tokens)">{{ signedTokens(totals.after_tokens - totals.before_tokens) }} · {{ percent(totals.before_tokens, totals.after_tokens) }}</div></td><td class="px-4 py-4">{{ hasComparable ? money(totals.before_cost) : '—' }}</td><td class="px-4 py-4">{{ hasComparable ? money(totals.after_cost) : '—' }}</td><td class="px-4 py-4" :class="tone(totals.after_cost - totals.before_cost)">{{ hasComparable ? signedMoney(totals.after_cost - totals.before_cost) : '—' }}</td><td class="px-4 py-4" :class="tone(hasComparable ? changePercent(totals.before_cost, totals.after_cost) : null)">{{ hasComparable ? percent(totals.before_cost, totals.after_cost) : '—' }}</td></tr></tfoot>
@@ -85,6 +80,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 import { getShapingStats, type UsageShapingStat, type UsageShapingStats, type UsageShapingPoint } from '@/api/admin/usage'
 import { sumMetrics, emptyMetrics, changePercent, entityKey } from '@/features/usage-shaping/metrics'
 
@@ -99,6 +95,27 @@ const rankMetric = ref<'delta' | 'cost' | 'tokens' | 'requests'>('delta')
 const granularity = ref<'auto' | 'hour' | 'day'>('auto')
 const data = ref<UsageShapingStats | null>(null)
 const selected = ref(''), search = ref(''), sort = ref('after')
+const entityOptions = computed<SelectOption[]>(() => [
+  { value: '', label: t('admin.usageShaping.all') },
+  ...(data.value?.breakdown ?? []).map(row => ({ value: entityKey(row.id), label: entityName(row) })),
+])
+const granularityOptions = computed<SelectOption[]>(() => [
+  { value: 'auto', label: t('admin.usageShaping.auto') },
+  { value: 'day', label: t('admin.usageShaping.day') },
+  { value: 'hour', label: t('admin.usageShaping.hour') },
+])
+const rankMetricOptions = computed<SelectOption[]>(() => [
+  { value: 'delta', label: t('admin.usageShaping.costDelta') },
+  { value: 'cost', label: t('admin.usageShaping.compareCost') },
+  { value: 'tokens', label: t('admin.usageShaping.compareTokens') },
+  { value: 'requests', label: t('admin.usageShaping.requests') },
+])
+const sortOptions = computed<SelectOption[]>(() => [
+  { value: 'after', label: t('admin.usageShaping.sortAfter') },
+  { value: 'delta', label: t('admin.usageShaping.sortDelta') },
+  { value: 'tokens', label: t('admin.usageShaping.sortTokens') },
+  { value: 'requests', label: t('admin.usageShaping.requests') },
+])
 const page = ref(1), pageSize = ref(20)
 const dateString = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 const today = new Date(), week = new Date(today)

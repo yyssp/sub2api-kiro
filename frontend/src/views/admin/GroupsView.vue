@@ -504,14 +504,26 @@
           <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
         </div>
         <div v-if="!authStore.isSimpleMode">
-          <label class="input-label">{{
+          <label for="create-group-cache-strategy" class="input-label">{{
             t("admin.groups.form.cacheStrategy")
           }}</label>
           <Select
             v-model="createForm.cache_strategy_id"
             :options="cacheStrategyOptions"
+            id="create-group-cache-strategy"
             :placeholder="t('admin.groups.form.noCacheStrategy')"
-          />
+            :match-trigger-width="true"
+          >
+            <template #option="{ option, selected }">
+              <div class="min-w-0 max-w-full flex-1">
+                <div class="break-words text-sm [overflow-wrap:anywhere]">{{ option.label }}</div>
+                <p v-if="option.description" class="mt-1 whitespace-normal break-words text-xs leading-4 text-gray-500 [overflow-wrap:anywhere] dark:text-dark-400">
+                  {{ option.description }}
+                </p>
+              </div>
+              <Icon v-if="selected" name="check" size="sm" class="flex-shrink-0 text-primary-500" />
+            </template>
+          </Select>
           <p class="input-hint">
             {{ t("admin.groups.form.cacheStrategyHint") }}
           </p>
@@ -2210,14 +2222,26 @@
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
         </div>
         <div v-if="!authStore.isSimpleMode">
-          <label class="input-label">{{
+          <label for="edit-group-cache-strategy" class="input-label">{{
             t("admin.groups.form.cacheStrategy")
           }}</label>
           <Select
             v-model="editForm.cache_strategy_id"
             :options="cacheStrategyOptions"
+            id="edit-group-cache-strategy"
             :placeholder="t('admin.groups.form.noCacheStrategy')"
-          />
+            :match-trigger-width="true"
+          >
+            <template #option="{ option, selected }">
+              <div class="min-w-0 max-w-full flex-1">
+                <div class="break-words text-sm [overflow-wrap:anywhere]">{{ option.label }}</div>
+                <p v-if="option.description" class="mt-1 whitespace-normal break-words text-xs leading-4 text-gray-500 [overflow-wrap:anywhere] dark:text-dark-400">
+                  {{ option.description }}
+                </p>
+              </div>
+              <Icon v-if="selected" name="check" size="sm" class="flex-shrink-0 text-primary-500" />
+            </template>
+          </Select>
           <p class="input-hint">
             {{ t("admin.groups.form.cacheStrategyHint") }}
           </p>
@@ -5042,6 +5066,7 @@ const cacheStrategyOptions = computed(() => [
   ...cacheStrategies.value.map((strategy) => ({
     value: strategy.id,
     label: strategy.name,
+    description: strategy.description,
   })),
 ]);
 

@@ -18,7 +18,7 @@
             />
           </div>
 
-          <Select v-model="filters.protocol" :options="protocolFilterOptions" class="w-full sm:w-48" />
+          <Select v-model="filters.protocol" :options="platformFilterOptions" class="w-full sm:w-48" />
           <Select
             v-model="filters.kind"
             :options="kindFilterOptions"
@@ -88,7 +88,10 @@
           </template>
 
           <template #cell-protocol="{ row }">
-            <span class="badge badge-primary">{{ protocolLabel(cacheStrategyProtocol(row.config)) }}</span>
+            <span :class="['inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium', platformBadgeLightClass(cacheStrategyProtocol(row.config))]">
+              <PlatformIcon :platform="cacheStrategyProtocol(row.config)" size="xs" />
+              {{ platformLabel(cacheStrategyProtocol(row.config)) }}
+            </span>
           </template>
 
           <template #cell-kind="{ row }">
@@ -273,8 +276,22 @@
             </div>
 
             <div v-if="editing">
-              <label class="input-label">{{ t('admin.cacheStrategies.protocols.label') }}</label>
-              <Select v-model="editing.config.protocol" :options="protocolOptions" @update:model-value="handleProtocolChange" />
+              <label for="cache-strategy-platform" class="input-label">{{ t('admin.cacheStrategies.protocols.label') }}</label>
+              <Select id="cache-strategy-platform" v-model="editing.config.protocol" :options="platformOptions" @update:model-value="handleProtocolChange">
+                <template #selected="{ option }">
+                  <span :class="['inline-flex items-center gap-1.5 rounded-full text-xs font-medium', platformBadgeLightClass(String(option?.value ?? ''))]">
+                    <PlatformIcon :platform="String(option?.value ?? '')" size="xs" />
+                    {{ platformLabel(String(option?.value ?? '')) }}
+                  </span>
+                </template>
+                <template #option="{ option, selected }">
+                  <span :class="['inline-flex min-w-0 items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium', platformBadgeLightClass(String(option.value))]">
+                    <PlatformIcon :platform="String(option.value)" size="xs" />
+                    <span class="truncate">{{ platformLabel(String(option.value)) }}</span>
+                  </span>
+                  <Icon v-if="selected" name="check" size="sm" class="flex-shrink-0 text-primary-500" />
+                </template>
+              </Select>
               <p class="mt-1 text-xs text-gray-500">{{ t('admin.cacheStrategies.protocols.hint') }}</p>
             </div>
 
@@ -1697,6 +1714,7 @@ import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import DataTable from "@/components/common/DataTable.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import GroupSelector from "@/components/common/GroupSelector.vue";
+import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Select from "@/components/common/Select.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import type { Column } from "@/components/common/types";
@@ -1711,12 +1729,14 @@ import GeminiCacheStrategyFields from "@/components/admin/GeminiCacheStrategyFie
 import { createCacheStrategyDrafts, completeCacheStrategyConfig } from "./cacheStrategyEditor";
 import UsageMultiplierFields from "@/components/admin/UsageMultiplierFields.vue";
 import CacheUsageLimitsFields from "@/components/admin/CacheUsageLimitsFields.vue";
-import { cacheStrategyProtocols, cacheStrategyProtocol, configureCacheProtocol, geminiCacheKinds } from "./cacheStrategyProtocols";
+import { cacheStrategyProtocol, configureCacheProtocol, filterCacheStrategyPlatforms, geminiCacheKinds } from "./cacheStrategyProtocols";
 import CacheShapingFields from "@/components/admin/CacheShapingFields.vue";
 import groupsAPI from "@/api/admin/groups";
 import { useAppStore } from "@/stores/app";
 import type { AdminGroup } from "@/types";
+import { CONCRETE_PLATFORM_OPTIONS } from "@/constants/platforms";
 import { extractI18nErrorMessage } from "@/utils/apiError";
+import { platformBadgeLightClass, platformLabel } from "@/utils/platformColors";
 import {
   cacheStrategyTemplates,
   createDefaultCacheStrategyConfig,
@@ -1749,9 +1769,8 @@ const filters = reactive({
   status: "",
 });
 
-const protocolOptions = computed(() => cacheStrategyProtocols.map(p => ({ value: p.id, label: p.label })));
-const protocolFilterOptions = computed(() => [{ value: "", label: t("admin.cacheStrategies.protocols.all") }, ...protocolOptions.value]);
-const protocolLabel = (id: string) => cacheStrategyProtocols.find(p => p.id === id)?.label ?? id;
+const platformOptions = computed(() => filterCacheStrategyPlatforms(CONCRETE_PLATFORM_OPTIONS));
+const platformFilterOptions = computed(() => [{ value: "", label: t("admin.cacheStrategies.protocols.all") }, ...platformOptions.value]);
 function handleProtocolChange(value: string | number | boolean | null) {
   if (!editing.value || (value !== "anthropic" && value !== "gemini")) return;
   editing.value.config = configDrafts.switch(editing.value.config, lastSelectedProtocol.value, lastSelectedKind.value, value, lastSelectedKind.value);

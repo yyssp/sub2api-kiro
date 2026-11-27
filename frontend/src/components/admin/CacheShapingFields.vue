@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import type { CacheStrategyConfig, CacheShapingProfile } from "@/api/admin/cacheStrategies";
+import Select, { type SelectOption } from "@/components/common/Select.vue";
 const config = defineModel<CacheStrategyConfig>({ required: true });
 const { t } = useI18n();
 const label = (key: string) => t(`admin.cacheStrategies.advanced.${key}`);
@@ -11,6 +12,8 @@ const stableNumbers = ["min_total_input_tokens", "min_segment_tokens", "reported
 const stableFlags = ["honor_explicit_cache_control", "auto_cache_system", "auto_cache_tools", "auto_cache_history_message_ends"] as const;
 const gemini = computed(() => config.value.protocol === "gemini");
 const fields = computed(() => gemini.value ? (["input", "output", "cache_read"] as const) : (["input", "output", "cache_read", "cache_creation"] as const));
+const shapingModeOptions = computed<SelectOption[]>(() => ["inherit", "custom", "raw"].map(value => ({ value, label: label(value) })));
+const suppressedTargetOptions = computed<SelectOption[]>(() => ["input", "cache_read", "drop"].map(value => ({ value, label: label(value) })));
 const shapingKeys = ["multiplier", "jitter_ratio", "min_tokens", "max_tokens", "max_jitter_tokens"] as const;
 const profiles = computed<Array<{ key: string; value: CacheShapingProfile }>>(() => {
   const p = config.value.tool_plus;
@@ -50,13 +53,13 @@ const profiles = computed<Array<{ key: string; value: CacheShapingProfile }>>(()
     <template v-if="config.kind === 'prefix_tool_plus' && config.tool_plus">
       <h5 class="font-medium">{{ label("plusTitle") }}</h5>
       <div class="grid gap-3 md:grid-cols-2">
-        <label class="text-sm">{{ label("nonStreamMode") }}<select v-model="config.tool_plus.non_stream.mode" class="input mt-1 w-full"><option v-for="mode in ['inherit', 'custom', 'raw']" :key="mode" :value="mode">{{ label(mode) }}</option></select></label>
-        <label v-if="!gemini" class="text-sm">{{ label("suppressedTarget") }}<select v-model="config.tool_plus.suppressed_creation_target" class="input mt-1 w-full"><option v-for="target in ['input', 'cache_read', 'drop']" :key="target" :value="target">{{ label(target) }}</option></select></label>
+        <div class="text-sm"><label for="cache-plus-non-stream-mode" class="input-label">{{ label("nonStreamMode") }}</label><Select id="cache-plus-non-stream-mode" v-model="config.tool_plus.non_stream.mode" :options="shapingModeOptions" class="mt-1 w-full" :aria-label="label('nonStreamMode')" /></div>
+        <div v-if="!gemini" class="text-sm"><label for="cache-plus-suppressed-target" class="input-label">{{ label("suppressedTarget") }}</label><Select id="cache-plus-suppressed-target" v-model="config.tool_plus.suppressed_creation_target" :options="suppressedTargetOptions" class="mt-1 w-full" :aria-label="label('suppressedTarget')" /></div>
         <label class="flex items-center gap-2 text-sm"><input v-model="config.tool_plus.small_request.enabled" type="checkbox" class="checkbox" />{{ label("smallEnabled") }}</label>
       </div>
       <div v-if="config.tool_plus.small_request.enabled" class="grid gap-3 md:grid-cols-3">
         <label class="text-sm">{{ label("smallMax") }}<input v-model.number="config.tool_plus.small_request.max_input_tokens" type="number" min="0" class="input mt-1 w-full" /></label>
-        <label class="text-sm">{{ label("smallMode") }}<select v-model="config.tool_plus.small_request.mode" class="input mt-1 w-full"><option v-for="mode in ['inherit', 'custom', 'raw']" :key="mode" :value="mode">{{ label(mode) }}</option></select></label>
+        <div class="text-sm"><label for="cache-plus-small-mode" class="input-label">{{ label("smallMode") }}</label><Select id="cache-plus-small-mode" v-model="config.tool_plus.small_request.mode" :options="shapingModeOptions" class="mt-1 w-full" :aria-label="label('smallMode')" /></div>
         <label class="flex items-center gap-2 text-sm"><input v-model="config.tool_plus.small_request.disable_cache" type="checkbox" class="checkbox" />{{ label("disableCache") }}</label>
       </div>
       <div v-for="profile in profiles" :key="profile.key" class="space-y-3 rounded bg-gray-50 p-3 dark:bg-dark-800">
