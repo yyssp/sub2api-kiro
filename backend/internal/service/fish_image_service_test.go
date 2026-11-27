@@ -72,7 +72,7 @@ func TestFishGenerateCallHappyPath(t *testing.T) {
 		t.Fatalf("GroupID = %q", result.GroupID)
 	}
 	// 请求体：像素尺寸 + quality + 计价回显
-	params := generateBody["params"].(map[string]any)
+	params := fishImageTestValue[map[string]any](t, generateBody["params"])
 	if params["image_size"] != "1024x1024" || params["quality"] != "medium" {
 		t.Fatalf("params = %v", params)
 	}
@@ -84,11 +84,11 @@ func TestFishGenerateCallHappyPath(t *testing.T) {
 	if err := json.Unmarshal(result.Body, &bodyMap); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	data := bodyMap["data"].([]any)
+	data := fishImageTestValue[[]any](t, bodyMap["data"])
 	if len(data) != 1 {
 		t.Fatalf("data len = %d", len(data))
 	}
-	b64 := data[0].(map[string]any)["b64_json"].(string)
+	b64 := fishImageTestValue[string](t, fishImageTestValue[map[string]any](t, data[0])["b64_json"])
 	if decoded, _ := base64.StdEncoding.DecodeString(b64); string(decoded) != string(pngBytes) {
 		t.Fatalf("b64 mismatch")
 	}
@@ -124,7 +124,7 @@ func TestFishGenerateCallEditsFlow(t *testing.T) {
 			_, _ = w.Write([]byte(`{"credits":1820,"pricingVersion":"pv"}`))
 		case "/tools/image-video/generate":
 			body := decodeFishBody(t, r)
-			variant = body["variantKey"].(string)
+			variant = fishImageTestValue[string](t, body["variantKey"])
 			_, _ = w.Write([]byte(`{"id":"g","status":"generating","results":[]}`))
 		case "/task/group/g":
 			_, _ = w.Write([]byte(`{"id":"g","status":"done","results":[{"id":"m","status":"done","mediaItem":{"id":"m","url":"http://` + r.Host + `/o.png"}}]}`))
@@ -310,7 +310,7 @@ func TestFishGenerateCallDynamicFitSize(t *testing.T) {
 		t.Fatalf("GenerateCall: %v", err)
 	}
 	// 上游收到就近原生档
-	params := generateBody["params"].(map[string]any)
+	params := fishImageTestValue[map[string]any](t, generateBody["params"])
 	if params["image_size"] != "1536x2048" {
 		t.Fatalf("image_size = %v, want 1536x2048", params["image_size"])
 	}
@@ -325,7 +325,7 @@ func TestFishGenerateCallDynamicFitSize(t *testing.T) {
 	if result.Size != "880x1168" {
 		t.Fatalf("result.Size = %q, want 880x1168", result.Size)
 	}
-	b64 := bodyMap["data"].([]any)[0].(map[string]any)["b64_json"].(string)
+	b64 := fishImageTestValue[string](t, fishImageTestValue[map[string]any](t, fishImageTestValue[[]any](t, bodyMap["data"])[0])["b64_json"])
 	decoded, _ := base64.StdEncoding.DecodeString(b64)
 	img, _, err := image.Decode(bytes.NewReader(decoded))
 	if err != nil {
@@ -466,8 +466,8 @@ func fishResponseImage(t *testing.T, body []byte) []byte {
 	if err := json.Unmarshal(body, &bodyMap); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	data := bodyMap["data"].([]any)
-	b64 := data[0].(map[string]any)["b64_json"].(string)
+	data := fishImageTestValue[[]any](t, bodyMap["data"])
+	b64 := fishImageTestValue[string](t, fishImageTestValue[map[string]any](t, data[0])["b64_json"])
 	decoded, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
 		t.Fatalf("decode b64: %v", err)
@@ -711,7 +711,7 @@ func TestFishGenerateCallBillsDeliveredSizeOnUpscale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateCall: %v", err)
 	}
-	if params := generateBody["params"].(map[string]any); params["image_size"] != "1344x576" {
+	if params := fishImageTestValue[map[string]any](t, generateBody["params"]); params["image_size"] != "1344x576" {
 		t.Fatalf("image_size = %v, want 1344x576", params["image_size"])
 	}
 	if result.Size != "1568x672" {
@@ -750,10 +750,10 @@ func TestFishGenerateCallImage2OmitsFrontendQuality(t *testing.T) {
 	if _, err := service.Generate(context.Background(), account, "tok", fishImageRequest("gpt-image-2", "1024x1024", "high", 1)); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if params := generateBody["params"].(map[string]any); params["quality"] != "high" {
+	if params := fishImageTestValue[map[string]any](t, generateBody["params"]); params["quality"] != "high" {
 		t.Fatalf("params.quality = %v, want high", params["quality"])
 	}
-	frontend := generateBody["frontendParams"].(map[string]any)
+	frontend := fishImageTestValue[map[string]any](t, generateBody["frontendParams"])
 	if _, ok := frontend["quality"]; ok {
 		t.Fatalf("frontendParams.quality must be absent for gpt-image-2, got %v", frontend["quality"])
 	}
@@ -837,4 +837,13 @@ func TestFishGenerateCallEditsSkipsUploadWhenBalanceCannotPay(t *testing.T) {
 	if uploads != 0 {
 		t.Fatalf("reference image uploads = %d, want 0 when the balance cannot pay", uploads)
 	}
+}
+
+func fishImageTestValue[T any](t *testing.T, value any) T {
+	t.Helper()
+	typed, ok := value.(T)
+	if !ok {
+		t.Fatalf("unexpected JSON value type %T: %v", value, value)
+	}
+	return typed
 }
